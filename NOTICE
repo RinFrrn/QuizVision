@@ -1,0 +1,16 @@
+Quiz Vision
+Copyright 2026 RinFrrn
+
+This product includes software derived from the Google ML Kit Vision Quickstart
+sample.
+
+The Google ML Kit Vision Quickstart sample is:
+Copyright 2020 Google LLC
+Licensed under the Apache License, Version 2.0.
+
+This product also includes Android Open Source Project resource material derived
+from Material/Android framework resources, licensed under the Apache License,
+Version 2.0.
+
+Third-party library dependencies are declared in app/build.gradle and remain
+under their respective licenses.

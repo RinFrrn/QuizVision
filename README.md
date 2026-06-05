@@ -67,4 +67,6 @@ Quiz Vision 是一个开源、本地优先的 OCR 搜题与背题 App，可从 E
 
 ## 许可
 
-本仓库源自 Google ML Kit vision quickstart sample，并仍包含由该示例派生的代码。详见 [LICENSE](LICENSE)。
+本项目基于 Apache License 2.0 开源，详见 [LICENSE](LICENSE)。
+
+本仓库源自 Google ML Kit vision quickstart sample，并仍包含由该示例派生的代码。相关归属声明见 [NOTICE](NOTICE)。第三方依赖在 `app/build.gradle` 中声明，并遵循各自许可证。
