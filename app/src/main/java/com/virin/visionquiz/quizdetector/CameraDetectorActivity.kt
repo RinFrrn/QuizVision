@@ -10,6 +10,7 @@ import com.virin.visionquiz.CameraSource
 import com.virin.visionquiz.CameraSourcePreview
 import com.virin.visionquiz.vision.graphic.GraphicOverlay
 import com.virin.visionquiz.R
+import com.virin.visionquiz.preference.PreferenceUtils
 import com.virin.visionquiz.vision.questiondetector.QuizRecognitionProcessor
 import java.io.IOException
 import java.util.ArrayList
@@ -97,7 +98,11 @@ class CameraDetectorActivity : AppCompatActivity(), AdapterView.OnItemSelectedLi
                 TEXT_RECOGNITION_QUESTION -> {
                     Log.i(TAG, "Using on-device Quiz recognition Processor for Quiz")
                     cameraSource!!.setMachineLearningFrameProcessor(
-                        QuizRecognitionProcessor(this, viewModel.quizList)
+                        QuizRecognitionProcessor(
+                            this,
+                            viewModel.quizList,
+                            minMatchScore = PreferenceUtils.getCameraSearchMinMatchScore(this)
+                        )
                     )
                 }
                 else -> Log.e(TAG, "Unknown model: $model")

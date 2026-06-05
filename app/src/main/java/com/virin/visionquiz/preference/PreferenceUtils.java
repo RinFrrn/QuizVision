@@ -30,6 +30,7 @@ import com.google.mlkit.common.model.LocalModel;
 import com.virin.visionquiz.CameraSource;
 import com.virin.visionquiz.CameraSource.SizePair;
 import com.virin.visionquiz.R;
+import com.virin.visionquiz.dao.QuizManager;
 //import com.google.mlkit.vision.face.FaceDetectorOptions;
 //import com.google.mlkit.vision.facemesh.FaceMeshDetectorOptions;
 //import com.google.mlkit.vision.objects.ObjectDetectorOptionsBase.DetectorMode;
@@ -47,6 +48,8 @@ public class PreferenceUtils {
   private static final int DEFAULT_ACCESSIBILITY_SEARCH_INTERVAL_MS = 250;
   private static final int MIN_SCREEN_SEARCH_INTERVAL_MS = 250;
   private static final int DEFAULT_SCREEN_CAPTURE_FRAME_RATE = 30;
+  private static final double MIN_SEARCH_MATCH_SCORE = 0.60;
+  private static final double MAX_SEARCH_MATCH_SCORE = 1.00;
   private static final android.util.Size DEFAULT_CAMERAX_TARGET_RESOLUTION =
       new android.util.Size(1280, 720);
 
@@ -362,6 +365,50 @@ public class PreferenceUtils {
       // Fall through to the default below.
     }
     return DEFAULT_SCREEN_CAPTURE_FRAME_RATE;
+  }
+
+  public static double getCameraSearchMinMatchScore(Context context) {
+    return getSearchMinMatchScore(
+        context,
+        R.string.pref_key_camera_search_min_match_score,
+        QuizManager.DEFAULT_MIN_MATCH_SCORE);
+  }
+
+  public static double getScreenSearchMinMatchScore(Context context) {
+    return getSearchMinMatchScore(
+        context,
+        R.string.pref_key_screen_search_min_match_score,
+        QuizManager.DEFAULT_MIN_MATCH_SCORE);
+  }
+
+  public static double getAccessibilitySearchMinMatchScore(Context context) {
+    return getSearchMinMatchScore(
+        context,
+        R.string.pref_key_accessibility_search_min_match_score,
+        MAX_SEARCH_MATCH_SCORE);
+  }
+
+  private static double getSearchMinMatchScore(
+      Context context,
+      @StringRes int prefKeyId,
+      double defaultValue) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(prefKeyId);
+    try {
+      double minScore =
+          Double.parseDouble(
+              sharedPreferences.getString(
+                  prefKey,
+                  String.valueOf(defaultValue)));
+      if (Double.isFinite(minScore)
+          && minScore >= MIN_SEARCH_MATCH_SCORE
+          && minScore <= MAX_SEARCH_MATCH_SCORE) {
+        return minScore;
+      }
+    } catch (Exception e) {
+      // Fall through to the default below.
+    }
+    return defaultValue;
   }
 
   private static int getSearchIntervalMs(

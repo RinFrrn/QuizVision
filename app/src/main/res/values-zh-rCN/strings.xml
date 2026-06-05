@@ -92,6 +92,12 @@
     <string name="pref_title_screen_search_interval">屏幕搜题间隔</string>
     <string name="pref_title_screen_capture_frame_rate">屏幕采集帧率</string>
     <string name="pref_title_accessibility_search_interval">无障碍搜题间隔</string>
+    <string name="pref_category_match_threshold">匹配阈值</string>
+    <string name="pref_title_camera_search_min_match_score">摄像头搜题匹配阈值</string>
+    <string name="pref_title_screen_search_min_match_score">屏幕搜题匹配阈值</string>
+    <string name="pref_title_accessibility_search_min_match_score">无障碍搜题匹配阈值</string>
+    <string name="pref_summary_search_min_match_score">越高越严格，误匹配更少但可能漏题；越低越宽松，命中更多但误匹配风险更高。</string>
+    <string name="pref_threshold_restore_default">恢复默认值</string>
     <string name="search_settings_menu_title">搜题设置</string>
 
     <!-- Strings for text recognition preference. -->

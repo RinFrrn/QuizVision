@@ -13,6 +13,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.virin.visionquiz.R
 import com.virin.visionquiz.ScreenSource
 import com.virin.visionquiz.dao.Quiz
+import com.virin.visionquiz.preference.PreferenceUtils
 import com.virin.visionquiz.vision.questiondetector.OriginalRecognitionProcessor
 import com.virin.visionquiz.vision.questiondetector.QuizRecognitionProcessor
 import java.io.IOException
@@ -97,9 +98,14 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                     Log.i(TAG, "Using on-device Quiz recognition Processor for Quiz")
                     cameraSource = ScreenSource(activity)
                     cameraSource?.setMachineLearningFrameProcessor(
-                        QuizRecognitionProcessor(activity, request.quizzes) { matches ->
-                            ScreenDetectorSession.publishMatches(matches)
-                        }
+                        QuizRecognitionProcessor(
+                            activity,
+                            request.quizzes,
+                            onMatchesDetected = { matches ->
+                                ScreenDetectorSession.publishMatches(matches)
+                            },
+                            minMatchScore = PreferenceUtils.getScreenSearchMinMatchScore(activity)
+                        )
                     )
                 }
                 is StartRequest.AccessibilityQuiz -> {

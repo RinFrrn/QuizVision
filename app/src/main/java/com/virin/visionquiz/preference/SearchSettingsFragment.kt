@@ -26,8 +26,11 @@ import androidx.fragment.app.Fragment
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.slider.Slider
 import com.virin.visionquiz.R
 import kotlin.math.abs
+import kotlin.math.roundToInt
+import java.util.Locale
 
 /**
  * Material 3 settings page for quiz search options.
@@ -55,6 +58,7 @@ class SearchSettingsFragment : Fragment() {
                     setPadding(16.dp(context), 16.dp(context), 16.dp(context), 24.dp(context))
                     addCameraSection(context)
                     addTextRecognitionSection(context)
+                    addMatchThresholdSection(context)
                 },
                 FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
@@ -157,6 +161,30 @@ class SearchSettingsFragment : Fragment() {
         addSection(context, getString(R.string.pref_category_text_recognition), rows)
     }
 
+    private fun LinearLayout.addMatchThresholdSection(context: Context) {
+        val rows = listOf(
+            createThresholdRow(
+                context = context,
+                keyResId = R.string.pref_key_camera_search_min_match_score,
+                titleResId = R.string.pref_title_camera_search_min_match_score,
+                defaultValue = DEFAULT_THRESHOLD_SCORE
+            ),
+            createThresholdRow(
+                context = context,
+                keyResId = R.string.pref_key_screen_search_min_match_score,
+                titleResId = R.string.pref_title_screen_search_min_match_score,
+                defaultValue = DEFAULT_THRESHOLD_SCORE
+            ),
+            createThresholdRow(
+                context = context,
+                keyResId = R.string.pref_key_accessibility_search_min_match_score,
+                titleResId = R.string.pref_title_accessibility_search_min_match_score,
+                defaultValue = ACCESSIBILITY_THRESHOLD_DEFAULT_SCORE
+            )
+        )
+        addSection(context, getString(R.string.pref_category_match_threshold), rows)
+    }
+
     private fun LinearLayout.addSection(context: Context, title: String, rows: List<View>) {
         addView(TextView(context).apply {
             text = title
@@ -228,6 +256,101 @@ class SearchSettingsFragment : Fragment() {
             entries = resources.getStringArray(entriesResId),
             values = resources.getStringArray(valuesResId)
         )
+    }
+
+    private fun createThresholdRow(
+        context: Context,
+        @StringRes keyResId: Int,
+        @StringRes titleResId: Int,
+        defaultValue: Double
+    ): View {
+        val key = getString(keyResId)
+        val valueView = TextView(context).apply {
+            text = formatThreshold(readThresholdValue(key, defaultValue))
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
+            setTextColor(context.resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            maxLines = 1
+        }
+
+        return createBaseRow(
+            context = context,
+            title = getString(titleResId),
+            summary = null,
+            trailing = valueView
+        ).apply {
+            setOnClickListener {
+                showThresholdDialog(
+                    context = context,
+                    key = key,
+                    title = getString(titleResId),
+                    summaryView = valueView,
+                    defaultValue = defaultValue
+                )
+            }
+        }
+    }
+
+    private fun showThresholdDialog(
+        context: Context,
+        key: String,
+        title: String,
+        summaryView: TextView,
+        defaultValue: Double
+    ) {
+        val initialValue = readThresholdValue(key, defaultValue)
+        val valueView = TextView(context).apply {
+            text = formatThreshold(initialValue)
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleMedium)
+            setTextColor(context.resolveThemeColor(com.google.android.material.R.attr.colorPrimary))
+            gravity = Gravity.CENTER
+            setPadding(0, 8.dp(context), 0, 4.dp(context))
+        }
+        fun saveThreshold(value: Double) {
+            val formattedValue = formatThreshold(value)
+            sharedPreferences.edit().putString(key, formattedValue).apply()
+            valueView.text = formattedValue
+            summaryView.text = formattedValue
+        }
+
+        val slider = Slider(context).apply {
+            valueFrom = MIN_THRESHOLD_SCORE.toFloat()
+            valueTo = MAX_THRESHOLD_SCORE.toFloat()
+            stepSize = THRESHOLD_SCORE_STEP.toFloat()
+            value = initialValue.toFloat()
+            addOnChangeListener { _, rawValue, _ ->
+                saveThreshold(rawValue.toDouble())
+            }
+        }
+
+        val dialog = MaterialAlertDialogBuilder(context)
+            .setTitle(title)
+            .setView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(24.dp(context), 8.dp(context), 24.dp(context), 0)
+                addView(TextView(context).apply {
+                    text = getString(R.string.pref_summary_search_min_match_score)
+                    setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
+                    setTextColor(
+                        context.resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant)
+                    )
+                })
+                addView(valueView, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ))
+                addView(slider, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ))
+            })
+            .setNeutralButton(R.string.pref_threshold_restore_default, null)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            slider.value = defaultValue.toFloat()
+            saveThreshold(defaultValue)
+        }
     }
 
     private fun createListRow(
@@ -338,6 +461,26 @@ class SearchSettingsFragment : Fragment() {
         return sharedPreferences.getString(key, defaultValue) ?: defaultValue
     }
 
+    private fun readThresholdValue(key: String, defaultValue: Double): Double {
+        val formattedDefaultValue = formatThreshold(defaultValue)
+        val storedValue = currentStoredString(key, formattedDefaultValue).toDoubleOrNull()
+        return normalizeThreshold(storedValue ?: defaultValue)
+    }
+
+    private fun normalizeThreshold(value: Double): Double {
+        if (!value.isFinite()) {
+            return DEFAULT_THRESHOLD_SCORE
+        }
+        val clampedValue = value.coerceIn(MIN_THRESHOLD_SCORE, MAX_THRESHOLD_SCORE)
+        val steps = ((clampedValue - MIN_THRESHOLD_SCORE) / THRESHOLD_SCORE_STEP).roundToInt()
+        return (MIN_THRESHOLD_SCORE + steps * THRESHOLD_SCORE_STEP)
+            .coerceIn(MIN_THRESHOLD_SCORE, MAX_THRESHOLD_SCORE)
+    }
+
+    private fun formatThreshold(value: Double): String {
+        return String.format(Locale.US, "%.2f", normalizeThreshold(value))
+    }
+
     private fun entryForValue(value: String, entries: Array<String>, values: Array<String>): String {
         val index = values.indexOf(value)
         return if (index in entries.indices) entries[index] else value
@@ -415,5 +558,13 @@ class SearchSettingsFragment : Fragment() {
 
     private fun Int.dp(context: Context): Int {
         return (this * context.resources.displayMetrics.density).toInt()
+    }
+
+    private companion object {
+        const val MIN_THRESHOLD_SCORE = 0.60
+        const val MAX_THRESHOLD_SCORE = 1.00
+        const val DEFAULT_THRESHOLD_SCORE = 0.76
+        const val ACCESSIBILITY_THRESHOLD_DEFAULT_SCORE = 1.00
+        const val THRESHOLD_SCORE_STEP = 0.02
     }
 }

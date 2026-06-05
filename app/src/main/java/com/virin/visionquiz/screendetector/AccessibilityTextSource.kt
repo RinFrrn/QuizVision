@@ -33,6 +33,7 @@ class AccessibilityTextSource(
     private val matchScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val matchGeneration = AtomicInteger()
     private val intervalMs = PreferenceUtils.getAccessibilitySearchIntervalMs(appContext).toLong()
+    private val minMatchScore = PreferenceUtils.getAccessibilitySearchMinMatchScore(appContext)
     private val scanLock = Any()
 
     @Volatile
@@ -148,7 +149,11 @@ class AccessibilityTextSource(
                 val matches = candidates.asSequence()
                     .filter { it.allowQuestionMatch }
                     .mapNotNull { candidate ->
-                        val bestMatch = QuizManager.matchQuiz(candidate.text, quizIndex).firstOrNull()
+                        val bestMatch = QuizManager.matchQuiz(
+                            candidate.text,
+                            quizIndex,
+                            minScore = minMatchScore
+                        ).firstOrNull()
                             ?: return@mapNotNull null
                         AccessibilityMatch(
                             question = bestMatch.first,

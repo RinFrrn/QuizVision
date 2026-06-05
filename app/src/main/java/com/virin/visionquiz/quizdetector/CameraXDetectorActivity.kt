@@ -514,7 +514,11 @@ class CameraXDetectorActivity : AppCompatActivity(), AdapterView.OnItemSelectedL
             val processor = when (selectedModel) {
                 TEXT_RECOGNITION_QUESTION -> {
                     Log.i(TAG, "Using on-device Quiz recognition Processor for Quiz")
-                    QuizRecognitionProcessor(this, viewModel.quizList)
+                    QuizRecognitionProcessor(
+                        this,
+                        viewModel.quizList,
+                        minMatchScore = PreferenceUtils.getCameraSearchMinMatchScore(this)
+                    )
                 }
                 TEXT_RECOGNITION_ORIGINAL -> {
                     Log.i(TAG, "Using on-device Recognition Processor")

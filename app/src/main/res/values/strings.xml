@@ -90,6 +90,10 @@
     <string name="pref_key_screen_search_interval_ms" translatable="false">ssim</string>
     <string name="pref_key_screen_capture_frame_rate" translatable="false">scfr</string>
     <string name="pref_key_accessibility_search_interval_ms" translatable="false">asim</string>
+    <string name="pref_key_camera_search_min_match_score" translatable="false">csmm</string>
+    <string name="pref_key_screen_search_min_match_score" translatable="false">ssmm</string>
+    <string name="pref_key_accessibility_search_min_match_score" translatable="false">asmm</string>
+    <string name="pref_category_match_threshold" translatable="true">Match threshold</string>
     <string name="pref_title_rear_camera_preview_size" translatable="true">Rear camera preview size</string>
     <string name="pref_title_front_camera_preview_size" translatable="true">Front camera preview size</string>
     <string name="pref_title_camerax_rear_camera_target_resolution" translatable="true">CameraX rear camera target resolution</string>
@@ -99,6 +103,11 @@
     <string name="pref_title_screen_search_interval" translatable="true">Screen search interval</string>
     <string name="pref_title_screen_capture_frame_rate" translatable="true">Screen capture frame rate</string>
     <string name="pref_title_accessibility_search_interval" translatable="true">Accessibility search interval</string>
+    <string name="pref_title_camera_search_min_match_score" translatable="true">Camera search match threshold</string>
+    <string name="pref_title_screen_search_min_match_score" translatable="true">Screen search match threshold</string>
+    <string name="pref_title_accessibility_search_min_match_score" translatable="true">Accessibility search match threshold</string>
+    <string name="pref_summary_search_min_match_score" translatable="true">Higher is stricter with fewer false matches but may miss questions. Lower is looser with more hits and more false-match risk.</string>
+    <string name="pref_threshold_restore_default" translatable="true">Restore default</string>
     <string name="search_settings_menu_title" translatable="true">Search settings</string>
 
     <!-- Strings for info preference. -->

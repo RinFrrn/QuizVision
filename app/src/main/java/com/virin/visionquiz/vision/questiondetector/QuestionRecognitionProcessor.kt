@@ -28,7 +28,8 @@ import kotlin.collections.ArrayList
 class QuizRecognitionProcessor(
     private val context: Context,
     private val quizzes: LiveData<List<Quiz>>,
-    private val onMatchesDetected: ((List<QuizGraphicItem>) -> Unit)? = null
+    private val onMatchesDetected: ((List<QuizGraphicItem>) -> Unit)? = null,
+    private val minMatchScore: Double = QuizManager.DEFAULT_MIN_MATCH_SCORE
 ) : VisionProcessorBase<Text>(context) {
 
     private val textRecognizer: TextRecognizer = TextRecognition.getClient(
@@ -82,7 +83,11 @@ class QuizRecognitionProcessor(
         textRect: Rect,
         quizIndex: QuizManager.QuizMatchIndex
     ): QuizGraphicItem? {
-        val bestMatch = QuizManager.matchQuiz(text, quizIndex).firstOrNull()
+        val bestMatch = QuizManager.matchQuiz(
+            text,
+            quizIndex,
+            minScore = minMatchScore
+        ).firstOrNull()
         if (bestMatch != null) {
             return QuizGraphicItem(
                 bestMatch.first, bestMatch.second, textRect
