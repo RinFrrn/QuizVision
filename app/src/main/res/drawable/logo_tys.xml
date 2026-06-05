@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background>
+        <shape android:shape="oval">
+            <size
+                android:width="108dp"
+                android:height="108dp" />
+            <gradient
+                android:angle="10"
+                android:endColor="#0d47a1"
+                android:startColor="#5591F6"
+                android:type="linear" />
+        </shape>
+    </background>
+    <foreground>
+        <inset
+            android:drawable="@drawable/logo_tys_foreground"
+            android:inset="18%" />
+    </foreground>
+</adaptive-icon>

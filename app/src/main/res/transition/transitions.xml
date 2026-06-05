@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<transitionSet xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <transition
+        class="com.google.android.material.transition.platform.MaterialSharedAxis">
+        <argument android:name="axis" android:value="x" />
+        <argument android:name="forward" android:value="true" />
+    </transition>
+    <transition
+        class="com.google.android.material.transition.platform.MaterialSharedAxis">
+        <argument android:name="axis" android:value="x" />
+        <argument android:name="forward" android:value="false" />
+    </transition>
+    <transition
+        class="com.google.android.material.transition.platform.MaterialSharedAxis">
+        <argument android:name="axis" android:value="y" />
+        <argument android:name="forward" android:value="true" />
+    </transition>
+    <transition
+        class="com.google.android.material.transition.platform.MaterialSharedAxis">
+        <argument android:name="axis" android:value="y" />
+        <argument android:name="forward" android:value="false" />
+    </transition>
+</transitionSet>

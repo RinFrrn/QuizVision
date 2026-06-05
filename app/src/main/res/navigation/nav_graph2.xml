@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph2"
+    app:startDestination="@id/QuizLibListFragment">
+
+    <fragment
+        android:id="@+id/QuizLibListFragment"
+        android:name="com.virin.visionquiz.quizlibrarylist.QuizLibraryListFragment"
+        android:label="全部题库"
+        tools:layout="@layout/fragment_quiz_library_list">
+
+        <action
+            android:id="@+id/action_QuizLibListFragment_to_QuizListFragment"
+            app:destination="@id/QuizListFragment" />
+
+        <action
+            android:id="@+id/action_QuizLibListFragment_to_QuizLibraryFeaturesFragment"
+            app:destination="@id/QuizLibraryFeaturesFragment" />
+        <action
+            android:id="@+id/action_QuizLibListFragment_to_ImportCandidateSettingsFragment"
+            app:destination="@id/ImportCandidateSettingsFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/ImportCandidateSettingsFragment"
+        android:name="com.virin.visionquiz.quizlibrarylist.ImportCandidateSettingsFragment"
+        android:label="@string/import_settings_title"
+        tools:layout="@layout/fragment_import_candidate_settings" />
+
+    <fragment
+        android:id="@+id/QuizLibraryFeaturesFragment"
+        android:name="com.virin.visionquiz.quizlibraryfeatures.QuizLibraryFeaturesFragment"
+        android:label=""
+        tools:layout="@layout/fragment_quiz_library_detail" />
+
+    <fragment
+        android:id="@+id/QuizListFragment"
+        android:name="com.virin.visionquiz.quizlist.QuizListFragment"
+        android:label="题目列表"
+        tools:layout="@layout/activity_quiz_list">
+
+        <action
+            android:id="@+id/action_QuizListFragment_to_QuizLibListFragment"
+            app:destination="@id/QuizLibListFragment" />
+
+    </fragment>
+
+    <fragment
+        android:id="@+id/QuizRunnerFragment"
+        android:name="com.virin.visionquiz.quizstudy.QuizRunnerFragment"
+        android:label="答题"
+        tools:layout="@layout/fragment_quiz_runner" />
+
+    <fragment
+        android:id="@+id/ExamConfigFragment"
+        android:name="com.virin.visionquiz.quizstudy.ExamConfigFragment"
+        android:label="模拟考试"
+        tools:layout="@layout/fragment_exam_config" />
+
+    <fragment
+        android:id="@+id/QuizFavoritesFragment"
+        android:name="com.virin.visionquiz.quizstudy.QuizFavoritesFragment"
+        android:label="我的收藏"
+        tools:layout="@layout/fragment_quiz_favorites" />
+
+    <fragment
+        android:id="@+id/QuizWrongFragment"
+        android:name="com.virin.visionquiz.quizstudy.QuizFavoritesFragment"
+        android:label="错题库"
+        tools:layout="@layout/fragment_quiz_favorites" />
+
+    <fragment
+        android:id="@+id/QuizHistoryFragment"
+        android:name="com.virin.visionquiz.quizstudy.QuizHistoryFragment"
+        android:label="作答历史"
+        tools:layout="@layout/fragment_quiz_history" />
+
+    <fragment
+        android:id="@+id/ExamHistoryFragment"
+        android:name="com.virin.visionquiz.quizstudy.ExamHistoryFragment"
+        android:label="考试历史"
+        tools:layout="@layout/fragment_exam_history" />
+
+    <fragment
+        android:id="@+id/ExamDetailFragment"
+        android:name="com.virin.visionquiz.quizstudy.ExamDetailFragment"
+        android:label="考试详情"
+        tools:layout="@layout/fragment_exam_detail" />
+
+</navigation>

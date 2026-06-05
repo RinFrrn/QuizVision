@@ -1,0 +1,96 @@
+-dontwarn aQute.bnd.annotation.baseline.BaselineIgnore
+-dontwarn aQute.bnd.annotation.spi.ServiceConsumer
+-dontwarn aQute.bnd.annotation.spi.ServiceProvider
+-dontwarn com.github.luben.zstd.ZstdInputStream
+-dontwarn edu.umd.cs.findbugs.annotations.Nullable
+-dontwarn edu.umd.cs.findbugs.annotations.SuppressFBWarnings
+-dontwarn java.awt.Color
+-dontwarn java.awt.Dimension
+-dontwarn java.awt.Rectangle
+-dontwarn java.awt.color.ColorSpace
+-dontwarn java.awt.geom.AffineTransform
+-dontwarn java.awt.geom.Dimension2D
+-dontwarn java.awt.geom.Path2D
+-dontwarn java.awt.geom.PathIterator
+-dontwarn java.awt.geom.Point2D
+-dontwarn java.awt.geom.Rectangle2D
+-dontwarn java.awt.geom.Rectangle2D$Double
+-dontwarn java.awt.image.BufferedImage
+-dontwarn java.awt.image.ColorModel
+-dontwarn java.awt.image.ComponentColorModel
+-dontwarn java.awt.image.DirectColorModel
+-dontwarn java.awt.image.IndexColorModel
+-dontwarn java.awt.image.PackedColorModel
+-dontwarn javax.xml.stream.Location
+-dontwarn javax.xml.stream.XMLStreamException
+-dontwarn javax.xml.stream.XMLStreamReader
+-dontwarn net.sf.saxon.Configuration
+-dontwarn net.sf.saxon.dom.DOMNodeWrapper
+-dontwarn net.sf.saxon.om.Item
+-dontwarn net.sf.saxon.om.NamespaceUri
+-dontwarn net.sf.saxon.om.NodeInfo
+-dontwarn net.sf.saxon.om.Sequence
+-dontwarn net.sf.saxon.om.SequenceTool
+-dontwarn net.sf.saxon.sxpath.IndependentContext
+-dontwarn net.sf.saxon.sxpath.XPathDynamicContext
+-dontwarn net.sf.saxon.sxpath.XPathEvaluator
+-dontwarn net.sf.saxon.sxpath.XPathExpression
+-dontwarn net.sf.saxon.sxpath.XPathStaticContext
+-dontwarn net.sf.saxon.sxpath.XPathVariable
+-dontwarn net.sf.saxon.tree.wrapper.VirtualNode
+-dontwarn net.sf.saxon.value.DateTimeValue
+-dontwarn net.sf.saxon.value.GDateValue
+-dontwarn com.github.javaparser.**
+-dontwarn com.microsoft.schemas.**
+-dontwarn com.sun.org.apache.xml.internal.resolver.**
+-dontwarn de.rototor.pdfbox.graphics2d.**
+-dontwarn java.awt.**
+-dontwarn javax.imageio.**
+-dontwarn javax.swing.**
+-dontwarn javax.xml.crypto.**
+-dontwarn javax.xml.stream.**
+-dontwarn net.sf.saxon.**
+-dontwarn org.apache.jcp.xml.dsig.internal.dom.**
+-dontwarn org.apache.batik.**
+-dontwarn org.apache.batik.bridge.BridgeContext
+-dontwarn org.apache.batik.bridge.DocumentLoader
+-dontwarn org.apache.batik.bridge.GVTBuilder
+-dontwarn org.apache.batik.bridge.UserAgent
+-dontwarn org.apache.batik.bridge.UserAgentAdapter
+-dontwarn org.apache.batik.util.XMLResourceDescriptor
+-dontwarn org.apache.maven.**
+-dontwarn org.apache.pdfbox.**
+-dontwarn org.apache.tools.ant.**
+-dontwarn org.apache.xml.security.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.etsi.uri.**
+-dontwarn org.ietf.jgss.**
+-dontwarn org.openxmlformats.schemas.**
+-dontwarn org.tukaani.xz.**
+-dontwarn org.w3.x2000.**
+-dontwarn org.w3c.dom.events.**
+-dontwarn org.w3c.dom.svg.**
+-dontwarn org.w3c.dom.traversal.**
+-dontwarn org.osgi.framework.Bundle
+-dontwarn org.osgi.framework.BundleContext
+-dontwarn org.osgi.framework.FrameworkUtil
+-dontwarn org.osgi.framework.ServiceReference
+-dontwarn org.osgi.framework.wiring.BundleRevision
+
+# ScreenShareKit bundles a hidden API stub used as the reflective parameter type
+# for IWindowManager.watchRotation(). If R8 renames it, release builds crash with
+# NoSuchMethodException: watchRotation [interface ..., int].
+-keep class android.view.IRotationWatcher { *; }
+-keep class android.view.IRotationWatcher$* { *; }
+
+# Apache POI/XMLBeans use generated schema classes, service providers, and factory
+# lambdas while opening OOXML files. R8 obfuscation/optimization can break the
+# class-to-resource mapping or merge POI factory lambdas, causing release-only
+# index.xsb and ClassCastException failures during import.
+-keep class org.apache.poi.** { *; }
+-keep class org.apache.xmlbeans.metadata.system.** { *; }
+-keep class org.openxmlformats.schemas.** { *; }
+-keep class com.microsoft.schemas.** { *; }
+-keep class org.etsi.uri.** { *; }
+-keep class org.w3.x2000.** { *; }
+-keepnames class **.TypeSystemHolder

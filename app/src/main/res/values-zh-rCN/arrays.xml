@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+  <string-array name="pref_entries_quiz_overlay_text_size">
+    <item>小</item>
+    <item>正常</item>
+    <item>大</item>
+  </string-array>
+
+  <string-array name="pref_entries_screen_search_interval">
+    <item>250 毫秒</item>
+    <item>500 毫秒</item>
+    <item>750 毫秒</item>
+    <item>1000 毫秒</item>
+    <item>1500 毫秒</item>
+    <item>2000 毫秒</item>
+  </string-array>
+
+  <string-array name="pref_entries_screen_capture_frame_rate">
+    <item>15 FPS</item>
+    <item>30 FPS</item>
+    <item>60 FPS</item>
+  </string-array>
+
+</resources>

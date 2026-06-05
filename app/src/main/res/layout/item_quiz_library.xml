@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!--    android:clickable="true"-->
+    <!--    android:background="?android:attr/selectableItemBackground"-->
+
+    <data>
+
+        <variable
+            name="quizLibrary"
+            type="com.virin.visionquiz.dao.QuizLibrary" />
+    </data>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="6dp">
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/card_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checkable="true"
+            android:clickable="true"
+            android:focusable="true"
+            app:cardBackgroundColor="?attr/colorSurfaceContainer"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            app:checkedIconTint="?attr/colorPrimary"
+            app:rippleColor="@color/quiz_library_card_ripple"
+            app:strokeColor="?attr/colorOutlineVariant"
+            app:strokeWidth="1dp">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="132dp"
+                android:padding="16dp">
+
+                <TextView
+                    android:id="@+id/name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="@{quizLibrary.name}"
+                    android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                    android:textColor="?attr/colorOnSurface"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    tools:text="题库名称" />
+
+                <TextView
+                    android:id="@+id/quiz_count"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_library_count_chip"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="4dp"
+                    android:text="@{@string/quiz_count(quizLibrary.quizCount)}"
+                    android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                    android:textColor="?attr/colorOnSecondaryContainer"
+                    app:layout_constraintStart_toStartOf="@id/name"
+                    app:layout_constraintTop_toBottomOf="@id/name"
+                    tools:text="233 题" />
+
+                <LinearLayout
+                    android:id="@+id/library_actions"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/quiz_count">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/camera_btn"
+                        style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_marginEnd="6dp"
+                        android:contentDescription="@string/camera_button_description"
+                        android:insetLeft="0dp"
+                        android:insetTop="0dp"
+                        android:insetRight="0dp"
+                        android:insetBottom="0dp"
+                        android:minWidth="40dp"
+                        android:minHeight="40dp"
+                        app:icon="@drawable/round_photo_camera_24"
+                        app:iconSize="20dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/screen_record_btn"
+                        style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_marginEnd="6dp"
+                        android:contentDescription="@string/screen_button_description"
+                        android:insetLeft="0dp"
+                        android:insetTop="0dp"
+                        android:insetRight="0dp"
+                        android:insetBottom="0dp"
+                        android:minWidth="40dp"
+                        android:minHeight="40dp"
+                        app:icon="@drawable/round_picture_in_picture_24"
+                        app:iconSize="20dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/more_btn"
+                        style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:contentDescription="更多"
+                        android:insetLeft="0dp"
+                        android:insetTop="0dp"
+                        android:insetRight="0dp"
+                        android:insetBottom="0dp"
+                        android:minWidth="40dp"
+                        android:minHeight="40dp"
+                        android:popupTheme="@style/Widget.Material3.PopupMenu"
+                        app:icon="@drawable/round_more_vert_24"
+                        app:iconSize="20dp" />
+
+                </LinearLayout>
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+    </FrameLayout>
+
+</layout>

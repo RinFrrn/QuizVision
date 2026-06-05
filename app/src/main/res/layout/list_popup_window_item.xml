@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/list_popup_item_text"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:drawablePadding="12dp"
+    android:ellipsize="end"
+    android:gravity="center_vertical"
+    android:maxLines="1"
+    android:minHeight="?android:attr/listPreferredItemHeightSmall"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="12dp"
+    android:textAppearance="?attr/textAppearanceBodyLarge"
+    tools:drawableStart="@drawable/round_delete_24"
+    tools:text="@string/delete" /><!--    android:textAppearance="?android:attr/textAppearanceListItemSmall"-->

@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:background="?android:attr/selectableItemBackground"
+    android:clickable="true">
+
+    <data>
+
+        <variable
+            name="quiz"
+            type="com.virin.visionquiz.dao.Quiz" />
+
+        <variable
+            name="title"
+            type="java.lang.CharSequence" />
+
+        <variable
+            name="subtitle"
+            type="java.lang.CharSequence" />
+
+        <variable
+            name="typeLabel"
+            type="String" />
+
+    </data>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:baselineAligned="false"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/title_tv"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/colorOnBackground"
+                    android:text="@{title}"
+                    android:textSize="16sp"
+                    tools:text="题目" />
+
+                <TextView
+                    android:id="@+id/subtitle_tv"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@{subtitle}"
+                    android:textColor="?attr/colorSecondary"
+                    android:textSize="14sp"
+                    tools:text="233" />
+
+                <TextView
+                    android:id="@+id/stats_tv"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="13sp"
+                    android:visibility="gone"
+                    tools:text="正确 2 · 错误 3 · 正确率 40%"
+                    tools:visibility="visible" />
+
+                <TextView
+                    android:id="@+id/type_tv"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_quiz_type_label"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="4dp"
+                    android:text="@{typeLabel}"
+                    android:textColor="?attr/colorPrimary"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    tools:text="单选" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="gone">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/camera_btn"
+                    style="@style/Widget.Material3.Button.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/camera_button_description"
+                    android:minWidth="48dp"
+                    app:icon="@drawable/round_photo_camera_24"
+                    app:iconSize="24dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/screen_record_btn"
+                    style="@style/Widget.Material3.Button.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/camera_button_description"
+                    android:minWidth="48dp"
+                    app:icon="@drawable/round_picture_in_picture_24"
+                    app:iconSize="24dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/more_btn"
+                    style="@style/Widget.Material3.Button.IconButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/camera_button_description"
+                    android:minWidth="48dp"
+                    android:popupTheme="@style/Widget.Material3.PopupMenu"
+                    app:icon="@drawable/round_more_horiz_24"
+                    app:iconSize="24dp" />
+
+            </LinearLayout>
+
+
+        </LinearLayout>
+
+        <com.google.android.material.divider.MaterialDivider
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            app:dividerInsetStart="16dp" />
+    </LinearLayout>
+
+</layout>

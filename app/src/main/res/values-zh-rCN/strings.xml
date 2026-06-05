@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">题眼识</string>
+
+    <string name="quiz_count">%1$d 题</string>
+    <string name="camera_button_description">相机按钮</string>
+    <string name="accessibility_search_button">无障碍搜题</string>
+    <string name="accessibility_search_button_description">无障碍搜题按钮</string>
+    <string name="accessibility_permission_required">请开启 %1$s 无障碍服务</string>
+    <string name="accessibility_search_intro_title">开启无障碍搜题</string>
+    <string name="accessibility_search_intro_message">%1$s 会读取 Android 无障碍系统暴露的屏幕文字，与当前题库匹配，并通过悬浮窗展示结果。使用前需要在系统设置中手动开启 %1$s 无障碍服务。</string>
+    <string name="accessibility_search_prompt_message">无障碍服务未开启。开启后即可读取屏幕可访问文字，并与当前题库匹配。</string>
+    <string name="accessibility_search_enable_cta">去开启</string>
+    <string name="accessibility_service_summary">读取屏幕可访问文字并匹配题库</string>
+    <string name="accessibility_service_description">题眼识会读取 Android 无障碍系统暴露的屏幕文字，与当前题库匹配，并通过悬浮窗展示结果。</string>
+
+    <string name="confirm">确定</string>
+    <string name="cancel">取消</string>
+    <string name="cancel_selection">取消选择</string>
+
+    <string name="rename">重命名</string>
+    <string name="delete">删除</string>
+    <string name="export">导出</string>
+    <string name="copy">复制</string>
+    <string name="open">打开</string>
+    <string name="select">选择</string>
+    <string name="merge">合并</string>
+    <string name="about">关于</string>
+    <string name="about_message">%1$s\n版本 %2$s（%3$d）</string>
+
+    <string name="processor_test">测试文字识别</string>
+
+    <string name="screen_test">测试屏幕录制</string>
+    <string name="export_as">导出为…</string>
+    <string name="select_excel_format_to_export">选择要导出的 Excel 格式</string>
+    <string name="import_settings_title">导入设置</string>
+    <string name="import_settings_menu_title">导入设置</string>
+    <string name="import_settings_save">保存</string>
+    <string name="import_settings_saved">已保存</string>
+    <string name="import_settings_reset">恢复默认</string>
+    <string name="import_settings_reset_title">恢复默认候选词？</string>
+    <string name="import_settings_reset_message">这会还原默认的表头和题型候选词。</string>
+    <string name="import_settings_reset_done">已恢复默认</string>
+    <string name="import_settings_add">添加</string>
+    <string name="import_settings_add_hint">候选词</string>
+    <string name="import_settings_prompt_headers">题目表头</string>
+    <string name="import_settings_type_headers">题型表头</string>
+    <string name="import_settings_answer_headers">答案表头</string>
+    <string name="import_settings_option_prefixes">选项前缀</string>
+    <string name="import_settings_analysis_headers">解析表头</string>
+    <string name="import_settings_single_choice_types">单选题型</string>
+    <string name="import_settings_multiple_choice_types">多选题型</string>
+    <string name="import_settings_judgement_types">判断题型</string>
+    <string name="import_settings_fill_blank_types">填空题型</string>
+    <string name="import_settings_subjective_types">主观题型</string>
+    <string name="import_text_title">导入题库文本</string>
+    <string name="import_text_library_title_hint">题库标题</string>
+    <string name="import_text_default_library_title">文本导入</string>
+    <string name="import_text_input">输入文本</string>
+    <string name="import_text_hint">粘贴 Word 或网页中的题库纯文本</string>
+    <string name="import_text_from_clipboard">获取剪贴板</string>
+    <string name="import_text_clipboard_empty">剪贴板为空</string>
+    <string name="import_choose_file">选择文件</string>
+    <string name="import_text_confirm">导入文本</string>
+    <string name="import_text_empty_error">请先粘贴题库文本</string>
+    <string name="import_text_format_help_content_description">支持的文本格式</string>
+    <string name="import_text_format_help_title">支持的文本格式</string>
+    <string name="import_text_format_help_message">每道题需要以题号开头，例如 1.、1、（1）、第一题、一、。\n选项支持 A-H，可用 .、顿号、冒号或括号标记，既可以每行一个选项，也可以写成 A. 选项 B. 选项。\n答案行需要以“答案”“正确答案”“参考答案”“标准答案”“正确选项”或“答案为”开头。答案支持 A-H、AC 这类多选，以及“正确”“错误”“对”“错”“√”“×”“TRUE”“FALSE”。</string>
+    <string name="permission_notice_title">部分权限未开启</string>
+    <string name="permission_notice_camera">相机识别需要相机权限。</string>
+    <string name="permission_notice_overlay">屏幕搜题需要悬浮窗权限。</string>
+    <string name="permission_notice_camera_and_overlay">相机识别需要相机权限，屏幕搜题需要悬浮窗权限。</string>
+    <string name="permission_notice_allow_camera">允许相机</string>
+    <string name="permission_notice_open_app_settings">去设置</string>
+    <string name="permission_notice_enable_overlay">开启悬浮窗</string>
+
+    <!-- Strings for camera settings. -->
+    <string name="pref_screen_title_live_preview">实时预览设置</string>
+    <string name="pref_screen_title_still_image">静态图像设置</string>
+    <string name="pref_screen_title_quiz_camera">设置</string>
+    <string name="pref_screen_title_quiz_camerax">设置</string>
+    <string name="pref_screen_title_camerax_live_preview">CameraX 实时预览设置</string>
+    <string name="pref_screen_title_cameraxsource_demo">CameraXSource 实时预览设置</string>
+    <string name="pref_category_title_camera">摄像头</string>
+    <string name="pref_title_rear_camera_preview_size">后置摄像头预览尺寸</string>
+    <string name="pref_title_front_camera_preview_size">前置摄像头预览尺寸</string>
+    <string name="pref_title_camerax_rear_camera_target_resolution">CameraX 后置摄像头目标分辨率</string>
+    <string name="pref_title_camerax_front_camera_target_resolution">CameraX 前置摄像头目标分辨率</string>
+    <string name="pref_title_camera_live_viewport">启用实时视图</string>
+    <string name="pref_summary_camera_live_viewport">检测时不阻塞摄像头预览绘制</string>
+    <string name="pref_category_text_recognition">文字识别</string>
+    <string name="pref_title_screen_search_interval">屏幕搜题间隔</string>
+    <string name="pref_title_screen_capture_frame_rate">屏幕采集帧率</string>
+    <string name="pref_title_accessibility_search_interval">无障碍搜题间隔</string>
+    <string name="search_settings_menu_title">搜题设置</string>
+
+    <!-- Strings for text recognition preference. -->
+    <string name="pref_title_group_recognized_text_in_blocks">将识别的文本分组成段落</string>
+    <string name="pref_key_group_recognized_text_in_blocks">grtib</string>
+    <string name="pref_title_show_language_tag">显示识别的语言</string>
+    <string name="pref_key_show_language_tag">slt</string>
+    <string name="pref_title_show_text_confidence">显示置信度分数</string>
+    <string name="pref_key_show_text_confidence">stc</string>
+    <string name="pref_title_brief_answer_display">简略显示答案</string>
+    <string name="pref_title_quiz_overlay_text_size">题目悬浮窗文字大小</string>
+    <string name="screen_button_description">OCR按钮</string>
+
+</resources>

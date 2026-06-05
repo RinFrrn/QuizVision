@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Quiz Vision</string>
+    <string name="java_entry_title" translatable="false">Run the Java vision demo</string>
+    <string name="kotlin_entry_title" translatable="false">Run the Kotlin vision demo</string>
+    <string name="picker_entry_title" translatable="false">Run File Picker</string>
+    <string name="quiz_list_entry_title" translatable="false">Run Quiz List</string>
+    <string name="ok" translatable="false">OK</string>
+    <string name="permission_camera_rationale" translatable="false">Access to the camera is needed for detection</string>
+    <string name="no_camera_permission" translatable="false">This application cannot run because it does not have the camera permission.  The application will now exit.</string>
+    <string name="low_storage_error" translatable="false">Face detector dependencies cannot be downloaded due to low device storage</string>
+    <string name="toggle_turn_on" translatable="false">Front</string>
+    <string name="toggle_turn_off" translatable="false">Back</string>
+    <string name="desc_camera_source_activity" translatable="false">Vision detectors demo with live camera preview</string>
+    <string name="desc_still_image_activity" translatable="false">Vision detectors demo with a still image</string>
+    <string name="desc_camerax_live_preview_activity" translatable="false">Vision detectors demo with live preview using CameraX. Note that CameraX is only supported on API 21+</string>
+    <string name="desc_cameraxsource_demo_activity" translatable="false">Object detection with custom classifier using CameraXSource. Note that CameraX is only supported on API 21+</string>
+    <string name="download_error" translatable="false">Download error</string>
+    <string name="start_over" translatable="false">Start over</string>
+    <string name="menu_item_settings" translatable="false">Settings</string>
+    <string name="import_settings_title">Import settings</string>
+    <string name="import_settings_menu_title">Import settings</string>
+    <string name="import_settings_save">Save</string>
+    <string name="import_settings_saved">Saved</string>
+    <string name="import_settings_reset">Reset</string>
+    <string name="import_settings_reset_title">Reset import candidates?</string>
+    <string name="import_settings_reset_message">This will restore the default header and question type candidates.</string>
+    <string name="import_settings_reset_done">Defaults restored</string>
+    <string name="import_settings_add">Add</string>
+    <string name="import_settings_add_hint">Candidate</string>
+    <string name="import_settings_prompt_headers">Question headers</string>
+    <string name="import_settings_type_headers">Type headers</string>
+    <string name="import_settings_answer_headers">Answer headers</string>
+    <string name="import_settings_option_prefixes">Option prefixes</string>
+    <string name="import_settings_analysis_headers">Analysis headers</string>
+    <string name="import_settings_single_choice_types">Single choice types</string>
+    <string name="import_settings_multiple_choice_types">Multiple choice types</string>
+    <string name="import_settings_judgement_types">Judgement types</string>
+    <string name="import_settings_fill_blank_types">Fill blank types</string>
+    <string name="import_settings_subjective_types">Subjective types</string>
+    <string name="import_text_title">Import quiz text</string>
+    <string name="import_text_library_title_hint">Library title</string>
+    <string name="import_text_default_library_title">Text import</string>
+    <string name="import_text_input">Input text</string>
+    <string name="import_text_hint">Paste quiz text here</string>
+    <string name="import_text_from_clipboard">Get clipboard</string>
+    <string name="import_text_clipboard_empty">Clipboard is empty</string>
+    <string name="import_choose_file">Choose file</string>
+    <string name="import_text_confirm">Import text</string>
+    <string name="import_text_empty_error">Paste quiz text first</string>
+    <string name="import_text_format_help_content_description">Supported text formats</string>
+    <string name="import_text_format_help_title">Supported text formats</string>
+    <string name="import_text_format_help_message">Each question should start with a number, such as 1., 1、, (1), 第一题, or 一、.\nOptions can use A-H with ., 、, :, or parentheses, one per line or inline, such as A. Option B. Option.\nThe answer line should start with 答案, 正确答案, 参考答案, 标准答案, 正确选项, or 答案为. Answers support A-H, multiple letters such as AC, and judgement values like 正确, 错误, 对, 错, √, ×, TRUE, or FALSE.</string>
+    <string name="permission_notice_title">Some permissions are off</string>
+    <string name="permission_notice_camera">Camera recognition needs camera access.</string>
+    <string name="permission_notice_overlay">Screen search needs floating window access.</string>
+    <string name="permission_notice_camera_and_overlay">Camera recognition needs camera access, and screen search needs floating window access.</string>
+    <string name="permission_notice_allow_camera">Allow camera</string>
+    <string name="permission_notice_open_app_settings">Open settings</string>
+    <string name="permission_notice_enable_overlay">Enable floating window</string>
+    <string name="select_image" translatable="false">Select image</string>
+    <string name="custom_object_detection" translatable="false">Custom Object Detector</string>
+
+    <!-- Settings related strings. -->
+    <string name="pref_screen" translatable="false">ps</string>
+    <string name="pref_screen_title_live_preview">Live preview settings</string>
+    <string name="pref_screen_title_still_image">Still image settings</string>
+    <string name="pref_screen_title_quiz_camera">Quiz camera settings</string>
+    <string name="pref_screen_title_quiz_camerax">Quiz camera settings</string>
+    <string name="pref_screen_title_camerax_live_preview">CameraX live preview settings</string>
+    <string name="pref_screen_title_cameraxsource_demo">CameraXSource live preview settings</string>
+    <string name="pref_category_info" translatable="false">Detection Info</string>
+    <string name="pref_category_face_detection" translatable="false">Face Detection</string>
+    <string name="pref_category_object_detection" translatable="false">Object Detection / Custom Object Detection</string>
+    <string name="pref_category_automl" translatable="false">AutoML Image Labeling</string>
+    <string name="pref_category_pose_detection" translatable="false">Pose Detection</string>
+    <string name="pref_category_segmentation" translatable="false">Selfie Segmentation</string>
+    <string name="pref_category_text_recognition" translatable="false">Text Recognition</string>
+
+    <!-- Strings for camera settings. -->
+    <string name="pref_category_key_camera" translatable="false">pckc</string>
+    <string name="pref_category_title_camera" translatable="true">Camera</string>
+    <string name="pref_key_rear_camera_preview_size" translatable="false">rcpvs</string>
+    <string name="pref_key_rear_camera_picture_size" translatable="false">rcpts</string>
+    <string name="pref_key_front_camera_preview_size" translatable="false">fcpvs</string>
+    <string name="pref_key_front_camera_picture_size" translatable="false">fcpts</string>
+    <string name="pref_key_camerax_rear_camera_target_resolution" translatable="false">crctas</string>
+    <string name="pref_key_camerax_front_camera_target_resolution" translatable="false">cfctas</string>
+    <string name="pref_key_camera_live_viewport" translatable="false">clv</string>
+    <string name="pref_key_screen_search_interval_ms" translatable="false">ssim</string>
+    <string name="pref_key_screen_capture_frame_rate" translatable="false">scfr</string>
+    <string name="pref_key_accessibility_search_interval_ms" translatable="false">asim</string>
+    <string name="pref_title_rear_camera_preview_size" translatable="true">Rear camera preview size</string>
+    <string name="pref_title_front_camera_preview_size" translatable="true">Front camera preview size</string>
+    <string name="pref_title_camerax_rear_camera_target_resolution" translatable="true">CameraX rear camera target resolution</string>
+    <string name="pref_title_camerax_front_camera_target_resolution" translatable="true">CameraX front camera target resolution</string>
+    <string name="pref_title_camera_live_viewport" translatable="true">Enable live viewport</string>
+    <string name="pref_summary_camera_live_viewport" translatable="true">Do not block camera preview drawing on detection</string>
+    <string name="pref_title_screen_search_interval" translatable="true">Screen search interval</string>
+    <string name="pref_title_screen_capture_frame_rate" translatable="true">Screen capture frame rate</string>
+    <string name="pref_title_accessibility_search_interval" translatable="true">Accessibility search interval</string>
+    <string name="search_settings_menu_title" translatable="true">Search settings</string>
+
+    <!-- Strings for info preference. -->
+    <string name="pref_title_info_hide" translatable="false">Hide detection info</string>
+    <string name="pref_key_info_hide" translatable="false">ih</string>
+
+    <!-- Strings for text recognition preference. -->
+    <string name="pref_title_group_recognized_text_in_blocks" translatable="true">Group recognized text in paragraphs</string>
+    <string name="pref_key_group_recognized_text_in_blocks" translatable="true">grtib</string>
+    <string name="pref_title_show_language_tag" translatable="true">Show language identified</string>
+    <string name="pref_key_show_language_tag" translatable="true">slt</string>
+    <string name="pref_title_show_text_confidence" translatable="true">Show confidence score</string>
+    <string name="pref_key_show_text_confidence" translatable="true">stc</string>
+    <string name="pref_title_brief_answer_display" translatable="true">Brief answer display</string>
+    <string name="pref_key_brief_answer_display" translatable="false">bad</string>
+    <string name="pref_title_quiz_overlay_text_size" translatable="true">Quiz overlay text size</string>
+    <string name="pref_key_quiz_overlay_text_size" translatable="false">qots</string>
+
+    <!-- Strings for object detector enable multiple objects preference. -->
+    <string name="pref_title_object_detector_enable_multiple_objects" translatable="false">Enable multiple objects</string>
+    <string name="pref_key_live_preview_object_detector_enable_multiple_objects" translatable="false">lpodemo</string>
+    <string name="pref_key_still_image_object_detector_enable_multiple_objects" translatable="false">siodemo</string>
+
+    <!-- Strings for object detector enable classification preference. -->
+    <string name="pref_title_object_detector_enable_classification" translatable="false">Enable classification</string>
+    <string name="pref_key_live_preview_object_detector_enable_classification" translatable="false">lpodec</string>
+    <string name="pref_key_still_image_object_detector_enable_classification" translatable="false">siodec</string>
+
+    <!-- Strings for face detector landmark mode preference. -->
+    <string name="pref_title_face_detector_landmark_mode" translatable="false">Landmark mode</string>
+    <string name="pref_key_live_preview_face_detection_landmark_mode" translatable="false">lpfdlm</string>
+    <string name="pref_entries_face_detector_landmark_mode_no_landmarks" translatable="false">No landmarks</string>
+    <string name="pref_entries_face_detector_landmark_mode_all_landmarks" translatable="false">All landmarks</string>
+    <!-- The following entry values must match the ones in FaceDetectorOptions#LandmarkMode -->
+    <string name="pref_entry_values_face_detector_landmark_mode_no_landmarks" translatable="false">1</string>
+    <string name="pref_entry_values_face_detector_landmark_mode_all_landmarks" translatable="false">2</string>
+
+    <!-- Strings for face detector contour mode preference. -->
+    <string name="pref_title_face_detector_contour_mode" translatable="false">Contour mode</string>
+    <string name="pref_key_live_preview_face_detection_contour_mode" translatable="false">lpfdcm</string>
+    <string name="pref_entries_face_detector_contour_mode_no_contours" translatable="false">No contours</string>
+    <string name="pref_entries_face_detector_contour_mode_all_contours" translatable="false">All contours</string>
+    <!-- The following entry values must match the ones in FaceDetectorOptions#ContourMode -->
+    <string name="pref_entry_values_face_detector_contour_mode_no_contours" translatable="false">1</string>
+    <string name="pref_entry_values_face_detector_contour_mode_all_contours" translatable="false">2</string>
+
+    <!-- Strings for face detector classification mode preference. -->
+    <string name="pref_title_face_detector_classification_mode" translatable="false">Classification mode</string>
+    <string name="pref_key_live_preview_face_detection_classification_mode" translatable="false">lpfdcfm</string>
+    <string name="pref_entries_face_detector_classification_mode_no_classifications" translatable="false">No classifications</string>
+    <string name="pref_entries_face_detector_classification_mode_all_classifications" translatable="false">All classifications</string>
+    <!-- The following entry values must match the ones in FaceDetectorOptions#ClassificationMode -->
+    <string name="pref_entry_values_face_detector_classification_mode_no_classifications" translatable="false">1</string>
+    <string name="pref_entry_values_face_detector_classification_mode_all_classifications" translatable="false">2</string>
+
+    <!-- Strings for face detector performance mode preference. -->
+    <string name="pref_title_face_detector_performance_mode" translatable="false">Performance mode</string>
+    <string name="pref_key_live_preview_face_detection_performance_mode" translatable="false">lpfdpm</string>
+    <string name="pref_entries_face_detector_performance_mode_fast" translatable="false">Fast</string>
+    <string name="pref_entries_face_detector_performance_mode_accurate" translatable="false">Accurate</string>
+    <!-- The following entry values must match the ones in FaceDetectorOptions#PerformanceMode -->
+    <string name="pref_entry_values_face_detector_performance_mode_fast" translatable="false">1</string>
+    <string name="pref_entry_values_face_detector_performance_mode_accurate" translatable="false">2</string>
+
+    <!-- Strings for face detector face tracking preference. -->
+    <string name="pref_title_face_detector_face_tracking" translatable="false">Face tracking</string>
+    <string name="pref_key_live_preview_face_detection_face_tracking" translatable="false">lpfdft</string>
+
+    <!-- Strings for face detector min face size preference. -->
+    <string name="pref_title_face_detector_min_face_size" translatable="false">Minimum face size</string>
+    <string name="pref_key_live_preview_face_detection_min_face_size" translatable="false">lpfdmfs</string>
+    <string name="pref_dialog_message_face_detector_min_face_size" translatable="false">Proportion of the head width to the image width, and the valid value range is [0.0, 1.0]</string>
+    <string name="pref_toast_invalid_min_face_size" translatable="false">Minimum face size must be a float value and in the range [0.0, 1.0]</string>
+
+    <!-- Strings for pose detector performance mode preference. -->
+    <string name="pref_title_pose_detector_performance_mode" translatable="false">Performance mode</string>
+    <string name="pref_key_live_preview_pose_detection_performance_mode" translatable="false">lppdpm</string>
+    <string name="pref_key_still_image_pose_detection_performance_mode" translatable="false">sipdpm</string>
+    <string name="pref_entries_pose_detector_performance_mode_fast" translatable="false">Fast</string>
+    <string name="pref_entries_pose_detector_performance_mode_accurate" translatable="false">Accurate</string>
+    <string name="pref_entry_values_pose_detector_performance_mode_fast" translatable="false">1</string>
+    <string name="pref_entry_values_pose_detector_performance_mode_accurate" translatable="false">2</string>
+
+    <!-- Strings for pose detector prefer gpu preference. -->
+    <string name="pref_title_pose_detector_prefer_gpu" translatable="false">Prefer using GPU</string>
+    <string name="pref_key_pose_detector_prefer_gpu" translatable="false">pdpg</string>
+    <string name="pref_summary_pose_detector_prefer_gpu" translatable="false">If enabled, GPU will be used as long as it is available, stable and returns correct results. In this case, the detector will not check if GPU is really faster than CPU.</string>
+
+    <!-- Strings for pose detector showInFrameLikelihood preference. -->
+    <string name="pref_title_pose_detector_show_in_frame_likelihood" translatable="false">Show in-frame likelihood</string>
+    <string name="pref_key_live_preview_pose_detector_show_in_frame_likelihood" translatable="false">lppdsifl</string>
+    <string name="pref_key_still_image_pose_detector_show_in_frame_likelihood" translatable="false">sipdsifl</string>
+
+    <!-- Strings for pose detector z value visualization preference. -->
+    <string name="pref_title_pose_detector_visualize_z" translatable="false">Visualize z value</string>
+    <string name="pref_key_pose_detector_visualize_z" translatable="false">pdvz</string>
+    <string name="pref_title_pose_detector_rescale_z" translatable="false">Rescale z value for visualization</string>
+    <string name="pref_key_pose_detector_rescale_z" translatable="false">pdrz</string>
+
+    <!-- Strings for pose classification preference. -->
+    <string name="pref_title_pose_detector_run_classification" translatable="false">Run Classification</string>
+    <string name="pref_key_pose_detector_run_classification" translatable="false">pdrc</string>
+    <string name="pref_summary_pose_detector_run_classification" translatable="false">Classify squat and pushup poses. Count reps in streaming mode. To get the best classification results based on the current sample data, face the camera side way and make sure your full body is in the frame.</string>
+
+    <!-- Strings for segmentation preference. -->
+    <string name="pref_title_segmentation_raw_size_mask" translatable="false">Enable raw size mask</string>
+    <string name="pref_key_segmentation_raw_size_mask" translatable="false">srsm</string>
+
+    <string name="pref_group_title_face_mesh" translatable="false">Face Mesh Detection</string>
+    <string name="pref_title_face_mesh_use_case" translatable="false">Use Case</string>
+    <string name="pref_key_face_mesh_use_case" translatable="false">face_mesh_use_case</string>
+    <string name="title_activity_file_picker" translatable="false">FilePickerActivity</string>
+    <!-- Strings used for fragments for navigation -->
+    <string name="first_fragment_label" translatable="false">First Fragment</string>
+    <string name="second_fragment_label" translatable="false">Second Fragment</string>
+    <string name="next" translatable="false">Next</string>
+    <string name="previous" translatable="false">Previous</string>
+
+    <string name="hello_first_fragment" translatable="false">Hello first fragment</string>
+    <string name="hello_second_fragment" translatable="false">Hello second fragment. Arg: %1$s</string>
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment" translatable="false">Hello blank fragment</string>
+
+
+    <string name="quiz_count">%1$d questions</string>
+    <string name="camera_button_description">camera button</string>
+    <string name="screen_button_description">ocr button</string>
+    <string name="accessibility_search_button">Accessibility search</string>
+    <string name="accessibility_search_button_description">accessibility search button</string>
+    <string name="accessibility_permission_required">Please enable %1$s accessibility service</string>
+    <string name="accessibility_search_intro_title">Enable accessibility search</string>
+    <string name="accessibility_search_intro_message">%1$s can read visible text exposed by Android accessibility, match it with the selected quiz library, and show results in a floating window. Turn on the %1$s accessibility service in system settings to use it.</string>
+    <string name="accessibility_search_prompt_message">Accessibility search is not enabled yet. Turn on the %1$s accessibility service to match visible screen text with the selected quiz library.</string>
+    <string name="accessibility_search_enable_cta">Open accessibility settings</string>
+    <string name="accessibility_service_summary">Find quiz answers from accessible screen text</string>
+    <string name="accessibility_service_description">Quiz Vision reads visible text exposed to Android accessibility, matches it with the selected quiz library, and shows results in a floating window.</string>
+    <string name="share_button_description" translatable="false">share button</string>
+    <string name="back_button" translatable="false">back button</string>
+
+
+    <string name="confirm">Confirm</string>
+    <string name="cancel">Cancel</string>
+    <string name="cancel_selection">Cancel selection</string>
+    <string name="rename">Rename</string>
+    <string name="delete">Delete</string>
+    <string name="export">Export</string>
+    <string name="copy">Copy</string>
+    <string name="open">Open</string>
+    <string name="select">Select</string>
+    <string name="merge">Merge</string>
+    <string name="about">About</string>
+    <string name="about_message">%1$s\nVersion %2$s (%3$d)</string>
+
+    <string name="processor_test">Processor Test</string>
+    <string name="screen_test">Screen Reco. Test</string>
+    　
+    <string name="export_as">Export As…</string>
+    <string name="select_excel_format_to_export">Select Excel format to export</string>
+
+
+    <string name="title_activity_quiz_entry" translatable="false">QuizEntryActivity</string>
+
+    <string name="lorem_ipsum" translatable="false">
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam in scelerisque sem. Mauris
+        volutpat, dolor id interdum ullamcorper, risus dolor egestas lectus, sit amet mattis purus
+        dui nec risus. Maecenas non sodales nisi, vel dictum dolor. Class aptent taciti sociosqu ad
+        litora torquent per conubia nostra, per inceptos himenaeos. Suspendisse blandit eleifend
+        diam, vel rutrum tellus vulputate quis. Aliquam eget libero aliquet, imperdiet nisl a,
+        ornare ex. Sed rhoncus est ut libero porta lobortis. Fusce in dictum tellus.\n\n
+        Suspendisse interdum ornare ante. Aliquam nec cursus lorem. Morbi id magna felis. Vivamus
+        egestas, est a condimentum egestas, turpis nisl iaculis ipsum, in dictum tellus dolor sed
+        neque. Morbi tellus erat, dapibus ut sem a, iaculis tincidunt dui. Interdum et malesuada
+        fames ac ante ipsum primis in faucibus. Curabitur et eros porttitor, ultricies urna vitae,
+        molestie nibh. Phasellus at commodo eros, non aliquet metus. Sed maximus nisl nec dolor
+        bibendum, vel congue leo egestas.\n\n
+        Sed interdum tortor nibh, in sagittis risus mollis quis. Curabitur mi odio, condimentum sit
+        amet auctor at, mollis non turpis. Nullam pretium libero vestibulum, finibus orci vel,
+        molestie quam. Fusce blandit tincidunt nulla, quis sollicitudin libero facilisis et. Integer
+        interdum nunc ligula, et fermentum metus hendrerit id. Vestibulum lectus felis, dictum at
+        lacinia sit amet, tristique id quam. Cras eu consequat dui. Suspendisse sodales nunc ligula,
+        in lobortis sem porta sed. Integer id ultrices magna, in luctus elit. Sed a pellentesque
+        est.\n\n
+        Aenean nunc velit, lacinia sed dolor sed, ultrices viverra nulla. Etiam a venenatis nibh.
+        Morbi laoreet, tortor sed facilisis varius, nibh orci rhoncus nulla, id elementum leo dui
+        non lorem. Nam mollis ipsum quis auctor varius. Quisque elementum eu libero sed commodo. In
+        eros nisl, imperdiet vel imperdiet et, scelerisque a mauris. Pellentesque varius ex nunc,
+        quis imperdiet eros placerat ac. Duis finibus orci et est auctor tincidunt. Sed non viverra
+        ipsum. Nunc quis augue egestas, cursus lorem at, molestie sem. Morbi a consectetur ipsum, a
+        placerat diam. Etiam vulputate dignissim convallis. Integer faucibus mauris sit amet finibus
+        convallis.\n\n
+        Phasellus in aliquet mi. Pellentesque habitant morbi tristique senectus et netus et
+        malesuada fames ac turpis egestas. In volutpat arcu ut felis sagittis, in finibus massa
+        gravida. Pellentesque id tellus orci. Integer dictum, lorem sed efficitur ullamcorper,
+        libero justo consectetur ipsum, in mollis nisl ex sed nisl. Donec maximus ullamcorper
+        sodales. Praesent bibendum rhoncus tellus nec feugiat. In a ornare nulla. Donec rhoncus
+        libero vel nunc consequat, quis tincidunt nisl eleifend. Cras bibendum enim a justo luctus
+        vestibulum. Fusce dictum libero quis erat maximus, vitae volutpat diam dignissim.
+    </string>
+    <string name="title_activity_camera_xdetector" translatable="false">CameraXDetectorActivity</string>
+</resources>

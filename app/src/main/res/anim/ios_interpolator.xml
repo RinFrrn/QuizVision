@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- iOS-style navigation transition: very pronounced ease-out -->
+<pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:controlX1="0.23"
+    android:controlY1="1.0"
+    android:controlX2="0.32"
+    android:controlY2="1.0" />

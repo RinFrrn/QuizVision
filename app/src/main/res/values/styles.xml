@@ -1,0 +1,39 @@
+<resources>
+
+    <!--    <style name="AppTheme.NoActionBar" parent="Theme.Material3.DayNight.NoActionBar" />-->
+    <!--    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.NoActionBar" />-->
+
+    <!--    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">-->
+    <!--    <style name="AppTheme" parent="Theme.Material3.DayNight">-->
+    <!--明亮模式下的标题栏颜色-->
+    <!--        <item name="colorPrimary">@color/colorPrimary</item>-->
+    <!--明亮模式下的状态栏颜色-->
+    <!--        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>-->
+    <!--    </style>-->
+
+    <style name="AppPopupTheme" parent="ThemeOverlay.MaterialComponents.ActionBar">
+<!--        <item name="colorPrimary">@color/colorPrimary</item>-->
+    </style>
+
+    <!-- 自定义对话框主题 -->
+    <style name="MyDialogTheme" parent="Theme.MaterialComponents.Dialog">
+<!--        <item name="colorPrimary">@color/colorPrimary</item> &lt;!&ndash; 对话框标题栏的颜色 &ndash;&gt;-->
+<!--        <item name="colorPrimaryDark">@color/colorPrimaryDark</item> &lt;!&ndash; 对话框标题栏的阴影颜色 &ndash;&gt;-->
+<!--        <item name="colorAccent">@color/colorAccent</item> &lt;!&ndash; 对话框按钮等的颜色 &ndash;&gt;-->
+    </style>
+
+<!--        <item name="background">@drawable/shape_oval</item>-->
+    <style name="CameraButtonToggleGroupButton" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:padding">0dp</item>
+        <item name="strokeWidth">0dp</item>
+        <item name="backgroundTint">
+            @color/camera_button_toggle_group_button_background_color_selector
+        </item>
+        <item name="android:textColor">
+            @color/camera_button_toggle_group_button_text_color_selector
+        </item>
+    </style>
+
+</resources>

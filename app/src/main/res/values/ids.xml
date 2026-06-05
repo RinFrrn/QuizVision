@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="tag_quiz_top_bar_base_metrics" type="id" />
+    <item name="tag_quiz_top_bar_sibling_base_padding_top" type="id" />
+    <item name="tag_navigation_corner_clip_state" type="id" />
+</resources>
