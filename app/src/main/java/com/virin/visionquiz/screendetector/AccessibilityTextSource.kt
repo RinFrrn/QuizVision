@@ -26,7 +26,8 @@ import java.util.concurrent.atomic.AtomicInteger
 class AccessibilityTextSource(
     private val context: Context,
     private val quizzes: LiveData<List<Quiz>>,
-    private val onMatchesDetected: (List<QuizGraphicItem>) -> Unit
+    private val onMatchesDetected: (List<QuizGraphicItem>, Int) -> Unit,
+    private val onPageActivityDetected: () -> Unit
 ) : QuizAccessibilityService.Callback {
 
     private val appContext = context.applicationContext
@@ -49,12 +50,20 @@ class AccessibilityTextSource(
     @Volatile
     private var cachedQuizIndex: QuizManager.QuizMatchIndex? = null
 
+    @Volatile
+    private var minimumPublishedGeneration = 0
+
     private var scanInFlight = false
     private var pendingScan = false
     private var pendingScanAllowPaused = false
     private var lastScanStartedAtMs = 0L
     private var scheduledScanAtMs = 0L
     private var scheduledScanAllowPaused = false
+    private var lastPageActivityAtMs = 0L
+    private var stableCandidateFingerprint: String? = null
+    private var stableCandidateCount = 0
+    private var publishedSnapshotVersion = 0
+    private var lastPublishedFingerprint: String? = null
 
     private val periodicScanRunnable = object : Runnable {
         override fun run() {
@@ -77,9 +86,17 @@ class AccessibilityTextSource(
         scanOnce(allowPaused = allowPaused)
     }
 
+    private val stabilityScanRunnable = Runnable {
+        requestFreshScan()
+    }
+
     fun start() {
         active = true
         paused = false
+        lastPageActivityAtMs = 0L
+        publishedSnapshotVersion = 0
+        lastPublishedFingerprint = null
+        resetStableCandidate()
         QuizAccessibilityService.callback = this
         publishScreenFrameInfo()
         handler.removeCallbacks(periodicScanRunnable)
@@ -91,6 +108,7 @@ class AccessibilityTextSource(
         paused = true
         handler.removeCallbacks(eventScanRunnable)
         handler.removeCallbacks(rateLimitedScanRunnable)
+        handler.removeCallbacks(stabilityScanRunnable)
         scheduledScanAtMs = 0L
         scheduledScanAllowPaused = false
     }
@@ -108,12 +126,24 @@ class AccessibilityTextSource(
         scanOnce(allowPaused = true)
     }
 
+    fun requestFreshScan() {
+        minimumPublishedGeneration = maxOf(
+            minimumPublishedGeneration,
+            matchGeneration.get() + 1
+        )
+        scanOnce(allowPaused = true)
+    }
+
     fun stop() {
         active = false
         paused = false
+        lastPageActivityAtMs = 0L
+        lastPublishedFingerprint = null
+        resetStableCandidate()
         handler.removeCallbacks(periodicScanRunnable)
         handler.removeCallbacks(eventScanRunnable)
         handler.removeCallbacks(rateLimitedScanRunnable)
+        handler.removeCallbacks(stabilityScanRunnable)
         scheduledScanAtMs = 0L
         scheduledScanAllowPaused = false
         if (QuizAccessibilityService.callback === this) {
@@ -128,9 +158,20 @@ class AccessibilityTextSource(
         ScreenDetectorSession.clearScreenFrameInfo()
     }
 
-    override fun onAccessibilityContentChanged() {
+    override fun onAccessibilityContentChanged(hasPageMovement: Boolean) {
         if (!active || paused) {
             return
+        }
+        if (hasPageMovement) {
+            lastPageActivityAtMs = SystemClock.uptimeMillis()
+            resetStableCandidate()
+            lastPublishedFingerprint = null
+            minimumPublishedGeneration = maxOf(
+                minimumPublishedGeneration,
+                matchGeneration.get() + 1
+            )
+            onPageActivityDetected()
+            scheduleStabilityScan(PAGE_STABILITY_QUIET_PERIOD_MS)
         }
         handler.removeCallbacks(eventScanRunnable)
         handler.postDelayed(eventScanRunnable, EVENT_SCAN_DEBOUNCE_MS)
@@ -193,14 +234,17 @@ class AccessibilityTextSource(
                     .toList()
                 val displayMatches = buildDisplayMatches(matches, candidates, screenBounds)
                 withContext(Dispatchers.Main) {
-                    if (!active || generation != matchGeneration.get()) {
+                    if (!active ||
+                        generation != matchGeneration.get() ||
+                        generation < minimumPublishedGeneration
+                    ) {
                         return@withContext
                     }
-                    Log.d(
-                        TAG,
-                        "accessibility scan nodes=${nodes.size}, candidates=${candidates.size}, matches=${displayMatches.size}"
+                    publishStableMatches(
+                        displayMatches = displayMatches,
+                        nodeCount = nodes.size,
+                        candidateCount = candidates.size
                     )
-                    onMatchesDetected(displayMatches)
                 }
             } finally {
                 withContext(Dispatchers.Main + NonCancellable) {
@@ -250,6 +294,69 @@ class AccessibilityTextSource(
         handler.post {
             scanOnce(allowPaused = allowPausedForPending)
         }
+    }
+
+    private fun publishStableMatches(
+        displayMatches: List<QuizGraphicItem>,
+        nodeCount: Int,
+        candidateCount: Int
+    ) {
+        val quietRemainingMs = PAGE_STABILITY_QUIET_PERIOD_MS -
+            (SystemClock.uptimeMillis() - lastPageActivityAtMs)
+        if (lastPageActivityAtMs > 0L && quietRemainingMs > 0L) {
+            scheduleStabilityScan(quietRemainingMs)
+            return
+        }
+
+        val fingerprint = buildDisplayFingerprint(displayMatches)
+        if (stableCandidateFingerprint == fingerprint) {
+            stableCandidateCount++
+        } else {
+            stableCandidateFingerprint = fingerprint
+            stableCandidateCount = 1
+        }
+        if (stableCandidateCount < REQUIRED_STABLE_SCAN_COUNT) {
+            scheduleStabilityScan(STABLE_SCAN_CONFIRM_DELAY_MS)
+            return
+        }
+
+        if (lastPublishedFingerprint != fingerprint) {
+            publishedSnapshotVersion++
+            lastPublishedFingerprint = fingerprint
+        }
+        Log.d(
+            TAG,
+            "stable accessibility scan version=$publishedSnapshotVersion, " +
+                "nodes=$nodeCount, candidates=$candidateCount, matches=${displayMatches.size}"
+        )
+        onMatchesDetected(displayMatches, publishedSnapshotVersion)
+    }
+
+    private fun scheduleStabilityScan(delayMs: Long) {
+        handler.removeCallbacks(stabilityScanRunnable)
+        handler.postDelayed(stabilityScanRunnable, delayMs.coerceAtLeast(0L))
+    }
+
+    private fun resetStableCandidate() {
+        stableCandidateFingerprint = null
+        stableCandidateCount = 0
+        handler.removeCallbacks(stabilityScanRunnable)
+    }
+
+    private fun buildDisplayFingerprint(matches: List<QuizGraphicItem>): String {
+        return matches
+            .sortedWith(
+                compareBy<QuizGraphicItem> { it.rect.top }
+                    .thenBy { it.rect.left }
+                    .thenBy { it.question.id }
+            )
+            .joinToString("|") { match ->
+                val identity = match.question.id.takeIf { it != 0 }?.toString()
+                    ?: match.question.prompt
+                val answers = match.answerRects.joinToString(",") { it.flattenToString() }
+                val options = match.optionRects.joinToString(",") { it.flattenToString() }
+                "$identity:${match.rect.flattenToString()}:$answers:$options"
+            }
     }
 
     private fun buildTextCandidates(
@@ -363,33 +470,58 @@ class AccessibilityTextSource(
 
         val questionCandidates = bestMatches.sortedBy { it.candidate.startNodeIndex }
 
-        val answerRectsByIdentity = questionCandidates.mapIndexed { index, item ->
+        val optionRectsByIdentity = questionCandidates.mapIndexed { index, item ->
             val nextStart = questionCandidates.getOrNull(index + 1)?.candidate?.startNodeIndex
-            matchIdentity(item.item) to findAnswerRects(
-                match = item.item,
+            val optionRects = findOptionRects(
+                optionTexts = item.item.question.options,
                 questionCandidate = item.candidate,
                 allCandidates = candidates,
                 nextQuestionStartNodeIndex = nextStart,
                 screenBounds = screenBounds
             )
+            matchIdentity(item.item) to optionRects
         }.toMap()
 
         return bestMatches.map { match ->
-            match.item.copy(answerRects = answerRectsByIdentity[matchIdentity(match.item)].orEmpty())
+            val optionRects = optionRectsByIdentity[matchIdentity(match.item)].orEmpty()
+            val completeOptionRects = optionRects.takeIf {
+                it.size == match.item.question.options.size
+            }.orEmpty()
+            val answerRects = if (completeOptionRects.isNotEmpty()) {
+                match.item.question.answer.sorted().mapNotNull(completeOptionRects::getOrNull)
+            } else {
+                val questionCandidate = questionCandidates.first {
+                    matchIdentity(it.item) == matchIdentity(match.item)
+                }
+                val nextStart = questionCandidates
+                    .getOrNull(questionCandidates.indexOf(questionCandidate) + 1)
+                    ?.candidate
+                    ?.startNodeIndex
+                findOptionRects(
+                    optionTexts = match.item.question.answer.sorted().mapNotNull {
+                        match.item.question.options.getOrNull(it)
+                    },
+                    questionCandidate = questionCandidate.candidate,
+                    allCandidates = candidates,
+                    nextQuestionStartNodeIndex = nextStart,
+                    screenBounds = screenBounds
+                )
+            }
+            match.item.copy(
+                answerRects = answerRects,
+                optionRects = completeOptionRects
+            )
         }
     }
 
-    private fun findAnswerRects(
-        match: QuizGraphicItem,
+    private fun findOptionRects(
+        optionTexts: List<String>,
         questionCandidate: TextCandidate,
         allCandidates: List<TextCandidate>,
         nextQuestionStartNodeIndex: Int?,
         screenBounds: Rect
     ): List<Rect> {
-        val answerOptionTexts = match.question.answer.sorted().mapNotNull { answerIndex ->
-            match.question.options.getOrNull(answerIndex)
-        }
-        if (answerOptionTexts.isEmpty()) {
+        if (optionTexts.isEmpty()) {
             return emptyList()
         }
 
@@ -411,7 +543,7 @@ class AccessibilityTextSource(
             .filter { it.rect.top <= questionCandidate.rect.bottom + screenBounds.height() * MAX_ANSWER_VERTICAL_SPAN_RATIO }
             .toList()
 
-        return answerOptionTexts.mapNotNull { optionText ->
+        return optionTexts.mapNotNull { optionText ->
             val normalizedOption = normalizeOptionText(optionText)
             if (normalizedOption.isBlank()) {
                 return@mapNotNull null
@@ -561,6 +693,9 @@ class AccessibilityTextSource(
     companion object {
         private const val TAG = "AccessibilityTextSource"
         private const val EVENT_SCAN_DEBOUNCE_MS = 70L
+        private const val PAGE_STABILITY_QUIET_PERIOD_MS = 400L
+        private const val STABLE_SCAN_CONFIRM_DELAY_MS = 120L
+        private const val REQUIRED_STABLE_SCAN_COUNT = 2
         private const val MIN_NORMALIZED_TEXT_LENGTH = 2
         private const val MIN_COMBINED_TEXT_LENGTH = 6
         private const val MAX_COMBINED_NODE_COUNT = 8

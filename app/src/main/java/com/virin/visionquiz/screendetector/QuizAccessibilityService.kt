@@ -5,6 +5,7 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Point
 import android.graphics.Rect
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
@@ -19,7 +20,7 @@ class QuizAccessibilityService : AccessibilityService() {
     private var activeGestureCompletion: ((Boolean) -> Unit)? = null
 
     interface Callback {
-        fun onAccessibilityContentChanged()
+        fun onAccessibilityContentChanged(hasPageMovement: Boolean)
     }
 
     data class TextNode(
@@ -35,18 +36,40 @@ class QuizAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        callback?.onAccessibilityContentChanged()
+        callback?.onAccessibilityContentChanged(false)
         ScreenDetectorController.onAccessibilityServiceConnected()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        when (event?.eventType) {
+        if (event == null || event.packageName?.toString() == packageName) {
+            return
+        }
+        when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_VIEW_SCROLLED,
-            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> callback?.onAccessibilityContentChanged()
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED ->
+                callback?.onAccessibilityContentChanged(hasMeaningfulPageMovement(event))
         }
+    }
+
+    private fun hasMeaningfulPageMovement(event: AccessibilityEvent): Boolean {
+        if (event.eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            return false
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+            (event.scrollDeltaX != 0 || event.scrollDeltaY != 0)
+        ) {
+            return true
+        }
+        return event.scrollX != 0 ||
+            event.scrollY != 0 ||
+            (
+                event.fromIndex >= 0 &&
+                    event.toIndex >= 0 &&
+                    event.fromIndex != event.toIndex
+                )
     }
 
     override fun onInterrupt() {
@@ -66,6 +89,7 @@ class QuizAccessibilityService : AccessibilityService() {
     fun clickPointsSequentially(
         points: List<Point>,
         startIndex: Int = 0,
+        shouldContinue: () -> Boolean = { true },
         onPointCompleted: (Int) -> Unit = {},
         onComplete: (Boolean) -> Unit
     ) {
@@ -84,6 +108,7 @@ class QuizAccessibilityService : AccessibilityService() {
             points = points.map(::Point),
             index = startIndex,
             generation = generation,
+            shouldContinue = shouldContinue,
             onPointCompleted = onPointCompleted
         )
     }
@@ -92,26 +117,16 @@ class QuizAccessibilityService : AccessibilityService() {
         screenBounds: Rect,
         overlayBounds: Rect?,
         axis: PageAxis,
+        verticalTargetPosition: Int? = null,
         onComplete: (Boolean) -> Unit
     ) {
-        dispatchPageSwipe(screenBounds, overlayBounds, axis, onComplete)
-    }
-
-    fun swipeUpToReveal(
-        screenBounds: Rect,
-        overlayBounds: Rect?,
-        targetTop: Int,
-        onComplete: (Boolean) -> Unit
-    ) {
-        if (screenBounds.isEmpty) {
-            onComplete(false)
-            return
-        }
-        val desiredTop = screenBounds.top + (screenBounds.height() * REVEAL_TARGET_TOP_RATIO).toInt()
-        val minimumDistance = (screenBounds.height() * REVEAL_MIN_DISTANCE_RATIO).toInt()
-        val maximumDistance = (screenBounds.height() * REVEAL_MAX_DISTANCE_RATIO).toInt()
-        val distance = (targetTop - desiredTop).coerceIn(minimumDistance, maximumDistance)
-        dispatchVerticalSwipe(screenBounds, overlayBounds, distance, onComplete)
+        dispatchPageSwipe(
+            screenBounds,
+            overlayBounds,
+            axis,
+            verticalTargetPosition,
+            onComplete
+        )
     }
 
     fun cancelPendingClicks() {
@@ -169,6 +184,7 @@ class QuizAccessibilityService : AccessibilityService() {
         points: List<Point>,
         index: Int,
         generation: Int,
+        shouldContinue: () -> Boolean,
         onPointCompleted: (Int) -> Unit
     ) {
         if (generation != gestureGeneration) {
@@ -176,6 +192,10 @@ class QuizAccessibilityService : AccessibilityService() {
         }
         if (index >= points.size) {
             completeGesture(generation, true)
+            return
+        }
+        if (!shouldContinue()) {
+            completeGesture(generation, false)
             return
         }
 
@@ -206,6 +226,7 @@ class QuizAccessibilityService : AccessibilityService() {
                                 points = points,
                                 index = index + 1,
                                 generation = generation,
+                                shouldContinue = shouldContinue,
                                 onPointCompleted = onPointCompleted
                             )
                         },
@@ -228,6 +249,7 @@ class QuizAccessibilityService : AccessibilityService() {
         screenBounds: Rect,
         overlayBounds: Rect?,
         axis: PageAxis,
+        verticalTargetPosition: Int?,
         onComplete: (Boolean) -> Unit
     ) {
         if (screenBounds.isEmpty) {
@@ -235,10 +257,16 @@ class QuizAccessibilityService : AccessibilityService() {
             return
         }
         if (axis == PageAxis.VERTICAL) {
+            val defaultDistance =
+                (screenBounds.height() * DEFAULT_VERTICAL_SWIPE_DISTANCE_RATIO).toInt()
+            val targetDistance = verticalTargetPosition
+                ?.minus(screenBounds.top)
+                ?.takeIf { it > 0 }
+                ?: defaultDistance
             dispatchVerticalSwipe(
                 screenBounds,
                 overlayBounds,
-                (screenBounds.height() * (SWIPE_START_RATIO - SWIPE_END_RATIO)).toInt(),
+                targetDistance,
                 onComplete
             )
             return
@@ -281,26 +309,29 @@ class QuizAccessibilityService : AccessibilityService() {
             blockedStart = overlayBounds?.left,
             blockedEnd = overlayBounds?.right
         )
-        val startY = screenBounds.top + (screenBounds.height() * SWIPE_START_RATIO).toInt()
-        val minimumEndY = screenBounds.top + (screenBounds.height() * SWIPE_END_RATIO).toInt()
+        val startY =
+            screenBounds.top + (screenBounds.height() * VERTICAL_SWIPE_START_RATIO).toInt()
+        val minimumEndY =
+            screenBounds.top + (screenBounds.height() * VERTICAL_SWIPE_END_RATIO).toInt()
         val endY = (startY - distance).coerceAtLeast(minimumEndY)
         val path = Path().apply {
             moveTo(x.toFloat(), startY.toFloat())
             lineTo(x.toFloat(), endY.toFloat())
         }
-        dispatchPath(path, generation)
+        dispatchPath(path, generation, VERTICAL_SWIPE_DURATION_MS)
     }
 
     private fun dispatchPath(
         path: Path,
-        generation: Int
+        generation: Int,
+        durationMs: Long = SWIPE_DURATION_MS
     ) {
         val gesture = GestureDescription.Builder()
             .addStroke(
                 GestureDescription.StrokeDescription(
                     path,
                     0L,
-                    SWIPE_DURATION_MS
+                    durationMs
                 )
             )
             .build()
@@ -449,9 +480,10 @@ class QuizAccessibilityService : AccessibilityService() {
         private const val SWIPE_DURATION_MS = 320L
         private const val SWIPE_START_RATIO = 0.78f
         private const val SWIPE_END_RATIO = 0.22f
-        private const val REVEAL_TARGET_TOP_RATIO = 0.25f
-        private const val REVEAL_MIN_DISTANCE_RATIO = 0.22f
-        private const val REVEAL_MAX_DISTANCE_RATIO = 0.55f
+        private const val VERTICAL_SWIPE_DURATION_MS = 700L
+        private const val VERTICAL_SWIPE_START_RATIO = 0.92f
+        private const val VERTICAL_SWIPE_END_RATIO = 0.05f
+        private const val DEFAULT_VERTICAL_SWIPE_DISTANCE_RATIO = 0.70f
         private const val PERMISSION_RETURN_INITIAL_DELAY_MS = 120L
         private const val PERMISSION_RETURN_STEP_DELAY_MS = 240L
         private const val MAX_PERMISSION_RETURN_ATTEMPTS = 3

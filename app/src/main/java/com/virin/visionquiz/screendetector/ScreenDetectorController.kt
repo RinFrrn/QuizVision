@@ -1,33 +1,50 @@
 package com.virin.visionquiz.screendetector
 
+import android.Manifest
+import android.app.Dialog
 import android.content.Context
+import android.content.DialogInterface
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.LiveData
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.color.MaterialColors
 import com.virin.visionquiz.R
 import com.virin.visionquiz.ScreenSource
 import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.preference.PreferenceUtils
+import com.virin.visionquiz.util.PermissionManager
 import com.virin.visionquiz.vision.questiondetector.OriginalRecognitionProcessor
 import com.virin.visionquiz.vision.questiondetector.QuizRecognitionProcessor
 import java.io.IOException
 
 object ScreenDetectorController : ScreenDetectorSession.Controller {
     private const val TAG = "ScreenDetectorController"
+    private const val MIN_QUESTIONS_FOR_ALIGNED_VERTICAL_SWIPE = 2
 
     private data class AnswerExecution(
         val targets: List<ScreenDetectorSession.AnswerTarget>,
         val points: List<android.graphics.Point>,
         val fingerprint: String,
         val contentFingerprint: String,
+        val snapshotVersion: Int,
         val targetEndIndexes: List<Pair<String, Int>>
     )
 
@@ -41,8 +58,11 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
     private var pendingStartRequest: StartRequest? = null
     private var pendingPermissionPrompt: PendingPermissionPrompt? = null
     private var permissionHostActivity: FragmentActivity? = null
+    private var accessibilityDialog: Dialog? = null
     private var assistanceEnabled = false
     private var assistanceBusy = false
+    private var accessibilityFloatingWindowEnabled = true
+    private var accessibilityAnswerDotsOnlyEnabled = true
     private var assistanceGeneration = 0
     private var waitingForPageFingerprint: String? = null
     private var selectedPageAxis: QuizAccessibilityService.PageAxis? = null
@@ -51,13 +71,8 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
     private var pendingAnswerPointIndex = 0
     private var pendingAutoAdvanceRunnable: Runnable? = null
     private var pendingPageChangeTimeoutRunnable: Runnable? = null
-    private var pendingOptionUpdateTimeoutRunnable: Runnable? = null
-    private var pendingRevealQuestionFingerprint: String? = null
-    private var pendingRevealQuestionTop: Int? = null
-    private var revealTargetQuestionFingerprint: String? = null
     private val answeredQuestionFingerprints = mutableSetOf<String>()
-    private val revealAttempts = mutableMapOf<String, Int>()
-    private val blockedRevealFingerprints = mutableSetOf<String>()
+    private var latestStableSnapshotVersion = 0
 
     fun startQuizDetection(
         activity: FragmentActivity,
@@ -78,11 +93,13 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         quizzes: LiveData<List<Quiz>>
     ) {
         pendingPermissionPrompt = null
+        accessibilityFloatingWindowEnabled = true
+        accessibilityAnswerDotsOnlyEnabled = true
         val request = StartRequest.AccessibilityQuiz(libraryId, quizzes)
-        if (!ensureStartPermissions(activity, request)) {
-            return
-        }
-        startInternal(activity, request)
+        pendingStartRequest = request
+        permissionHostActivity = activity
+        pendingPermissionPrompt = PendingPermissionPrompt.ACCESSIBILITY
+        showAccessibilityPermissionDialog(activity)
     }
 
     fun startProcessorTest(activity: FragmentActivity) {
@@ -98,6 +115,12 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         val request = pendingStartRequest
         if (request == null) {
             clearSelectedPageDirection()
+            return
+        }
+        if (request.requiresAccessibility) {
+            permissionHostActivity = activity
+            pendingPermissionPrompt = PendingPermissionPrompt.ACCESSIBILITY
+            showAccessibilityPermissionDialog(activity)
             return
         }
         if (!ensureStartPermissions(activity, request)) {
@@ -158,9 +181,12 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                 }
                 is StartRequest.AccessibilityQuiz -> {
                     Log.i(TAG, "Using accessibility text source for Quiz")
-                    accessibilitySource = AccessibilityTextSource(activity, request.quizzes) { matches ->
-                        handleAccessibilityMatches(matches)
-                    }
+                    accessibilitySource = AccessibilityTextSource(
+                        context = activity,
+                        quizzes = request.quizzes,
+                        onMatchesDetected = ::handleAccessibilityMatches,
+                        onPageActivityDetected = ::handleAccessibilityPageActivity
+                    )
                 }
             }
             maybeStartOverlayService()
@@ -209,8 +235,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         clearPendingNavigationTasks()
         assistanceBusy = false
         waitingForPageFingerprint = null
-        pendingRevealQuestionFingerprint = null
-        pendingRevealQuestionTop = null
+        latestStableSnapshotVersion = 0
         QuizAccessibilityService.instance?.cancelPendingClicks()
         cameraSource?.pause()
         accessibilitySource?.pause()
@@ -287,12 +312,18 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
 
     private fun maybeStartOverlayService() {
         val activity = hostActivity ?: return
-        if (!commonROMPermissionCheck(activity)) {
-            return
-        }
+        val overlayEnabled = hasOverlayPermission(activity)
+        val shouldShowControlWindow =
+            overlayEnabled &&
+                (ScreenDetectorSession.mode.value != ScreenDetectorSession.DetectionMode.ACCESSIBILITY ||
+                    accessibilityFloatingWindowEnabled)
+        val shouldShowMarkerOverlay = overlayEnabled
         activity.startService(
             Intent(activity, ScreenDetectorService::class.java).apply {
                 putExtra(ScreenDetectorService.LIBRARY_ID, libId)
+                putExtra(ScreenDetectorService.EXTRA_SHOW_FLOATING_WINDOWS, shouldShowControlWindow)
+                putExtra(ScreenDetectorService.EXTRA_SHOW_MARKER_OVERLAY, shouldShowMarkerOverlay)
+                putExtra(ScreenDetectorService.EXTRA_ANSWER_DOTS_ONLY, accessibilityAnswerDotsOnlyEnabled)
             }
         )
     }
@@ -383,7 +414,6 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         assistanceGeneration++
         assistanceHandler.removeCallbacksAndMessages(null)
         clearPendingNavigationTasks()
-        clearPendingReveal()
         QuizAccessibilityService.instance?.cancelPendingClicks()
         ScreenDetectorSession.clearAssistanceState()
     }
@@ -416,7 +446,11 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         selectPageDirectionAndSwipe(QuizAccessibilityService.PageAxis.VERTICAL)
     }
 
-    private fun handleAccessibilityMatches(matches: List<com.virin.visionquiz.util.QuizGraphicItem>) {
+    private fun handleAccessibilityMatches(
+        matches: List<com.virin.visionquiz.util.QuizGraphicItem>,
+        snapshotVersion: Int
+    ) {
+        latestStableSnapshotVersion = snapshotVersion
         ScreenDetectorSession.publishMatches(matches)
         if (!assistanceEnabled || !isDetectionRunning) {
             return
@@ -425,10 +459,6 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         val currentQuestionFingerprints =
             plan?.targets?.mapTo(mutableSetOf()) { it.questionFingerprint }.orEmpty()
 
-        if (pendingRevealQuestionFingerprint != null) {
-            handleRevealUpdate(plan)
-            return
-        }
         val expectedOldFingerprint = waitingForPageFingerprint
         if (expectedOldFingerprint != null) {
             val currentFingerprint = ScreenDetectorSession.buildPageFingerprint(matches)
@@ -457,10 +487,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         assistanceGeneration++
         clearPendingNavigationTasks()
         waitingForPageFingerprint = null
-        clearPendingReveal()
-        if (previousPhase == ScreenDetectorSession.AssistancePhase.SWIPING ||
-            previousPhase == ScreenDetectorSession.AssistancePhase.REVEALING_OPTIONS
-        ) {
+        if (previousPhase == ScreenDetectorSession.AssistancePhase.SWIPING) {
             QuizAccessibilityService.instance?.cancelPendingClicks()
         }
         assistanceBusy = false
@@ -480,8 +507,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
 
     private fun runAssistanceStep() {
         if (!assistanceEnabled || !isDetectionRunning || assistanceBusy ||
-            waitingForPageFingerprint != null ||
-            pendingRevealQuestionFingerprint != null
+            waitingForPageFingerprint != null
         ) {
             return
         }
@@ -498,29 +524,26 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             it.isComplete && it.questionFingerprint !in answeredQuestionFingerprints
         }
         if (answerTargets.isEmpty()) {
-            val activeRevealTarget = revealTargetQuestionFingerprint?.let { fingerprint ->
-                plan.targets.firstOrNull {
-                    it.questionFingerprint == fingerprint && !it.isComplete
-                }
-            }
-            if (revealTargetQuestionFingerprint != null && activeRevealTarget == null) {
-                waitForManualPage(
-                    "选项仍未完整显示，请手动上滑",
-                    ScreenDetectorSession.AssistanceIndicator.ERROR
-                )
+            if (selectedPageAxis == QuizAccessibilityService.PageAxis.VERTICAL) {
+                continueWithPageDirection()
                 return
             }
-            val clippedTarget = activeRevealTarget ?: plan.bottomClippedTarget?.takeIf {
+            val clippedTarget = plan.bottomClippedTarget?.takeIf {
                 it.questionFingerprint !in answeredQuestionFingerprints
             }
             if (clippedTarget != null) {
-                revealBottomClippedTarget(clippedTarget)
+                waitForManualPage(
+                    "最后一题选项未完整显示，请手动上滑",
+                    ScreenDetectorSession.AssistanceIndicator.ERROR
+                )
             } else {
                 continueWithPageDirection()
             }
             return
         }
-        if (!ScreenDetectorSession.isCurrentOverlayRendered()) {
+        if (shouldWaitForAnswerOverlayRender() &&
+            !ScreenDetectorSession.isCurrentOverlayRendered()
+        ) {
             ScreenDetectorSession.setAssistanceState(
                 isActive = true,
                 phase = ScreenDetectorSession.AssistancePhase.RECOGNIZING_ANSWERS,
@@ -529,9 +552,14 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             scheduleAssistanceStep(OVERLAY_RENDER_RETRY_DELAY_MS)
             return
         }
-        val freshExecution = buildAnswerExecution(answerTargets, plan.contentFingerprint)
+        val freshExecution = buildAnswerExecution(
+            answerTargets,
+            plan.contentFingerprint,
+            latestStableSnapshotVersion
+        )
         val resumableExecution = pendingAnswerPlan?.takeIf { pending ->
             pendingAnswerPointIndex > 0 &&
+                pending.snapshotVersion == latestStableSnapshotVersion &&
                 pending.targets
                     .filter { it.questionFingerprint !in answeredQuestionFingerprints }
                     .all { pendingTarget ->
@@ -566,6 +594,10 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         service.clickPointsSequentially(
             points = execution.points,
             startIndex = pendingAnswerPointIndex,
+            shouldContinue = {
+                generation == assistanceGeneration &&
+                    isAnswerExecutionCurrent(execution)
+            },
             onPointCompleted = { nextIndex ->
                 if (generation == assistanceGeneration) {
                     pendingAnswerPointIndex = nextIndex
@@ -573,11 +605,6 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                         .filter { (_, endIndex) -> nextIndex >= endIndex }
                         .forEach { (questionFingerprint, _) ->
                             answeredQuestionFingerprints.add(questionFingerprint)
-                            revealAttempts.remove(questionFingerprint)
-                            blockedRevealFingerprints.remove(questionFingerprint)
-                            if (revealTargetQuestionFingerprint == questionFingerprint) {
-                                revealTargetQuestionFingerprint = null
-                            }
                         }
                 }
             }
@@ -610,9 +637,15 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         }
     }
 
+    private fun shouldWaitForAnswerOverlayRender(): Boolean {
+        val activity = hostActivity ?: return false
+        return hasOverlayPermission(activity)
+    }
+
     private fun buildAnswerExecution(
         targets: List<ScreenDetectorSession.AnswerTarget>,
-        contentFingerprint: String
+        contentFingerprint: String,
+        snapshotVersion: Int
     ): AnswerExecution {
         val points = mutableListOf<android.graphics.Point>()
         val targetEndIndexes = mutableListOf<Pair<String, Int>>()
@@ -625,147 +658,54 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             points = points,
             fingerprint = targets.joinToString("|") { it.fingerprint },
             contentFingerprint = contentFingerprint,
+            snapshotVersion = snapshotVersion,
             targetEndIndexes = targetEndIndexes
         )
     }
 
-    private fun revealBottomClippedTarget(target: ScreenDetectorSession.AnswerTarget) {
-        if (target.questionFingerprint in blockedRevealFingerprints) {
-            waitForManualPage(
-                "选项仍未完整显示，请手动上滑",
-                ScreenDetectorSession.AssistanceIndicator.ERROR
-            )
-            return
+    private fun isAnswerExecutionCurrent(execution: AnswerExecution): Boolean {
+        if (latestStableSnapshotVersion != execution.snapshotVersion) {
+            return false
         }
-        val attempts = revealAttempts[target.questionFingerprint] ?: 0
-        if (attempts >= MAX_REVEAL_ATTEMPTS) {
-            blockedRevealFingerprints.add(target.questionFingerprint)
-            waitForManualPage(
-                "选项仍未完整显示，请手动上滑",
-                ScreenDetectorSession.AssistanceIndicator.ERROR
-            )
-            return
+        val plan = ScreenDetectorSession.buildAnswerClickPlan() ?: return false
+        if (plan.contentFingerprint != execution.contentFingerprint) {
+            return false
         }
-        val frameInfo = ScreenDetectorSession.screenFrameInfo.value
-        val service = QuizAccessibilityService.instance
-        if (frameInfo == null) {
-            waitForManualPage("等待获取屏幕尺寸")
-            return
+        val currentTargetFingerprints = plan.targets
+            .filter { it.isComplete }
+            .associate { it.questionFingerprint to it.fingerprint }
+        return execution.targets.all { target ->
+            currentTargetFingerprints[target.questionFingerprint] == target.fingerprint
         }
-        if (service == null) {
-            pauseAssistance("无障碍服务已断开")
-            return
-        }
+    }
 
-        val generation = assistanceGeneration
-        revealAttempts[target.questionFingerprint] = attempts + 1
-        revealTargetQuestionFingerprint = target.questionFingerprint
-        pendingRevealQuestionFingerprint = target.questionFingerprint
-        pendingRevealQuestionTop = target.questionRect.top
-        assistanceBusy = true
-        ScreenDetectorSession.setAssistanceState(
-            isActive = true,
-            phase = ScreenDetectorSession.AssistancePhase.REVEALING_OPTIONS,
-            statusText = "正在上滑显示下一题选项"
-        )
-        service.swipeUpToReveal(
-            screenBounds = android.graphics.Rect(0, 0, frameInfo.width, frameInfo.height),
-            overlayBounds = ScreenDetectorSession.getOverlayBoundsSnapshot(),
-            targetTop = target.questionRect.top
-        ) { success ->
-            if (generation != assistanceGeneration) {
-                return@swipeUpToReveal
-            }
+    private fun handleAccessibilityPageActivity() {
+        latestStableSnapshotVersion = 0
+        ScreenDetectorSession.clearMatches()
+        ScreenDetectorSession.clearAnnotationBounds()
+        if (!assistanceEnabled || !isDetectionRunning) {
+            return
+        }
+        cancelPendingAutoAdvance()
+        if (ScreenDetectorSession.assistanceState.value.phase ==
+            ScreenDetectorSession.AssistancePhase.CLICKING_ANSWERS
+        ) {
+            assistanceGeneration++
+            QuizAccessibilityService.instance?.cancelPendingClicks()
             assistanceBusy = false
-            if (!success) {
-                clearPendingReveal()
-                if ((revealAttempts[target.questionFingerprint] ?: 0) >= MAX_REVEAL_ATTEMPTS) {
-                    blockedRevealFingerprints.add(target.questionFingerprint)
-                    waitForManualPage(
-                        "选项仍未完整显示，请手动上滑",
-                        ScreenDetectorSession.AssistanceIndicator.ERROR
-                    )
-                } else {
-                    ScreenDetectorSession.setAssistanceState(
-                        isActive = true,
-                        phase = ScreenDetectorSession.AssistancePhase.RECOGNIZING_ANSWERS,
-                        statusText = "上滑未生效，准备重试"
-                    )
-                    scheduleAssistanceStep(REVEAL_RETRY_DELAY_MS)
-                }
-                return@swipeUpToReveal
-            }
-            if (pendingRevealQuestionFingerprint != target.questionFingerprint) {
-                return@swipeUpToReveal
-            }
+            pendingAnswerPlan = null
+            pendingAnswerPointIndex = 0
+            ScreenDetectorSession.resetAnswerClickState()
+        }
+        if (ScreenDetectorSession.assistanceState.value.phase !=
+            ScreenDetectorSession.AssistancePhase.SWIPING
+        ) {
             ScreenDetectorSession.setAssistanceState(
                 isActive = true,
-                phase = ScreenDetectorSession.AssistancePhase.WAITING_OPTION_UPDATE,
-                statusText = "等待完整选项"
+                phase = ScreenDetectorSession.AssistancePhase.RECOGNIZING_ANSWERS,
+                statusText = "页面变动中，等待稳定扫描"
             )
-            accessibilitySource?.retryOnce()
-            scheduleOptionUpdateTimeout(generation, target.questionFingerprint)
         }
-    }
-
-    private fun handleRevealUpdate(plan: ScreenDetectorSession.AnswerClickPlan?) {
-        val questionFingerprint = pendingRevealQuestionFingerprint ?: return
-        val previousTop = pendingRevealQuestionTop ?: return
-        val target = plan?.targets?.firstOrNull {
-            it.questionFingerprint == questionFingerprint
-        }
-        val movementThreshold = ScreenDetectorSession.screenFrameInfo.value
-            ?.height
-            ?.let { (it * REVEAL_MOVEMENT_THRESHOLD_RATIO).toInt() }
-            ?.coerceAtLeast(MIN_REVEAL_MOVEMENT_PX)
-            ?: MIN_REVEAL_MOVEMENT_PX
-        val hasProgress = target?.isComplete == true ||
-            (target != null && kotlin.math.abs(target.questionRect.top - previousTop) >= movementThreshold)
-        if (!hasProgress) {
-            return
-        }
-        clearPendingReveal()
-        assistanceBusy = false
-        ScreenDetectorSession.setAssistanceState(
-            isActive = true,
-            phase = ScreenDetectorSession.AssistancePhase.RECOGNIZING_ANSWERS,
-            statusText = if (target.isComplete) {
-                "选项已完整显示，准备作答"
-            } else {
-                "页面已上滑，继续定位选项"
-            }
-        )
-        scheduleAssistanceStep(NEW_PAGE_SETTLE_DELAY_MS)
-    }
-
-    private fun scheduleOptionUpdateTimeout(generation: Int, questionFingerprint: String) {
-        pendingOptionUpdateTimeoutRunnable?.let(assistanceHandler::removeCallbacks)
-        val runnable = Runnable {
-            pendingOptionUpdateTimeoutRunnable = null
-            if (generation != assistanceGeneration ||
-                pendingRevealQuestionFingerprint != questionFingerprint
-            ) {
-                return@Runnable
-            }
-            clearPendingReveal()
-            assistanceBusy = false
-            if ((revealAttempts[questionFingerprint] ?: 0) >= MAX_REVEAL_ATTEMPTS) {
-                blockedRevealFingerprints.add(questionFingerprint)
-                waitForManualPage(
-                    "选项仍未完整显示，请手动上滑",
-                    ScreenDetectorSession.AssistanceIndicator.ERROR
-                )
-            } else {
-                ScreenDetectorSession.setAssistanceState(
-                    isActive = true,
-                    phase = ScreenDetectorSession.AssistancePhase.RECOGNIZING_ANSWERS,
-                    statusText = "未检测到选项移动，准备重试"
-                )
-                scheduleAssistanceStep(REVEAL_RETRY_DELAY_MS)
-            }
-        }
-        pendingOptionUpdateTimeoutRunnable = runnable
-        assistanceHandler.postDelayed(runnable, OPTION_UPDATE_TIMEOUT_MS)
     }
 
     private fun continueWithPageDirection() {
@@ -852,6 +792,16 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
 
         assistanceBusy = true
         val generation = assistanceGeneration
+        val verticalTargetPosition = if (axis == QuizAccessibilityService.PageAxis.VERTICAL) {
+            ScreenDetectorSession.buildAnswerClickPlan()
+                ?.targets
+                ?.takeIf { it.size >= MIN_QUESTIONS_FOR_ALIGNED_VERTICAL_SWIPE }
+                ?.maxByOrNull { it.questionRect.top }
+                ?.questionRect
+                ?.top
+        } else {
+            null
+        }
         ScreenDetectorSession.setAssistanceState(
             isActive = true,
             phase = ScreenDetectorSession.AssistancePhase.SWIPING,
@@ -865,7 +815,8 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         service.swipePage(
             screenBounds = android.graphics.Rect(0, 0, frameInfo.width, frameInfo.height),
             overlayBounds = ScreenDetectorSession.getOverlayBoundsSnapshot(),
-            axis = axis
+            axis = axis,
+            verticalTargetPosition = verticalTargetPosition
         ) { success ->
             if (generation != assistanceGeneration) {
                 return@swipePage
@@ -888,7 +839,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                 pageDirection = axis.toSessionPageDirection(),
                 statusText = "等待识别新题"
             )
-            accessibilitySource?.retryOnce()
+            accessibilitySource?.requestFreshScan()
             schedulePageChangeTimeout(generation, pageFingerprint)
         }
     }
@@ -937,23 +888,10 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         cancelPendingAutoAdvance()
         pendingPageChangeTimeoutRunnable?.let(assistanceHandler::removeCallbacks)
         pendingPageChangeTimeoutRunnable = null
-        pendingOptionUpdateTimeoutRunnable?.let(assistanceHandler::removeCallbacks)
-        pendingOptionUpdateTimeoutRunnable = null
-    }
-
-    private fun clearPendingReveal() {
-        pendingOptionUpdateTimeoutRunnable?.let(assistanceHandler::removeCallbacks)
-        pendingOptionUpdateTimeoutRunnable = null
-        pendingRevealQuestionFingerprint = null
-        pendingRevealQuestionTop = null
     }
 
     private fun clearQuestionProgress() {
-        clearPendingReveal()
         answeredQuestionFingerprints.clear()
-        revealAttempts.clear()
-        blockedRevealFingerprints.clear()
-        revealTargetQuestionFingerprint = null
     }
 
     private fun scheduleAssistanceStep(
@@ -1025,17 +963,11 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         activity: FragmentActivity,
         request: StartRequest
     ): Boolean {
-        if (!commonROMPermissionCheck(activity)) {
+        if (!request.requiresAccessibility && !commonROMPermissionCheck(activity)) {
             pendingStartRequest = request
             pendingPermissionPrompt = PendingPermissionPrompt.OVERLAY
             permissionHostActivity = activity
-            Toast.makeText(activity, "请允许悬浮窗权限", Toast.LENGTH_LONG).show()
-            activity.startActivityForResult(
-                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                    data = Uri.parse("package:${activity.packageName}")
-                },
-                REQUEST_FLOAT_CODE
-            )
+            requestOverlayPermission(activity)
             return false
         }
         if (request.requiresAccessibility && !AccessibilityPermissionHelper.isServiceEnabled(activity)) {
@@ -1051,14 +983,22 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
     }
 
     private fun showAccessibilityPermissionDialog(activity: FragmentActivity) {
+        if (accessibilityDialog?.isShowing == true) {
+            return
+        }
         val appName = activity.getString(R.string.app_name)
+        val isAccessibilityEnabled = AccessibilityPermissionHelper.isServiceEnabled(activity)
         val hasShownIntro = AccessibilityPermissionHelper.hasShownIntro(activity)
-        val titleRes = if (hasShownIntro) {
+        val titleRes = if (isAccessibilityEnabled) {
+            R.string.accessibility_search_intro_title
+        } else if (hasShownIntro) {
             R.string.accessibility_permission_required
         } else {
             R.string.accessibility_search_intro_title
         }
-        val messageRes = if (hasShownIntro) {
+        val messageRes = if (isAccessibilityEnabled) {
+            R.string.accessibility_search_ready_message
+        } else if (hasShownIntro) {
             R.string.accessibility_search_prompt_message
         } else {
             R.string.accessibility_search_intro_message
@@ -1066,14 +1006,423 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         if (!hasShownIntro) {
             AccessibilityPermissionHelper.markIntroShown(activity)
         }
-        MaterialAlertDialogBuilder(activity)
+        val dialog = MaterialAlertDialogBuilder(activity)
             .setTitle(activity.getString(titleRes, appName))
-            .setMessage(activity.getString(messageRes, appName))
-            .setNegativeButton(R.string.cancel, null)
-            .setPositiveButton(R.string.accessibility_search_enable_cta) { _, _ ->
-                AccessibilityPermissionHelper.openAccessibilitySettings(activity)
+            .create()
+        accessibilityDialog = dialog
+        dialog.setOnDismissListener {
+            if (accessibilityDialog === dialog) {
+                accessibilityDialog = null
             }
-            .show()
+        }
+        dialog.setOnCancelListener {
+            clearPendingAccessibilityStart()
+        }
+        dialog.setView(
+            createAccessibilityPermissionDialogView(
+                activity,
+                activity.getString(messageRes, appName),
+                dialog
+            )
+        )
+        dialog.show()
+    }
+
+    private fun createAccessibilityPermissionDialogView(
+        activity: FragmentActivity,
+        message: String,
+        dialog: DialogInterface
+    ): LinearLayout {
+        val horizontalPadding = dpToPx(activity, 24)
+        val layout = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(horizontalPadding, dpToPx(activity, 6), horizontalPadding, dpToPx(activity, 8))
+        }
+        layout.addView(
+            TextView(activity).apply {
+                text = message
+                setTextColor(
+                    MaterialColors.getColor(
+                        this,
+                        com.google.android.material.R.attr.colorOnSurfaceVariant
+                    )
+                )
+                textSize = 14f
+                setLineSpacing(dpToPx(activity, 2).toFloat(), 1f)
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        val notificationButton = createPermissionStatusButton(activity)
+        layout.addView(
+            notificationButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(activity, 16)
+            }
+        )
+        val overlayButton = createPermissionStatusButton(activity)
+        layout.addView(
+            overlayButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(activity, 8)
+            }
+        )
+        val floatingWindowCheckBox = MaterialCheckBox(activity).apply {
+            setText(R.string.accessibility_search_show_overlay_window)
+            isChecked = accessibilityFloatingWindowEnabled
+        }
+        layout.addView(
+            floatingWindowCheckBox,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(activity, 14)
+            }
+        )
+        layout.addView(
+            TextView(activity).apply {
+                setText(R.string.accessibility_search_show_overlay_window_summary)
+                setTextColor(
+                    MaterialColors.getColor(
+                        this,
+                        com.google.android.material.R.attr.colorOnSurfaceVariant
+                    )
+                )
+                textSize = 12f
+                setLineSpacing(dpToPx(activity, 2).toFloat(), 1f)
+                setPadding(dpToPx(activity, 32), 0, 0, 0)
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        val answerDotsOnlyCheckBox = MaterialCheckBox(activity).apply {
+            setText(R.string.accessibility_search_answer_dots_only)
+            isChecked = accessibilityAnswerDotsOnlyEnabled
+        }
+        layout.addView(
+            answerDotsOnlyCheckBox,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(activity, 12)
+            }
+        )
+        layout.addView(
+            TextView(activity).apply {
+                setText(R.string.accessibility_search_answer_dots_only_summary)
+                setTextColor(
+                    MaterialColors.getColor(
+                        this,
+                        com.google.android.material.R.attr.colorOnSurfaceVariant
+                    )
+                )
+                textSize = 12f
+                setLineSpacing(dpToPx(activity, 2).toFloat(), 1f)
+                setPadding(dpToPx(activity, 32), 0, 0, 0)
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        val actionRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        }
+        layout.addView(
+            actionRow,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(activity, 18)
+            }
+        )
+        val cancelButton = MaterialButton(
+            activity,
+            null,
+            com.google.android.material.R.attr.borderlessButtonStyle
+        ).apply {
+            setText(R.string.cancel)
+            setOnClickListener {
+                clearPendingAccessibilityStart()
+                dialog.dismiss()
+            }
+        }
+        actionRow.addView(
+            cancelButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        val enableButton = MaterialButton(
+            activity,
+            null,
+            com.google.android.material.R.attr.materialButtonStyle
+        ).apply {
+            setOnClickListener {
+                handleAccessibilityDialogPrimaryAction(activity, dialog)
+            }
+        }
+        actionRow.addView(
+            enableButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                leftMargin = dpToPx(activity, 8)
+            }
+        )
+        notificationButton.setOnClickListener {
+            requestNotificationPermissionOrOpenSettings(activity)
+            updateAccessibilityDialogPermissionButtons(
+                activity,
+                notificationButton,
+                overlayButton,
+                enableButton,
+                floatingWindowCheckBox
+            )
+            scheduleNotificationPermissionRefresh(
+                activity,
+                notificationButton,
+                overlayButton,
+                enableButton,
+                floatingWindowCheckBox
+            )
+        }
+        overlayButton.setOnClickListener {
+            requestOverlayPermission(activity)
+            dialog.dismiss()
+        }
+        floatingWindowCheckBox.setOnCheckedChangeListener { _, isChecked ->
+            accessibilityFloatingWindowEnabled = isChecked
+            updateAccessibilityDialogPermissionButtons(
+                activity,
+                notificationButton,
+                overlayButton,
+                enableButton,
+                floatingWindowCheckBox
+            )
+        }
+        answerDotsOnlyCheckBox.setOnCheckedChangeListener { _, isChecked ->
+            accessibilityAnswerDotsOnlyEnabled = isChecked
+        }
+        updateAccessibilityDialogPermissionButtons(
+            activity,
+            notificationButton,
+            overlayButton,
+            enableButton,
+            floatingWindowCheckBox
+        )
+        return layout
+    }
+
+    private fun createPermissionStatusButton(activity: FragmentActivity): MaterialButton {
+        return MaterialButton(
+            activity,
+            null,
+            com.google.android.material.R.attr.materialButtonOutlinedStyle
+        )
+    }
+
+    private fun scheduleNotificationPermissionRefresh(
+        activity: FragmentActivity,
+        notificationButton: MaterialButton,
+        overlayButton: MaterialButton,
+        enableButton: MaterialButton,
+        floatingWindowCheckBox: MaterialCheckBox,
+        attemptsRemaining: Int = NOTIFICATION_PERMISSION_REFRESH_ATTEMPTS
+    ) {
+        if (attemptsRemaining <= 0 || !notificationButton.isAttachedToWindow) {
+            return
+        }
+        notificationButton.postDelayed({
+            if (!notificationButton.isAttachedToWindow) {
+                return@postDelayed
+            }
+            updateAccessibilityDialogPermissionButtons(
+                activity,
+                notificationButton,
+                overlayButton,
+                enableButton,
+                floatingWindowCheckBox
+            )
+            if (!hasNotificationPermission(activity)) {
+                scheduleNotificationPermissionRefresh(
+                    activity,
+                    notificationButton,
+                    overlayButton,
+                    enableButton,
+                    floatingWindowCheckBox,
+                    attemptsRemaining - 1
+                )
+            }
+        }, NOTIFICATION_PERMISSION_REFRESH_INTERVAL_MS)
+    }
+
+    private fun updateAccessibilityDialogPermissionButtons(
+        activity: FragmentActivity,
+        notificationButton: MaterialButton,
+        overlayButton: MaterialButton,
+        enableButton: MaterialButton,
+        floatingWindowCheckBox: MaterialCheckBox
+    ) {
+        val notificationsEnabled = hasNotificationPermission(activity)
+        val overlayEnabled = hasOverlayPermission(activity)
+        notificationButton.setText(
+            if (notificationsEnabled) {
+                R.string.accessibility_search_notifications_enabled
+            } else if (hasRequestedNotificationPermission(activity)) {
+                R.string.accessibility_search_open_notification_settings
+            } else {
+                R.string.accessibility_search_enable_notifications
+            }
+        )
+        notificationButton.isEnabled = !notificationsEnabled
+        overlayButton.setText(
+            if (overlayEnabled) {
+                R.string.accessibility_search_overlay_enabled
+            } else {
+                R.string.accessibility_search_enable_overlay
+            }
+        )
+        overlayButton.isEnabled = !overlayEnabled
+        enableButton.setText(
+            if (AccessibilityPermissionHelper.isServiceEnabled(activity)) {
+                R.string.accessibility_search_start_cta
+            } else {
+                R.string.accessibility_search_enable_cta
+            }
+        )
+        enableButton.isEnabled = notificationsEnabled || overlayEnabled
+    }
+
+    private fun handleAccessibilityDialogPrimaryAction(
+        activity: FragmentActivity,
+        dialog: DialogInterface
+    ) {
+        if (!AccessibilityPermissionHelper.isServiceEnabled(activity)) {
+            dialog.dismiss()
+            AccessibilityPermissionHelper.openAccessibilitySettings(activity)
+            return
+        }
+        val request = pendingStartRequest ?: return
+        pendingStartRequest = null
+        pendingPermissionPrompt = null
+        permissionHostActivity = null
+        dialog.dismiss()
+        startInternal(activity, request)
+    }
+
+    private fun clearPendingAccessibilityStart() {
+        if (pendingStartRequest?.requiresAccessibility == true) {
+            pendingStartRequest = null
+            pendingPermissionPrompt = null
+            permissionHostActivity = null
+        }
+    }
+
+    private fun hasNotificationPermission(activity: FragmentActivity): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                activity,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestNotificationPermissionOrOpenSettings(activity: FragmentActivity) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            hasNotificationPermission(activity)
+        ) {
+            return
+        }
+        if (!canRequestNotificationPermission(activity)) {
+            openNotificationSettings(activity)
+            return
+        }
+        markNotificationPermissionRequested(activity)
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            REQUEST_NOTIFICATION_CODE
+        )
+    }
+
+    private fun canRequestNotificationPermission(activity: FragmentActivity): Boolean {
+        return !hasRequestedNotificationPermission(activity) ||
+            ActivityCompat.shouldShowRequestPermissionRationale(
+                activity,
+                Manifest.permission.POST_NOTIFICATIONS
+            )
+    }
+
+    private fun hasRequestedNotificationPermission(activity: FragmentActivity): Boolean {
+        return activity
+            .getSharedPreferences(PermissionManager.PERMISSION_STATE_PREFS, Context.MODE_PRIVATE)
+            .getBoolean(PermissionManager.KEY_NOTIFICATION_PERMISSION_REQUESTED, false)
+    }
+
+    private fun markNotificationPermissionRequested(activity: FragmentActivity) {
+        activity
+            .getSharedPreferences(PermissionManager.PERMISSION_STATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(PermissionManager.KEY_NOTIFICATION_PERMISSION_REQUESTED, true)
+            .apply()
+    }
+
+    private fun openNotificationSettings(activity: FragmentActivity) {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName)
+            }
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:${activity.packageName}")
+            }
+        }
+        runCatching {
+            activity.startActivity(intent)
+        }.onFailure {
+            activity.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:${activity.packageName}")
+                }
+            )
+        }
+    }
+
+    private fun hasOverlayPermission(activity: FragmentActivity): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            Settings.canDrawOverlays(activity)
+    }
+
+    private fun requestOverlayPermission(activity: FragmentActivity) {
+        pendingPermissionPrompt = PendingPermissionPrompt.OVERLAY
+        permissionHostActivity = activity
+        Toast.makeText(activity, "请允许悬浮窗权限", Toast.LENGTH_LONG).show()
+        activity.startActivityForResult(
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                data = Uri.parse("package:${activity.packageName}")
+            },
+            REQUEST_FLOAT_CODE
+        )
+    }
+
+    private fun dpToPx(context: Context, dp: Int): Int {
+        return (dp * context.resources.displayMetrics.density).toInt()
     }
 
     private fun commonROMPermissionCheck(context: Context?): Boolean {
@@ -1122,17 +1471,15 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
     }
 
     private const val REQUEST_FLOAT_CODE = 1001
+    private const val REQUEST_NOTIFICATION_CODE = 1002
+    private const val NOTIFICATION_PERMISSION_REFRESH_INTERVAL_MS = 500L
+    private const val NOTIFICATION_PERMISSION_REFRESH_ATTEMPTS = 20
     private const val ANSWER_SETTLE_DELAY_MS = 550L
     private const val AUTO_PAGE_DELAY_MS = 120L
     private const val NEW_PAGE_SETTLE_DELAY_MS = 240L
     private const val OVERLAY_RENDER_RETRY_DELAY_MS = 48L
     private const val ASSISTANCE_RESUME_DELAY_MS = 220L
     private const val PAGE_CHANGE_TIMEOUT_MS = 3_500L
-    private const val OPTION_UPDATE_TIMEOUT_MS = 1_800L
-    private const val REVEAL_RETRY_DELAY_MS = 260L
-    private const val MAX_REVEAL_ATTEMPTS = 2
-    private const val REVEAL_MOVEMENT_THRESHOLD_RATIO = 0.03f
-    private const val MIN_REVEAL_MOVEMENT_PX = 24
     private val WAITING_FOR_NEXT_QUESTION_PHASES = setOf(
         ScreenDetectorSession.AssistancePhase.WAITING_MANUAL_PAGE,
         ScreenDetectorSession.AssistancePhase.SWIPING,

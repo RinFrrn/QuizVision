@@ -125,18 +125,6 @@ class SearchSettingsFragment : Fragment() {
                 titleResId = R.string.pref_title_brief_answer_display,
                 defaultValue = false
             ),
-            createSwitchRow(
-                context = context,
-                keyResId = R.string.pref_key_hide_question_annotations_when_overlay_collapsed,
-                titleResId = R.string.pref_title_hide_question_annotations_when_overlay_collapsed,
-                defaultValue = false
-            ),
-            createSwitchRow(
-                context = context,
-                keyResId = R.string.pref_key_hide_answer_frames_when_overlay_collapsed,
-                titleResId = R.string.pref_title_hide_answer_frames_when_overlay_collapsed,
-                defaultValue = false
-            ),
             createArrayListRow(
                 context = context,
                 keyResId = R.string.pref_key_quiz_overlay_text_size,

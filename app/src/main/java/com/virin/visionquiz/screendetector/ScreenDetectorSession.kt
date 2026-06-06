@@ -306,7 +306,13 @@ object ScreenDetectorSession {
                     questionRect = Rect(match.rect),
                     points = points,
                     fingerprint = fingerprintParts.joinToString("|"),
-                    isComplete = points.size == match.question.answer.size && points.isNotEmpty()
+                    isComplete =
+                        points.size == match.question.answer.size &&
+                            points.isNotEmpty() &&
+                            (
+                                !match.question.isMultipleChoice ||
+                                    match.optionRects.size == match.question.options.size
+                                )
                 )
             }
 

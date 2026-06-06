@@ -3,7 +3,11 @@ package com.virin.visionquiz.screendetector
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
-import android.content.SharedPreferences
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -12,7 +16,6 @@ import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Build
-import android.preference.PreferenceManager
 import android.text.TextUtils
 import android.util.DisplayMetrics
 import android.view.Gravity
@@ -28,9 +31,10 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.annotation.DrawableRes
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.progressindicator.CircularProgressIndicator
 import com.virin.visionquiz.R
 import com.virin.visionquiz.preference.PreferenceUtils
 import com.virin.visionquiz.util.QuizGraphicItem
@@ -47,7 +51,7 @@ class ScreenDetectorService : LifecycleService() {
     private var expandedControlBar: LinearLayout? = null
     private var collapsedControlView: FrameLayout? = null
     private var collapsedStatusIcon: ImageView? = null
-    private var collapsedProgress: CircularProgressIndicator? = null
+    private var collapsedStatusBadge: View? = null
     private var statusView: TextView? = null
     private var actionButton: ImageButton? = null
     private var answerClickButton: ImageButton? = null
@@ -61,17 +65,10 @@ class ScreenDetectorService : LifecycleService() {
     private var isSnappedToRight = false
     private var latestRenderState: RenderState? = null
     private var lastMarkerRenderKey: MarkerRenderKey? = null
-    private var markerOverlayHiddenForCollapse = false
     private var lastCollapsedRenderState: CollapsedRenderState? = null
-    private lateinit var sharedPreferences: SharedPreferences
-    private val preferenceChangeListener =
-        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == getString(R.string.pref_key_hide_question_annotations_when_overlay_collapsed) ||
-                key == getString(R.string.pref_key_hide_answer_frames_when_overlay_collapsed)
-            ) {
-                renderCurrentMarkerOverlay()
-            }
-        }
+    private var showControlWindow = true
+    private var showMarkerOverlayWindow = true
+    private var answerDotsOnly = true
 
     private var libId = 0
     private val overlayMarginPx by lazy { dpToPx(16) }
@@ -94,8 +91,6 @@ class ScreenDetectorService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
-        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
-        sharedPreferences.registerOnSharedPreferenceChangeListener(preferenceChangeListener)
         lifecycleScope.launch {
             ScreenDetectorSession.state
                 .combine(ScreenDetectorSession.matches) { state, matches -> state to matches }
@@ -113,33 +108,57 @@ class ScreenDetectorService : LifecycleService() {
                 }
                 .collect { renderState ->
                     latestRenderState = renderState
-                    renderControlBar(renderState)
-                    renderMarkerOverlay(renderState)
+                    if (showControlWindow) {
+                        renderControlBar(renderState)
+                    }
+                    if (showMarkerOverlayWindow) {
+                        renderMarkerOverlay(renderState)
+                    }
+                    updateStatusNotification(renderState)
                 }
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_TOGGLE_TOUCH -> {
+                ScreenDetectorSession.requestToggleAnswerAssistance()
+                latestRenderState?.let(::updateStatusNotification)
+                return START_NOT_STICKY
+            }
+            ACTION_STOP_DETECTION -> {
+                ScreenDetectorSession.requestStop()
+                cancelStatusNotification()
+                return START_NOT_STICKY
+            }
+        }
         libId = intent?.getIntExtra(LIBRARY_ID, 0) ?: 0
-        showWindows()
+        showControlWindow = intent?.getBooleanExtra(EXTRA_SHOW_FLOATING_WINDOWS, true) ?: true
+        showMarkerOverlayWindow = intent?.getBooleanExtra(EXTRA_SHOW_MARKER_OVERLAY, true) ?: true
+        answerDotsOnly = intent?.getBooleanExtra(EXTRA_ANSWER_DOTS_ONLY, true) ?: true
+        if (showControlWindow || showMarkerOverlayWindow) {
+            showWindows()
+        } else {
+            removeWindows()
+        }
+        latestRenderState?.let(::updateStatusNotification)
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
-        sharedPreferences.unregisterOnSharedPreferenceChangeListener(preferenceChangeListener)
         cancelSnapAnimator()
         controlRootView?.removeCallbacks(applyPendingDragPosition)
         removeViewIfAttached(markerOverlayView)
         markerOverlayView = null
         lastMarkerRenderKey = null
-        markerOverlayHiddenForCollapse = false
         removeViewIfAttached(controlRootView)
         controlRootView = null
         expandedControlBar = null
         collapsedControlView = null
         collapsedStatusIcon = null
-        collapsedProgress = null
+        collapsedStatusBadge = null
         lastCollapsedRenderState = null
+        cancelStatusNotification()
         ScreenDetectorSession.clearOverlayBounds()
         ScreenDetectorSession.clearAnnotationBounds()
         super.onDestroy()
@@ -151,8 +170,16 @@ class ScreenDetectorService : LifecycleService() {
             isControlCollapsed = false
             isSnappedToRight = false
         }
-        showMarkerOverlay()
-        showControlBar()
+        if (showMarkerOverlayWindow) {
+            showMarkerOverlay()
+        } else {
+            removeMarkerOverlay()
+        }
+        if (showControlWindow) {
+            showControlBar()
+        } else {
+            removeControlWindow()
+        }
         val renderState = RenderState(
             state = ScreenDetectorSession.state.value,
             matches = ScreenDetectorSession.matches.value,
@@ -162,8 +189,46 @@ class ScreenDetectorService : LifecycleService() {
             assistanceState = ScreenDetectorSession.assistanceState.value
         )
         latestRenderState = renderState
-        renderControlBar(renderState)
-        renderMarkerOverlay(renderState)
+        if (showControlWindow) {
+            renderControlBar(renderState)
+        }
+        if (showMarkerOverlayWindow) {
+            renderMarkerOverlay(renderState)
+        }
+    }
+
+    private fun removeWindows() {
+        removeMarkerOverlay()
+        removeControlWindow()
+    }
+
+    private fun removeMarkerOverlay() {
+        removeViewIfAttached(markerOverlayView)
+        markerOverlayView = null
+        lastMarkerRenderKey = null
+        ScreenDetectorSession.clearAnnotationBounds()
+    }
+
+    private fun removeControlWindow() {
+        cancelSnapAnimator()
+        controlRootView?.removeCallbacks(applyPendingDragPosition)
+        removeViewIfAttached(controlRootView)
+        controlRootView = null
+        expandedControlBar = null
+        collapsedControlView = null
+        collapsedStatusIcon = null
+        collapsedStatusBadge = null
+        statusView = null
+        actionButton = null
+        answerClickButton = null
+        swipeLeftButton = null
+        swipeUpButton = null
+        touchControlsDivider = null
+        retryButton = null
+        stopButton = null
+        controlLayoutParams = null
+        lastCollapsedRenderState = null
+        ScreenDetectorSession.clearOverlayBounds()
     }
 
     private fun showMarkerOverlay() {
@@ -242,27 +307,18 @@ class ScreenDetectorService : LifecycleService() {
 
     private fun createExpandedControlBar(): LinearLayout {
         return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundResource(R.drawable.bg_overlay_window)
             elevation = dpToPx(8).toFloat()
-            setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
-
-            val collapseButton = createControlIconButton(
-                iconRes = R.drawable.icon_collapse_all_24px,
-                description = "折叠悬浮窗"
-            ).apply {
-                setOnClickListener { setControlCollapsed(true) }
-            }
-            addView(
-                collapseButton,
-                LinearLayout.LayoutParams(dpToPx(32), dpToPx(32))
-            )
+            setPadding(dpToPx(10), dpToPx(7), dpToPx(10), dpToPx(7))
+            setOnTouchListener { view, event -> handleControlBarTouch(view, event) }
 
             statusView = TextView(context).apply {
                 setTextColor(0xFF111111.toInt())
                 textSize = 13f
                 maxLines = 1
+                gravity = Gravity.CENTER
                 ellipsize = TextUtils.TruncateAt.END
                 setOnTouchListener { view, event -> handleControlBarTouch(view, event) }
             }
@@ -271,8 +327,40 @@ class ScreenDetectorService : LifecycleService() {
                 LinearLayout.LayoutParams(
                     dpToPx(STATUS_WIDTH_DP),
                     LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            val controlsRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            addView(
+                controlsRow,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    leftMargin = dpToPx(6)
+                    topMargin = dpToPx(5)
+                }
+            )
+
+            val collapseButton = createControlIconButton(
+                iconRes = R.drawable.icon_collapse_all_24px,
+                description = "折叠悬浮窗"
+            ).apply {
+                setOnClickListener { setControlCollapsed(true) }
+            }
+            controlsRow.addView(
+                collapseButton,
+                LinearLayout.LayoutParams(dpToPx(32), dpToPx(32))
+            )
+
+            controlsRow.addView(
+                View(context).apply {
+                    setBackgroundColor(TOUCH_CONTROLS_DIVIDER_COLOR)
+                },
+                LinearLayout.LayoutParams(dpToPx(1), dpToPx(20)).apply {
+                    leftMargin = dpToPx(CONTROL_BUTTON_GAP_DP)
                 }
             )
 
@@ -283,13 +371,13 @@ class ScreenDetectorService : LifecycleService() {
                 visibility = View.GONE
                 setOnClickListener { ScreenDetectorSession.requestToggleAnswerAssistance() }
             }
-            addView(
+            controlsRow.addView(
                 answerClickButton,
                 LinearLayout.LayoutParams(
                     dpToPx(32),
                     dpToPx(32)
                 ).apply {
-                    leftMargin = dpToPx(6)
+                    leftMargin = dpToPx(CONTROL_BUTTON_GAP_DP)
                 }
             )
 
@@ -300,13 +388,13 @@ class ScreenDetectorService : LifecycleService() {
                 visibility = View.GONE
                 setOnClickListener { ScreenDetectorSession.requestSwipePageLeft() }
             }
-            addView(
+            controlsRow.addView(
                 swipeLeftButton,
                 LinearLayout.LayoutParams(
                     dpToPx(32),
                     dpToPx(32)
                 ).apply {
-                    leftMargin = dpToPx(6)
+                    leftMargin = dpToPx(CONTROL_BUTTON_GAP_DP)
                 }
             )
 
@@ -318,13 +406,13 @@ class ScreenDetectorService : LifecycleService() {
                 visibility = View.GONE
                 setOnClickListener { ScreenDetectorSession.requestSwipePageUp() }
             }
-            addView(
+            controlsRow.addView(
                 swipeUpButton,
                 LinearLayout.LayoutParams(
                     dpToPx(32),
                     dpToPx(32)
                 ).apply {
-                    leftMargin = dpToPx(6)
+                    leftMargin = dpToPx(CONTROL_BUTTON_GAP_DP)
                 }
             )
 
@@ -332,7 +420,7 @@ class ScreenDetectorService : LifecycleService() {
                 setBackgroundColor(TOUCH_CONTROLS_DIVIDER_COLOR)
                 visibility = View.GONE
             }
-            addView(
+            controlsRow.addView(
                 touchControlsDivider,
                 LinearLayout.LayoutParams(
                     dpToPx(1),
@@ -349,13 +437,13 @@ class ScreenDetectorService : LifecycleService() {
             ).apply {
                 setOnClickListener { ScreenDetectorSession.requestPauseResume() }
             }
-            addView(
+            controlsRow.addView(
                 actionButton,
                 LinearLayout.LayoutParams(
                     dpToPx(32),
                     dpToPx(32)
                 ).apply {
-                    leftMargin = dpToPx(6)
+                    leftMargin = dpToPx(CONTROL_BUTTON_GAP_DP)
                 }
             )
 
@@ -365,13 +453,13 @@ class ScreenDetectorService : LifecycleService() {
             ).apply {
                 setOnClickListener { ScreenDetectorSession.requestRetryOnce() }
             }
-            addView(
+            controlsRow.addView(
                 retryButton,
                 LinearLayout.LayoutParams(
                     dpToPx(32),
                     dpToPx(32)
                 ).apply {
-                    leftMargin = dpToPx(6)
+                    leftMargin = dpToPx(CONTROL_BUTTON_GAP_DP)
                 }
             )
 
@@ -381,16 +469,15 @@ class ScreenDetectorService : LifecycleService() {
             ).apply {
                 setOnClickListener { ScreenDetectorSession.requestStop() }
             }
-            addView(
+            controlsRow.addView(
                 stopButton,
                 LinearLayout.LayoutParams(
                     dpToPx(32),
                     dpToPx(32)
                 ).apply {
-                    leftMargin = dpToPx(6)
+                    leftMargin = dpToPx(CONTROL_BUTTON_GAP_DP)
                 }
             )
-            setOnTouchListener { view, event -> handleControlBarTouch(view, event) }
         }
     }
 
@@ -398,24 +485,9 @@ class ScreenDetectorService : LifecycleService() {
         return FrameLayout(ContextThemeWrapper(this@ScreenDetectorService, R.style.AppTheme)).apply {
             setBackgroundResource(R.drawable.bg_overlay_window)
             elevation = dpToPx(8).toFloat()
+            alpha = COLLAPSED_WINDOW_ALPHA
             isClickable = true
             contentDescription = "展开悬浮窗"
-
-            collapsedProgress = CircularProgressIndicator(context).apply {
-                indicatorSize = dpToPx(COLLAPSED_PROGRESS_SIZE_DP)
-                trackThickness = dpToPx(3)
-                setIndicatorColor(SELECTED_ICON_COLOR)
-                trackColor = COLLAPSED_PROGRESS_TRACK_COLOR
-                isIndeterminate = true
-            }
-            addView(
-                collapsedProgress,
-                FrameLayout.LayoutParams(
-                    dpToPx(COLLAPSED_PROGRESS_SIZE_DP),
-                    dpToPx(COLLAPSED_PROGRESS_SIZE_DP),
-                    Gravity.CENTER
-                )
-            )
 
             collapsedStatusIcon = ImageView(context).apply {
                 setImageResource(R.drawable.round_search_24)
@@ -425,6 +497,21 @@ class ScreenDetectorService : LifecycleService() {
             addView(
                 collapsedStatusIcon,
                 FrameLayout.LayoutParams(dpToPx(24), dpToPx(24), Gravity.CENTER)
+            )
+
+            collapsedStatusBadge = View(context).apply {
+                background = createStatusBadgeBackground(RUNNING_BADGE_COLOR)
+            }
+            addView(
+                collapsedStatusBadge,
+                FrameLayout.LayoutParams(
+                    dpToPx(COLLAPSED_BADGE_SIZE_DP),
+                    dpToPx(COLLAPSED_BADGE_SIZE_DP),
+                    Gravity.TOP or Gravity.END
+                ).apply {
+                    topMargin = dpToPx(7)
+                    rightMargin = dpToPx(7)
+                }
             )
             setOnTouchListener { view, event ->
                 handleControlBarTouch(view, event) {
@@ -683,7 +770,7 @@ class ScreenDetectorService : LifecycleService() {
 
     private fun renderCollapsedState(renderState: RenderState) {
         val icon = collapsedStatusIcon ?: return
-        val progress = collapsedProgress ?: return
+        val badge = collapsedStatusBadge ?: return
         val assistance = renderState.assistanceState
         val isPaused = renderState.state == ScreenDetectorSession.DetectionState.PAUSED
         val isError = assistance.indicator == ScreenDetectorSession.AssistanceIndicator.ERROR
@@ -706,12 +793,6 @@ class ScreenDetectorService : LifecycleService() {
         }
         val color = if (isError) ERROR_ICON_COLOR else DEFAULT_ICON_COLOR
 
-        val isWorking = when {
-            isPaused || isError -> false
-            !assistance.isActive -> renderState.state == ScreenDetectorSession.DetectionState.RUNNING
-            assistance.phase in ACTIVE_ASSISTANCE_PHASES -> true
-            else -> false
-        }
         val description = when {
             isError -> "搜题流程异常，点击展开"
             isPaused -> "搜题已暂停，点击展开"
@@ -722,13 +803,22 @@ class ScreenDetectorService : LifecycleService() {
             assistance.isActive -> "自动答题中，点击展开"
             else -> "正在扫描，点击展开"
         }
+        val badgeColor = when {
+            isError -> ERROR_ICON_COLOR
+            isPaused -> PAUSED_BADGE_COLOR
+            assistance.indicator == ScreenDetectorSession.AssistanceIndicator.SWIPE_LEFT ||
+                assistance.indicator == ScreenDetectorSession.AssistanceIndicator.SWIPE_UP ->
+                RUNNING_BADGE_COLOR
+            assistance.indicator == ScreenDetectorSession.AssistanceIndicator.TOUCH ||
+                assistance.isActive -> ASSISTANCE_BADGE_COLOR
+            renderState.state == ScreenDetectorSession.DetectionState.RUNNING -> RUNNING_BADGE_COLOR
+            else -> IDLE_BADGE_COLOR
+        }
         val collapsedState = CollapsedRenderState(
             iconRes = iconRes,
             iconRotation = iconRotation,
             iconColor = color,
-            progressColor = if (isError) ERROR_ICON_COLOR else SELECTED_ICON_COLOR,
-            trackColor = if (isError) ERROR_PROGRESS_TRACK_COLOR else COLLAPSED_PROGRESS_TRACK_COLOR,
-            isWorking = isWorking,
+            badgeColor = badgeColor,
             contentDescription = description
         )
         val previousState = lastCollapsedRenderState
@@ -741,17 +831,8 @@ class ScreenDetectorService : LifecycleService() {
         if (previousState?.iconColor != collapsedState.iconColor) {
             icon.imageTintList = ColorStateList.valueOf(color)
         }
-        if (previousState?.progressColor != collapsedState.progressColor) {
-            progress.setIndicatorColor(collapsedState.progressColor)
-        }
-        if (previousState?.trackColor != collapsedState.trackColor) {
-            progress.trackColor = collapsedState.trackColor
-        }
-        if (previousState?.isWorking != collapsedState.isWorking) {
-            progress.isIndeterminate = isWorking
-        }
-        if (!isWorking) {
-            progress.setProgressCompat(COLLAPSED_STATIC_PROGRESS, false)
+        if (previousState?.badgeColor != collapsedState.badgeColor) {
+            badge.background = createStatusBadgeBackground(badgeColor)
         }
         if (previousState?.contentDescription != collapsedState.contentDescription) {
             collapsedControlView?.contentDescription = description
@@ -830,9 +911,7 @@ class ScreenDetectorService : LifecycleService() {
         } else {
             "选择自动上滑"
         }
-        val statusWidth = dpToPx(
-            if (showLeft || showUp) MANUAL_PAGE_STATUS_WIDTH_DP else STATUS_WIDTH_DP
-        )
+        val statusWidth = dpToPx(STATUS_WIDTH_DP)
         val statusLayoutParams = statusView?.layoutParams
         if (statusLayoutParams != null && statusLayoutParams.width != statusWidth) {
             statusLayoutParams.width = statusWidth
@@ -854,6 +933,14 @@ class ScreenDetectorService : LifecycleService() {
         )
     }
 
+    private fun createStatusBadgeBackground(color: Int): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(color)
+            setStroke(dpToPx(1), COLLAPSED_BADGE_STROKE_COLOR)
+        }
+    }
+
     private fun buildStatusText(renderState: RenderState): String {
         val assistanceText = renderState.assistanceState.statusText
         if (renderState.mode == ScreenDetectorSession.DetectionMode.ACCESSIBILITY &&
@@ -869,6 +956,89 @@ class ScreenDetectorService : LifecycleService() {
         return "$prefix · ${renderState.matches.size} 题"
     }
 
+    private fun updateStatusNotification(renderState: RenderState) {
+        if (renderState.state == ScreenDetectorSession.DetectionState.STOPPED) {
+            cancelStatusNotification()
+            return
+        }
+        createStatusNotificationChannel()
+        NotificationManagerCompat.from(this).notify(
+            STATUS_NOTIFICATION_ID,
+            buildStatusNotification(renderState)
+        )
+    }
+
+    private fun buildStatusNotification(renderState: RenderState): Notification {
+        val assistanceActive = renderState.assistanceState.isActive
+        val touchTitle = if (assistanceActive) {
+            "关闭Touch"
+        } else {
+            "开启Touch"
+        }
+        val touchIcon = if (assistanceActive) {
+            R.drawable.round_pause_24
+        } else {
+            R.drawable.icon_touch_app_24px
+        }
+        val touchAction = NotificationCompat.Action.Builder(
+            touchIcon,
+            touchTitle,
+            createServiceActionPendingIntent(ACTION_TOGGLE_TOUCH, REQUEST_TOGGLE_TOUCH)
+        ).build()
+        val stopAction = NotificationCompat.Action.Builder(
+            R.drawable.round_close_24,
+            "停止",
+            createServiceActionPendingIntent(ACTION_STOP_DETECTION, REQUEST_STOP_DETECTION)
+        ).build()
+        return NotificationCompat.Builder(this, STATUS_NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.round_search_24)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(buildStatusText(renderState))
+            .setOngoing(renderState.state != ScreenDetectorSession.DetectionState.STOPPED)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .addAction(touchAction)
+            .addAction(stopAction)
+            .build()
+    }
+
+    private fun createStatusNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channel = NotificationChannel(
+            STATUS_NOTIFICATION_CHANNEL_ID,
+            "搜题状态",
+            NotificationManager.IMPORTANCE_MIN
+        ).apply {
+            setShowBadge(false)
+            enableLights(false)
+            enableVibration(false)
+            setSound(null, null)
+        }
+        notificationManager.createNotificationChannel(channel)
+    }
+
+    private fun createServiceActionPendingIntent(action: String, requestCode: Int): PendingIntent {
+        return PendingIntent.getService(
+            this,
+            requestCode,
+            Intent(this, ScreenDetectorService::class.java).apply {
+                this.action = action
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun cancelStatusNotification() {
+        NotificationManagerCompat.from(this).cancel(STATUS_NOTIFICATION_ID)
+    }
+
     private fun renderMarkerOverlay(renderState: RenderState) {
         val overlay = markerOverlayView ?: return
         val state = renderState.state
@@ -880,32 +1050,23 @@ class ScreenDetectorService : LifecycleService() {
         }
 
         val overlayFingerprint = ScreenDetectorSession.buildOverlayFingerprint(matches)
-        if (!shouldRenderMarkerOverlay(renderState, overlayFingerprint)) {
-            if (!markerOverlayHiddenForCollapse) {
-                clearMarkerOverlay(overlay)
-                markerOverlayHiddenForCollapse = true
-            }
-            return
-        }
-
-        val showQuestionAnnotations =
-            !isControlCollapsed ||
-                !PreferenceUtils.shouldHideQuestionAnnotationsWhenOverlayCollapsed(this)
-        val showAnswerFrames =
-            !isControlCollapsed ||
-                !PreferenceUtils.shouldHideAnswerFramesWhenOverlayCollapsed(this)
+        val useTouchAnswerDots =
+            renderState.mode == ScreenDetectorSession.DetectionMode.ACCESSIBILITY &&
+                answerDotsOnly
+        val showQuestionAnnotations = !useTouchAnswerDots
+        val showAnswerFrames = true
         val markerRenderKey = MarkerRenderKey(
             state = state,
             frameInfo = frameInfo,
             overlayFingerprint = overlayFingerprint,
             showQuestionAnnotations = showQuestionAnnotations,
-            showAnswerFrames = showAnswerFrames
+            showAnswerFrames = showAnswerFrames,
+            useTouchAnswerDots = useTouchAnswerDots
         )
         if (lastMarkerRenderKey == markerRenderKey) {
             return
         }
 
-        markerOverlayHiddenForCollapse = false
         lastMarkerRenderKey = markerRenderKey
         overlay.setImageSourceInfo(frameInfo.width, frameInfo.height, false)
         overlay.clear()
@@ -918,7 +1079,8 @@ class ScreenDetectorService : LifecycleService() {
                     getOverlayWindowBounds(),
                     overlayFingerprint,
                     showQuestionAnnotations,
-                    showAnswerFrames
+                    showAnswerFrames,
+                    useTouchAnswerDots
                 )
             )
         } else {
@@ -930,21 +1092,7 @@ class ScreenDetectorService : LifecycleService() {
     private fun renderCurrentMarkerOverlay() {
         val renderState = latestRenderState ?: return
         lastMarkerRenderKey = null
-        markerOverlayHiddenForCollapse = false
         renderMarkerOverlay(renderState)
-    }
-
-    private fun shouldRenderMarkerOverlay(
-        renderState: RenderState,
-        overlayFingerprint: String?
-    ): Boolean {
-        if (!isControlCollapsed) {
-            return true
-        }
-        if (renderState.assistanceState.isActive) {
-            return true
-        }
-        return overlayFingerprint == null
     }
 
     private fun clearMarkerOverlay(overlay: GraphicOverlay) {
@@ -1014,42 +1162,48 @@ class ScreenDetectorService : LifecycleService() {
         val frameInfo: ScreenDetectorSession.ScreenFrameInfo,
         val overlayFingerprint: String?,
         val showQuestionAnnotations: Boolean,
-        val showAnswerFrames: Boolean
+        val showAnswerFrames: Boolean,
+        val useTouchAnswerDots: Boolean
     )
 
     private data class CollapsedRenderState(
         val iconRes: Int,
         val iconRotation: Float,
         val iconColor: Int,
-        val progressColor: Int,
-        val trackColor: Int,
-        val isWorking: Boolean,
+        val badgeColor: Int,
         val contentDescription: String
     )
 
     companion object {
         const val LIBRARY_ID = "LibraryId"
+        const val EXTRA_SHOW_FLOATING_WINDOWS = "ShowFloatingWindows"
+        const val EXTRA_SHOW_MARKER_OVERLAY = "ShowMarkerOverlay"
+        const val EXTRA_ANSWER_DOTS_ONLY = "AnswerDotsOnly"
+        private const val ACTION_TOGGLE_TOUCH =
+            "com.virin.visionquiz.screendetector.action.TOGGLE_TOUCH"
+        private const val ACTION_STOP_DETECTION =
+            "com.virin.visionquiz.screendetector.action.STOP_DETECTION"
+        private const val STATUS_NOTIFICATION_CHANNEL_ID = "quiz_search_status"
+        private const val STATUS_NOTIFICATION_ID = 2307
+        private const val REQUEST_TOGGLE_TOUCH = 2308
+        private const val REQUEST_STOP_DETECTION = 2309
         private const val MARKER_WINDOW_ALPHA = 0.74f
         private const val SNAP_ANIMATION_DURATION_MS = 180L
         private const val ENABLED_IMAGE_ALPHA = 255
         private const val DISABLED_IMAGE_ALPHA = 96
         private const val STATUS_WIDTH_DP = 176
-        private const val MANUAL_PAGE_STATUS_WIDTH_DP = 112
+        private const val CONTROL_BUTTON_GAP_DP = 8
         private const val COLLAPSED_SIZE_DP = 52
-        private const val COLLAPSED_PROGRESS_SIZE_DP = 40
-        private const val COLLAPSED_STATIC_PROGRESS = 100
+        private const val COLLAPSED_WINDOW_ALPHA = 0.7f
+        private const val COLLAPSED_BADGE_SIZE_DP = 10
         private val DEFAULT_ICON_COLOR = 0xFF1F2933.toInt()
         private val SELECTED_ICON_COLOR = 0xFF1565C0.toInt()
         private val ERROR_ICON_COLOR = 0xFFC62828.toInt()
-        private val COLLAPSED_PROGRESS_TRACK_COLOR = 0x331565C0
-        private val ERROR_PROGRESS_TRACK_COLOR = 0x33C62828
+        private val PAUSED_BADGE_COLOR = 0xFFF9A825.toInt()
+        private val ASSISTANCE_BADGE_COLOR = 0xFF2E7D32.toInt()
+        private val RUNNING_BADGE_COLOR = 0xFF1565C0.toInt()
+        private val IDLE_BADGE_COLOR = 0xFF9AA3AF.toInt()
+        private val COLLAPSED_BADGE_STROKE_COLOR = 0xFFFFFFFF.toInt()
         private val TOUCH_CONTROLS_DIVIDER_COLOR = 0x401F2933
-        private val ACTIVE_ASSISTANCE_PHASES = setOf(
-            ScreenDetectorSession.AssistancePhase.RECOGNIZING_ANSWERS,
-            ScreenDetectorSession.AssistancePhase.CLICKING_ANSWERS,
-            ScreenDetectorSession.AssistancePhase.REVEALING_OPTIONS,
-            ScreenDetectorSession.AssistancePhase.WAITING_OPTION_UPDATE,
-            ScreenDetectorSession.AssistancePhase.SWIPING
-        )
     }
 }

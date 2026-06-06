@@ -125,10 +125,6 @@
     <string name="pref_key_brief_answer_display" translatable="false">bad</string>
     <string name="pref_title_quiz_overlay_text_size" translatable="true">Quiz overlay text size</string>
     <string name="pref_key_quiz_overlay_text_size" translatable="false">qots</string>
-    <string name="pref_key_hide_question_annotations_when_overlay_collapsed" translatable="false">hcqa</string>
-    <string name="pref_title_hide_question_annotations_when_overlay_collapsed">Hide question frames and answer hints when collapsed</string>
-    <string name="pref_key_hide_answer_frames_when_overlay_collapsed" translatable="false">hcaf</string>
-    <string name="pref_title_hide_answer_frames_when_overlay_collapsed">Hide answer frames when collapsed</string>
 
     <!-- Strings for object detector enable multiple objects preference. -->
     <string name="pref_title_object_detector_enable_multiple_objects" translatable="false">Enable multiple objects</string>
@@ -245,7 +241,18 @@
     <string name="accessibility_search_intro_title">Enable accessibility search</string>
     <string name="accessibility_search_intro_message">%1$s can read visible text exposed by Android accessibility, match it with the selected quiz library, and show results in a floating window. Turn on the %1$s accessibility service in system settings to use it.</string>
     <string name="accessibility_search_prompt_message">Accessibility search is not enabled yet. Turn on the %1$s accessibility service to match visible screen text with the selected quiz library.</string>
-    <string name="accessibility_search_enable_cta">Open accessibility settings</string>
+    <string name="accessibility_search_ready_message">Choose how to show status controls, then start accessibility search.</string>
+    <string name="accessibility_search_enable_cta">Open permission settings</string>
+    <string name="accessibility_search_start_cta">Start</string>
+    <string name="accessibility_search_enable_notifications">Enable notifications</string>
+    <string name="accessibility_search_notifications_enabled">Notifications enabled</string>
+    <string name="accessibility_search_open_notification_settings">Open notification settings</string>
+    <string name="accessibility_search_enable_overlay">Enable floating window</string>
+    <string name="accessibility_search_overlay_enabled">Floating window enabled</string>
+    <string name="accessibility_search_show_overlay_window">Show floating window</string>
+    <string name="accessibility_search_show_overlay_window_summary">Controls only the floating status buttons. Answer boxes or answer dots still follow the answer display setting.</string>
+    <string name="accessibility_search_answer_dots_only">Show answer dots only</string>
+    <string name="accessibility_search_answer_dots_only_summary">Hide question frames and answer boxes, leaving a small dot beside each correct option.</string>
     <string name="accessibility_service_summary">Find quiz answers from accessible screen text</string>
     <string name="accessibility_service_description">Quiz Vision reads visible text exposed to Android accessibility, matches it with the selected quiz library, and shows results in a floating window.</string>
     <string name="share_button_description" translatable="false">share button</string>

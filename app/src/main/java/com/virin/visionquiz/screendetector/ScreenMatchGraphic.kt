@@ -23,7 +23,8 @@ class ScreenMatchGraphic(
     private val screenBounds: ScreenDetectorService.OverlayWindowBounds,
     private val overlayFingerprint: String,
     private val showQuestionAnnotations: Boolean,
-    private val showAnswerFrames: Boolean
+    private val showAnswerFrames: Boolean,
+    private val useTouchAnswerDots: Boolean
 ) : GraphicOverlay.Graphic(overlayView) {
 
     private val displayMatches = matches
@@ -53,6 +54,10 @@ class ScreenMatchGraphic(
         color = ANSWER_FRAME_COLOR
         style = Paint.Style.STROKE
         strokeWidth = ANSWER_FRAME_WIDTH
+    }
+    private val briefAnswerDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = BRIEF_ANSWER_DOT_COLOR
+        style = Paint.Style.FILL
     }
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = LABEL_BACKGROUND_COLOR
@@ -91,19 +96,23 @@ class ScreenMatchGraphic(
             if (showAnswerFrames) {
                 match.answerRects.forEach { answerSourceRect ->
                     val answerRect = mapFrameRectToOverlay(answerSourceRect, overlayLocation)
-                    canvas.drawRoundRect(
-                        answerRect,
-                        ANSWER_FRAME_RADIUS,
-                        ANSWER_FRAME_RADIUS,
-                        answerFrameShadowPaint
-                    )
-                    canvas.drawRoundRect(
-                        answerRect,
-                        ANSWER_FRAME_RADIUS,
-                        ANSWER_FRAME_RADIUS,
-                        answerFramePaint
-                    )
-                    addFrameMaskBounds(answerRect, overlayLocation, screenMaskBounds)
+                    if (useTouchAnswerDots) {
+                        drawBriefAnswerDot(canvas, answerRect, overlayLocation, screenMaskBounds)
+                    } else {
+                        canvas.drawRoundRect(
+                            answerRect,
+                            ANSWER_FRAME_RADIUS,
+                            ANSWER_FRAME_RADIUS,
+                            answerFrameShadowPaint
+                        )
+                        canvas.drawRoundRect(
+                            answerRect,
+                            ANSWER_FRAME_RADIUS,
+                            ANSWER_FRAME_RADIUS,
+                            answerFramePaint
+                        )
+                        addFrameMaskBounds(answerRect, overlayLocation, screenMaskBounds)
+                    }
                 }
             }
             if (showQuestionAnnotations) {
@@ -126,6 +135,26 @@ class ScreenMatchGraphic(
             sourceRect.top * scaleY - overlayLocation[1],
             sourceRect.right * scaleX - overlayLocation[0],
             sourceRect.bottom * scaleY - overlayLocation[1]
+        )
+    }
+
+    private fun drawBriefAnswerDot(
+        canvas: Canvas,
+        answerRect: RectF,
+        overlayLocation: IntArray,
+        outBounds: MutableList<android.graphics.Rect>
+    ) {
+        val radius = BRIEF_ANSWER_DOT_DIAMETER_DP * overlayView.context.resources.displayMetrics.density / 2f
+        val gap = BRIEF_ANSWER_DOT_GAP_DP * overlayView.context.resources.displayMetrics.density
+        val maxCenterX = max(radius, canvas.width - radius)
+        val maxCenterY = max(radius, canvas.height - radius)
+        val centerX = (answerRect.left - gap).coerceIn(radius, maxCenterX)
+        val centerY = answerRect.centerY().coerceIn(radius, maxCenterY)
+        canvas.drawCircle(centerX, centerY, radius, briefAnswerDotPaint)
+        addMaskBound(
+            RectF(centerX - radius, centerY - radius, centerX + radius, centerY + radius),
+            overlayLocation,
+            outBounds
         )
     }
 
@@ -259,6 +288,7 @@ class ScreenMatchGraphic(
         private const val FRAME_SHADOW_COLOR = 0xAA000000.toInt()
         private const val ANSWER_FRAME_COLOR = 0xFF4ADE80.toInt()
         private const val ANSWER_FRAME_SHADOW_COLOR = 0xAA052E16.toInt()
+        private const val BRIEF_ANSWER_DOT_COLOR = 0xDD000000.toInt()
         private const val LABEL_BACKGROUND_COLOR = 0xDD111111.toInt()
         private const val LABEL_BORDER_COLOR = 0xEEFFFFFF.toInt()
         private const val CONNECTOR_COLOR = 0xCCFFFFFF.toInt()
@@ -269,6 +299,8 @@ class ScreenMatchGraphic(
         private const val FRAME_MASK_PADDING = 8f
         private const val FRAME_RADIUS = 6f
         private const val ANSWER_FRAME_RADIUS = 8f
+        private const val BRIEF_ANSWER_DOT_DIAMETER_DP = 2f
+        private const val BRIEF_ANSWER_DOT_GAP_DP = 4f
         private const val LABEL_BORDER_WIDTH = 1.5f
         private const val CONNECTOR_WIDTH = 2f
         private const val LABEL_PADDING = 8f

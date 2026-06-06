@@ -67,6 +67,7 @@ class PermissionManager(val activity: Activity) {
         private const val PERMISSION_REQUESTS = 1
         const val PERMISSION_STATE_PREFS = "permission_state"
         const val KEY_CAMERA_PERMISSION_REQUESTED = "camera_permission_requested"
+        const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
         const val KEY_ACCESSIBILITY_SEARCH_INTRO_SHOWN = "accessibility_search_intro_shown"
 
         private val REQUIRED_RUNTIME_PERMISSIONS =
