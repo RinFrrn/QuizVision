@@ -325,6 +325,20 @@ public class PreferenceUtils {
     return sharedPreferences.getBoolean(prefKey, false);
   }
 
+  public static boolean shouldHideQuestionAnnotationsWhenOverlayCollapsed(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey =
+        context.getString(R.string.pref_key_hide_question_annotations_when_overlay_collapsed);
+    return sharedPreferences.getBoolean(prefKey, false);
+  }
+
+  public static boolean shouldHideAnswerFramesWhenOverlayCollapsed(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey =
+        context.getString(R.string.pref_key_hide_answer_frames_when_overlay_collapsed);
+    return sharedPreferences.getBoolean(prefKey, false);
+  }
+
   public static float getQuizOverlayTextSizeSp(Context context) {
     SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
     String prefKey = context.getString(R.string.pref_key_quiz_overlay_text_size);

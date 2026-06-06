@@ -584,10 +584,22 @@ object QuizManager {
     }
 
     fun normalizeQuestionText(text: String): String {
+        return normalizeMatchText(text, stripQuestionPrefix = true)
+    }
+
+    fun normalizeAnswerText(text: String): String {
+        return normalizeMatchText(text, stripQuestionPrefix = false)
+    }
+
+    private fun normalizeMatchText(text: String, stripQuestionPrefix: Boolean): String {
         val halfWidth = text.trim().map(::normalizeHalfWidthChar).joinToString("")
-        val withoutPrefix = QUESTION_PREFIX_REGEX.replace(halfWidth, "")
-        return buildString(withoutPrefix.length) {
-            withoutPrefix.lowercase().forEach { ch ->
+        val normalizedSource = if (stripQuestionPrefix) {
+            QUESTION_PREFIX_REGEX.replace(halfWidth, "")
+        } else {
+            halfWidth
+        }
+        return buildString(normalizedSource.length) {
+            normalizedSource.lowercase().forEach { ch ->
                 if (isMeaningfulQuestionChar(ch)) {
                     append(ch)
                 }

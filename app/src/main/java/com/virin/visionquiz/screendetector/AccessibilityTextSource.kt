@@ -5,6 +5,7 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
@@ -51,6 +52,9 @@ class AccessibilityTextSource(
     private var scanInFlight = false
     private var pendingScan = false
     private var pendingScanAllowPaused = false
+    private var lastScanStartedAtMs = 0L
+    private var scheduledScanAtMs = 0L
+    private var scheduledScanAllowPaused = false
 
     private val periodicScanRunnable = object : Runnable {
         override fun run() {
@@ -66,19 +70,29 @@ class AccessibilityTextSource(
         scanOnce(allowPaused = false)
     }
 
+    private val rateLimitedScanRunnable = Runnable {
+        val allowPaused = scheduledScanAllowPaused
+        scheduledScanAtMs = 0L
+        scheduledScanAllowPaused = false
+        scanOnce(allowPaused = allowPaused)
+    }
+
     fun start() {
         active = true
         paused = false
         QuizAccessibilityService.callback = this
         publishScreenFrameInfo()
         handler.removeCallbacks(periodicScanRunnable)
-        handler.post(periodicScanRunnable)
+        handler.postDelayed(periodicScanRunnable, intervalMs)
         scanOnce(allowPaused = false)
     }
 
     fun pause() {
         paused = true
         handler.removeCallbacks(eventScanRunnable)
+        handler.removeCallbacks(rateLimitedScanRunnable)
+        scheduledScanAtMs = 0L
+        scheduledScanAllowPaused = false
     }
 
     fun resume() {
@@ -99,6 +113,9 @@ class AccessibilityTextSource(
         paused = false
         handler.removeCallbacks(periodicScanRunnable)
         handler.removeCallbacks(eventScanRunnable)
+        handler.removeCallbacks(rateLimitedScanRunnable)
+        scheduledScanAtMs = 0L
+        scheduledScanAllowPaused = false
         if (QuizAccessibilityService.callback === this) {
             QuizAccessibilityService.callback = null
         }
@@ -124,17 +141,24 @@ class AccessibilityTextSource(
             return
         }
         val service = QuizAccessibilityService.instance ?: return
+        val now = SystemClock.uptimeMillis()
+        if (!allowPaused) {
+            val delayMs = intervalMs - (now - lastScanStartedAtMs)
+            if (delayMs > 0) {
+                scheduleRateLimitedScan(delayMs, allowPaused = false)
+                return
+            }
+        }
         if (!markScanStarted(allowPaused)) {
             return
         }
+        lastScanStartedAtMs = now
         val screenBounds: Rect
         val nodes: List<QuizAccessibilityService.TextNode>
-        val candidates: List<TextCandidate>
         try {
             screenBounds = getScreenBounds()
             publishScreenFrameInfo(screenBounds)
             nodes = service.collectVisibleTextNodes(appContext.packageName, screenBounds)
-            candidates = buildTextCandidates(nodes, screenBounds)
         } catch (e: Exception) {
             Log.e(TAG, "Unable to collect accessibility text nodes.", e)
             finishScan()
@@ -145,6 +169,7 @@ class AccessibilityTextSource(
 
         matchScope.launch {
             try {
+                val candidates = buildTextCandidates(nodes, screenBounds)
                 val quizIndex = getQuizIndex(quizSnapshot)
                 val matches = candidates.asSequence()
                     .filter { it.allowQuestionMatch }
@@ -155,6 +180,9 @@ class AccessibilityTextSource(
                             minScore = minMatchScore
                         ).firstOrNull()
                             ?: return@mapNotNull null
+                        if (!isReliableQuestionMatch(candidate.text, bestMatch.first.prompt)) {
+                            return@mapNotNull null
+                        }
                         AccessibilityMatch(
                             question = bestMatch.first,
                             distance = bestMatch.second,
@@ -180,6 +208,17 @@ class AccessibilityTextSource(
                 }
             }
         }
+    }
+
+    private fun scheduleRateLimitedScan(delayMs: Long, allowPaused: Boolean) {
+        val targetTimeMs = SystemClock.uptimeMillis() + delayMs
+        scheduledScanAllowPaused = scheduledScanAllowPaused || allowPaused
+        if (scheduledScanAtMs != 0L && scheduledScanAtMs <= targetTimeMs) {
+            return
+        }
+        handler.removeCallbacks(rateLimitedScanRunnable)
+        scheduledScanAtMs = targetTimeMs
+        handler.postDelayed(rateLimitedScanRunnable, delayMs)
     }
 
     private fun markScanStarted(allowPaused: Boolean): Boolean {
@@ -403,6 +442,9 @@ class AccessibilityTextSource(
         if (normalizedCandidate == normalizedOption) {
             return ANSWER_MATCH_EXACT
         }
+        if (normalizedOption.length <= SHORT_OPTION_EXACT_MATCH_MAX_LENGTH) {
+            return null
+        }
         if (
             normalizedCandidate.length < MIN_CONTAINS_OPTION_LENGTH ||
             normalizedOption.length < MIN_CONTAINS_OPTION_LENGTH
@@ -421,8 +463,18 @@ class AccessibilityTextSource(
         return null
     }
 
+    private fun isReliableQuestionMatch(candidateText: String, prompt: String): Boolean {
+        if (minMatchScore < STRICT_MATCH_SCORE) {
+            return true
+        }
+        val normalizedCandidate = QuizManager.normalizeQuestionText(candidateText)
+        val normalizedPrompt = QuizManager.normalizeQuestionText(prompt)
+        return normalizedCandidate == normalizedPrompt ||
+            normalizedCandidate.contains(normalizedPrompt)
+    }
+
     private fun normalizeOptionText(text: String): String {
-        return QuizManager.normalizeQuestionText(
+        return QuizManager.normalizeAnswerText(
             OPTION_PREFIX_REGEX.replace(
                 text.replace(WHITESPACE_REGEX, " ").trim(),
                 ""
@@ -515,6 +567,8 @@ class AccessibilityTextSource(
         private const val MAX_ANSWER_SEARCH_NODE_COUNT = 24
         private const val MAX_ANSWER_CANDIDATE_NODE_COUNT = 3
         private const val MIN_CONTAINS_OPTION_LENGTH = 2
+        private const val SHORT_OPTION_EXACT_MATCH_MAX_LENGTH = 4
+        private const val STRICT_MATCH_SCORE = 1.0
         private const val MAX_COMBINED_RECT_HEIGHT_RATIO = 0.45f
         private const val MAX_ANSWER_RECT_HEIGHT_RATIO = 0.18f
         private const val MAX_ANSWER_VERTICAL_SPAN_RATIO = 0.5f

@@ -20,7 +20,10 @@ class ScreenMatchGraphic(
     private val overlayView: GraphicOverlay,
     matches: List<QuizGraphicItem>,
     private val frameInfo: ScreenDetectorSession.ScreenFrameInfo,
-    private val screenBounds: ScreenDetectorService.OverlayWindowBounds
+    private val screenBounds: ScreenDetectorService.OverlayWindowBounds,
+    private val overlayFingerprint: String,
+    private val showQuestionAnnotations: Boolean,
+    private val showAnswerFrames: Boolean
 ) : GraphicOverlay.Graphic(overlayView) {
 
     private val displayMatches = matches
@@ -81,28 +84,35 @@ class ScreenMatchGraphic(
         overlayView.getLocationOnScreen(overlayLocation)
         displayMatches.forEach { match ->
             val rect = mapFrameRectToOverlay(match.rect, overlayLocation)
-            canvas.drawRoundRect(rect, FRAME_RADIUS, FRAME_RADIUS, frameShadowPaint)
-            canvas.drawRoundRect(rect, FRAME_RADIUS, FRAME_RADIUS, framePaint)
-            match.answerRects.forEach { answerSourceRect ->
-                val answerRect = mapFrameRectToOverlay(answerSourceRect, overlayLocation)
-                canvas.drawRoundRect(
-                    answerRect,
-                    ANSWER_FRAME_RADIUS,
-                    ANSWER_FRAME_RADIUS,
-                    answerFrameShadowPaint
-                )
-                canvas.drawRoundRect(
-                    answerRect,
-                    ANSWER_FRAME_RADIUS,
-                    ANSWER_FRAME_RADIUS,
-                    answerFramePaint
-                )
-                addFrameMaskBounds(answerRect, overlayLocation, screenMaskBounds)
+            if (showQuestionAnnotations) {
+                canvas.drawRoundRect(rect, FRAME_RADIUS, FRAME_RADIUS, frameShadowPaint)
+                canvas.drawRoundRect(rect, FRAME_RADIUS, FRAME_RADIUS, framePaint)
             }
-            val labelRect = drawLabel(canvas, rect, buildAnswerLabel(match), occupiedLabels)
-            addMaskBound(labelRect, overlayLocation, screenMaskBounds)
+            if (showAnswerFrames) {
+                match.answerRects.forEach { answerSourceRect ->
+                    val answerRect = mapFrameRectToOverlay(answerSourceRect, overlayLocation)
+                    canvas.drawRoundRect(
+                        answerRect,
+                        ANSWER_FRAME_RADIUS,
+                        ANSWER_FRAME_RADIUS,
+                        answerFrameShadowPaint
+                    )
+                    canvas.drawRoundRect(
+                        answerRect,
+                        ANSWER_FRAME_RADIUS,
+                        ANSWER_FRAME_RADIUS,
+                        answerFramePaint
+                    )
+                    addFrameMaskBounds(answerRect, overlayLocation, screenMaskBounds)
+                }
+            }
+            if (showQuestionAnnotations) {
+                val labelRect = drawLabel(canvas, rect, buildAnswerLabel(match), occupiedLabels)
+                addMaskBound(labelRect, overlayLocation, screenMaskBounds)
+            }
         }
         ScreenDetectorSession.publishAnnotationBounds(screenMaskBounds)
+        ScreenDetectorSession.markOverlayRendered(overlayFingerprint)
     }
 
     private fun mapFrameRectToOverlay(
