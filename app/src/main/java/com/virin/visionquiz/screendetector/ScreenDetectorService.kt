@@ -357,7 +357,7 @@ class ScreenDetectorService : LifecycleService() {
             )
 
             val collapseButton = createControlIconButton(
-                iconRes = R.drawable.icon_collapse_all_24px,
+                iconRes = R.drawable.icon_hide_24px,
                 description = "折叠悬浮窗"
             ).apply {
                 setOnClickListener { setControlCollapsed(true) }

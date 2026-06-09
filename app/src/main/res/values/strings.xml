@@ -271,6 +271,12 @@
     <string name="merge">Merge</string>
     <string name="about">About</string>
     <string name="about_message">%1$s\nVersion %2$s (%3$d)</string>
+    <string name="sort">排序</string>
+    <string name="sort_by_default">默认顺序</string>
+    <string name="sort_by_name">按名称</string>
+    <string name="sort_by_count">按题数</string>
+    <string name="sort_ascending">正序</string>
+    <string name="sort_descending">倒序</string>
 
     <string name="processor_test">Processor Test</string>
     <string name="screen_test">Screen Reco. Test</string>

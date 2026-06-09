@@ -26,6 +26,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.RadioGroup
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.addCallback
@@ -64,6 +65,7 @@ import com.virin.visionquiz.util.configureQuizTopBar
 import com.virin.visionquiz.util.dp
 import com.virin.visionquiz.util.refreshQuizTopBarMenu
 import kotlinx.coroutines.launch
+import java.util.Locale
 import kotlin.math.max
 
 
@@ -156,6 +158,11 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 
         viewModel.quizLibraryList.observe(viewLifecycleOwner) { list ->
             binding.emptyLl.visibility = if (list.isNullOrEmpty()) View.VISIBLE else View.GONE
+            if (!list.isNullOrEmpty()) {
+                getAdapter().submitList(sortList(list))
+            } else {
+                getAdapter().submitList(emptyList())
+            }
         }
 //        // Observe the quiz library list from the ViewModel
 //        viewModel.quizLibraryList.observe(viewLifecycleOwner, { quizLibraries ->
@@ -726,6 +733,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
                 menu.findItem(R.id.delete)
             )
         else listOf<MenuItem>(
+            menu.findItem(R.id.sort),
             menu.findItem(R.id.more),
             menu.findItem(R.id.search_settings),
             menu.findItem(R.id.import_settings),
@@ -754,6 +762,9 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 
     private fun onTopBarMenuItemSelected(menuItem: MenuItem): Boolean {
         when (menuItem.itemId) {
+            R.id.sort -> {
+                showSortDialog()
+            }
             R.id.select -> {
                 getAdapter().enterSelectionMode()
             }
@@ -1046,10 +1057,104 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         }
     }
 
+    private fun getSortPrefs(): android.content.SharedPreferences {
+        return requireContext().getSharedPreferences(SORT_PREF_NAME, Context.MODE_PRIVATE)
+    }
+
+    private fun getSortBy(): String {
+        return getSortPrefs().getString(SORT_BY_KEY, SORT_BY_DEFAULT) ?: SORT_BY_DEFAULT
+    }
+
+    private fun isAscending(): Boolean {
+        return getSortPrefs().getBoolean(SORT_ASC_KEY, true)
+    }
+
+    private fun sortList(list: List<QuizLibrary>): List<QuizLibrary> {
+        val ascending = isAscending()
+        return when (getSortBy()) {
+            SORT_BY_NAME -> if (ascending) {
+                list.sortedWith(compareBy(nullsLast()) { it.name.lowercase(Locale.getDefault()) })
+            } else {
+                list.sortedWith(compareByDescending(nullsLast()) { it.name.lowercase(Locale.getDefault()) })
+            }
+            SORT_BY_COUNT -> if (ascending) {
+                list.sortedBy { it.quizCount }
+            } else {
+                list.sortedByDescending { it.quizCount }
+            }
+            else -> if (ascending) {
+                list.sortedBy { it.id }
+            } else {
+                list.sortedByDescending { it.id }
+            }
+        }
+    }
+
+    private fun showSortDialog() {
+        val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_sort, null)
+        val sortByGroup = dialogView.findViewById<RadioGroup>(R.id.sort_by_group)
+        val dirAscRow = dialogView.findViewById<View>(R.id.sort_dir_asc)
+        val dirDescRow = dialogView.findViewById<View>(R.id.sort_dir_desc)
+        val dirAscCheck = dialogView.findViewById<View>(R.id.sort_dir_asc_check)
+        val dirDescCheck = dialogView.findViewById<View>(R.id.sort_dir_desc_check)
+
+        // Set current sort-by selection
+        when (getSortBy()) {
+            SORT_BY_NAME -> sortByGroup.check(R.id.sort_by_name)
+            SORT_BY_COUNT -> sortByGroup.check(R.id.sort_by_count)
+            else -> sortByGroup.check(R.id.sort_by_default)
+        }
+
+        // Set current direction selection
+        fun refreshDirectionIcons(ascending: Boolean) {
+            dirAscCheck.visibility = if (ascending) View.VISIBLE else View.INVISIBLE
+            dirDescCheck.visibility = if (ascending) View.INVISIBLE else View.VISIBLE
+        }
+        refreshDirectionIcons(isAscending())
+
+        sortByGroup.setOnCheckedChangeListener { _, checkedId ->
+            val sortBy = when (checkedId) {
+                R.id.sort_by_name -> SORT_BY_NAME
+                R.id.sort_by_count -> SORT_BY_COUNT
+                else -> SORT_BY_DEFAULT
+            }
+            getSortPrefs().edit().putString(SORT_BY_KEY, sortBy).apply()
+            applySort()
+        }
+
+        dirAscRow.setOnClickListener {
+            getSortPrefs().edit().putBoolean(SORT_ASC_KEY, true).apply()
+            refreshDirectionIcons(true)
+            applySort()
+        }
+        dirDescRow.setOnClickListener {
+            getSortPrefs().edit().putBoolean(SORT_ASC_KEY, false).apply()
+            refreshDirectionIcons(false)
+            applySort()
+        }
+
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.sort)
+            .setView(dialogView)
+            .show()
+    }
+
+    private fun applySort() {
+        viewModel.quizLibraryList.value?.let { list ->
+            getAdapter().submitList(sortList(list))
+        }
+    }
+
     companion object {
         private const val TAG = "QuizLibraryListFragment"
         private const val REQUEST_CHOOSE_FILE = 10001
         private const val TITLE = "全部题库"
+        private const val SORT_PREF_NAME = "quiz_library_sort"
+        private const val SORT_BY_KEY = "sort_by"
+        private const val SORT_ASC_KEY = "sort_ascending"
+        private const val SORT_BY_DEFAULT = "default"
+        private const val SORT_BY_NAME = "name"
+        private const val SORT_BY_COUNT = "count"
     }
 }
 

@@ -2,6 +2,12 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
+        android:id="@+id/sort"
+        android:icon="@drawable/icon_sort_24px"
+        android:orderInCategory="90"
+        android:title="@string/sort"
+        app:showAsAction="always" />
+    <item
         android:id="@+id/more"
         android:icon="@drawable/round_more_horiz_24"
         android:orderInCategory="100"
