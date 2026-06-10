@@ -18,9 +18,9 @@
     <string name="accessibility_search_open_notification_settings">去通知设置</string>
     <string name="accessibility_search_enable_overlay">开启悬浮窗</string>
     <string name="accessibility_search_overlay_enabled">已开启悬浮窗</string>
-    <string name="accessibility_search_show_overlay_window">显示悬浮窗</string>
-    <string name="accessibility_search_show_overlay_window_summary">仅控制状态按钮悬浮窗；答案框或答案小点仍由答案显示方式控制。</string>
-    <string name="accessibility_search_answer_dots_only">只显示答案小点</string>
+    <string name="accessibility_search_show_overlay_window">显示悬浮控制</string>
+    <string name="accessibility_search_show_overlay_window_summary">仅控制悬浮状态与操作按钮；答案框或答案标记仍由答案显示方式控制。</string>
+    <string name="accessibility_search_answer_dots_only">简化答案显示</string>
     <string name="accessibility_search_answer_dots_only_summary">隐藏题目框和答案框，仅在正确选项左侧显示小点。</string>
     <string name="accessibility_service_summary">读取屏幕可访问文字并匹配题库</string>
     <string name="accessibility_service_description">题眼识会读取 Android 无障碍系统暴露的屏幕文字，与当前题库匹配，并通过悬浮窗展示结果。</string>
@@ -103,6 +103,11 @@
     <string name="pref_title_screen_search_interval">屏幕搜题间隔</string>
     <string name="pref_title_screen_capture_frame_rate">屏幕采集帧率</string>
     <string name="pref_title_accessibility_search_interval">无障碍搜题间隔</string>
+    <string name="pref_category_accessibility_search">无障碍搜题</string>
+    <string name="pref_title_accessibility_vertical_swipe_mode">无障碍上滑方式</string>
+    <string name="pref_summary_accessibility_vertical_swipe_mode" formatted="false">固定距离每次上滑屏幕高度的 60%；智能滑动优先对齐最后一题，无法计算时回退到 60%。</string>
+    <string name="pref_accessibility_vertical_swipe_fixed">固定距离滑动</string>
+    <string name="pref_accessibility_vertical_swipe_smart">智能滑动</string>
     <string name="pref_category_match_threshold">匹配阈值</string>
     <string name="pref_title_camera_search_min_match_score">摄像头搜题匹配阈值</string>
     <string name="pref_title_screen_search_min_match_score">屏幕搜题匹配阈值</string>

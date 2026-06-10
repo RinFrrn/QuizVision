@@ -38,12 +38,14 @@ object ScreenDetectorSession {
         val questionRect: Rect,
         val points: List<Point>,
         val fingerprint: String,
-        val isComplete: Boolean
+        val isComplete: Boolean,
+        val isBlockedByDangerousAction: Boolean
     )
 
     data class AnswerClickPlan(
         val targets: List<AnswerTarget>,
         val bottomClippedTarget: AnswerTarget?,
+        val dangerousActionBlockedTarget: AnswerTarget?,
         val contentFingerprint: String,
     )
 
@@ -113,6 +115,7 @@ object ScreenDetectorSession {
 
     private val _annotationBounds = MutableStateFlow<List<Rect>>(emptyList())
     private val _renderedOverlayFingerprint = MutableStateFlow<String?>(null)
+    private val _dangerousActionBounds = MutableStateFlow<List<Rect>>(emptyList())
 
     private val _screenFrameInfo = MutableStateFlow<ScreenFrameInfo?>(null)
     val screenFrameInfo: StateFlow<ScreenFrameInfo?> = _screenFrameInfo.asStateFlow()
@@ -217,6 +220,20 @@ object ScreenDetectorSession {
         return _annotationBounds.value.map { Rect(it) }
     }
 
+    fun publishDangerousActionBounds(bounds: List<Rect>) {
+        if (_dangerousActionBounds.value == bounds) {
+            return
+        }
+        _dangerousActionBounds.value = bounds.map(::Rect)
+    }
+
+    fun clearDangerousActionBounds() {
+        if (_dangerousActionBounds.value.isEmpty()) {
+            return
+        }
+        _dangerousActionBounds.value = emptyList()
+    }
+
     fun requestPauseResume() {
         when (_state.value) {
             DetectionState.RUNNING -> controller?.pauseScreenDetection()
@@ -275,6 +292,7 @@ object ScreenDetectorSession {
         val frameInfo = _screenFrameInfo.value ?: return null
         val screenBounds = Rect(0, 0, frameInfo.width, frameInfo.height)
         val controlBounds = _overlayBounds.value
+        val dangerousActionBounds = _dangerousActionBounds.value
         val seenRects = mutableSetOf<String>()
         val sortedMatches = _matches.value
             .sortedWith(
@@ -286,12 +304,17 @@ object ScreenDetectorSession {
                 val points = mutableListOf<Point>()
                 val fingerprintParts = mutableListOf<String>()
                 val questionFingerprint = buildQuestionFingerprint(match)
+                var isBlockedByDangerousAction = false
                 match.answerRects.forEachIndexed { answerOrder, answerRect ->
                     if (answerRect.isEmpty || !screenBounds.contains(answerRect.centerX(), answerRect.centerY())) {
                         return@forEachIndexed
                     }
                     val center = Point(answerRect.centerX(), answerRect.centerY())
                     if (controlBounds?.contains(center.x, center.y) == true) {
+                        return@forEachIndexed
+                    }
+                    if (dangerousActionBounds.any { it.contains(center.x, center.y) }) {
+                        isBlockedByDangerousAction = true
                         return@forEachIndexed
                     }
                     val rectKey = answerRect.flattenToString()
@@ -312,7 +335,8 @@ object ScreenDetectorSession {
                             (
                                 !match.question.isMultipleChoice ||
                                     match.optionRects.size == match.question.options.size
-                                )
+                                ),
+                    isBlockedByDangerousAction = isBlockedByDangerousAction
                 )
             }
 
@@ -322,11 +346,15 @@ object ScreenDetectorSession {
         val lastTarget = targets.last()
         val bottomClippedTarget = lastTarget.takeIf {
             !it.isComplete &&
+                !it.isBlockedByDangerousAction &&
                 it.questionRect.centerY() >= screenBounds.top + screenBounds.height() / 2
         }
         return AnswerClickPlan(
             targets = targets,
             bottomClippedTarget = bottomClippedTarget,
+            dangerousActionBlockedTarget = targets.lastOrNull {
+                it.isBlockedByDangerousAction
+            },
             contentFingerprint = buildQuestionContentFingerprint() ?: return null,
         )
     }

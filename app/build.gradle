@@ -14,8 +14,8 @@ android {
         multiDexEnabled true
         targetSdkVersion 33
 
-        versionCode 252
-        versionName "2.5.2"
+        versionCode 253
+        versionName "2.5.3"
         vectorDrawables.useSupportLibrary = true
         setProperty("archivesBaseName", "vision-quiz")
 

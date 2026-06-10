@@ -58,6 +58,7 @@ class SearchSettingsFragment : Fragment() {
                     setPadding(16.dp(context), 16.dp(context), 16.dp(context), 24.dp(context))
                     addCameraSection(context)
                     addTextRecognitionSection(context)
+                    addAccessibilitySection(context)
                     addMatchThresholdSection(context)
                 },
                 FrameLayout.LayoutParams(
@@ -161,6 +162,23 @@ class SearchSettingsFragment : Fragment() {
         addSection(context, getString(R.string.pref_category_text_recognition), rows)
     }
 
+    private fun LinearLayout.addAccessibilitySection(context: Context) {
+        val rows = listOf(
+            createArrayListRow(
+                context = context,
+                keyResId = R.string.pref_key_accessibility_vertical_swipe_mode,
+                titleResId = R.string.pref_title_accessibility_vertical_swipe_mode,
+                summary = getString(R.string.pref_summary_accessibility_vertical_swipe_mode),
+                defaultValue = getString(
+                    R.string.pref_value_accessibility_vertical_swipe_fixed
+                ),
+                entriesResId = R.array.pref_entries_accessibility_vertical_swipe_mode,
+                valuesResId = R.array.pref_entry_values_accessibility_vertical_swipe_mode
+            )
+        )
+        addSection(context, getString(R.string.pref_category_accessibility_search), rows)
+    }
+
     private fun LinearLayout.addMatchThresholdSection(context: Context) {
         val rows = listOf(
             createThresholdRow(
@@ -244,6 +262,7 @@ class SearchSettingsFragment : Fragment() {
         context: Context,
         @StringRes keyResId: Int,
         @StringRes titleResId: Int,
+        summary: String? = null,
         defaultValue: String,
         @ArrayRes entriesResId: Int,
         @ArrayRes valuesResId: Int
@@ -252,6 +271,7 @@ class SearchSettingsFragment : Fragment() {
             context = context,
             keyResId = keyResId,
             titleResId = titleResId,
+            summary = summary,
             defaultValue = defaultValue,
             entries = resources.getStringArray(entriesResId),
             values = resources.getStringArray(valuesResId)
@@ -357,6 +377,7 @@ class SearchSettingsFragment : Fragment() {
         context: Context,
         @StringRes keyResId: Int,
         @StringRes titleResId: Int,
+        summary: String? = null,
         defaultValue: String,
         entries: Array<String>,
         values: Array<String>
@@ -372,7 +393,7 @@ class SearchSettingsFragment : Fragment() {
             maxLines = 2
         }
 
-        return createBaseRow(context, getString(titleResId), null, summaryView).apply {
+        return createBaseRow(context, getString(titleResId), summary, summaryView).apply {
             setOnClickListener {
                 val selectedIndex = values.indexOf(currentStoredString(key, defaultValue)).coerceAtLeast(0)
                 MaterialAlertDialogBuilder(context)

@@ -323,8 +323,31 @@ class ScreenDetectorService : LifecycleService() {
             gravity = Gravity.CENTER_HORIZONTAL
             setBackgroundResource(R.drawable.bg_overlay_window)
             elevation = dpToPx(8).toFloat()
-            setPadding(dpToPx(10), dpToPx(7), dpToPx(10), dpToPx(7))
+            setPadding(dpToPx(10), dpToPx(2), dpToPx(10), dpToPx(7))
             setOnTouchListener { view, event -> handleControlBarTouch(view, event) }
+
+            val dragHandleArea = FrameLayout(context).apply {
+                contentDescription = "拖动悬浮控制"
+                isClickable = true
+                setOnTouchListener { view, event -> handleControlBarTouch(view, event) }
+                addView(
+                    View(context).apply {
+                        background = createDragHandleBackground()
+                    },
+                    FrameLayout.LayoutParams(
+                        dpToPx(DRAG_HANDLE_WIDTH_DP),
+                        dpToPx(DRAG_HANDLE_HEIGHT_DP),
+                        Gravity.CENTER
+                    )
+                )
+            }
+            addView(
+                dragHandleArea,
+                LinearLayout.LayoutParams(
+                    dpToPx(STATUS_WIDTH_DP),
+                    dpToPx(DRAG_HANDLE_TOUCH_HEIGHT_DP)
+                )
+            )
 
             statusView = TextView(context).apply {
                 setTextColor(0xFF111111.toInt())
@@ -1017,6 +1040,14 @@ class ScreenDetectorService : LifecycleService() {
         }
     }
 
+    private fun createDragHandleBackground(): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dpToPx(DRAG_HANDLE_HEIGHT_DP).toFloat() / 2f
+            setColor(DRAG_HANDLE_COLOR)
+        }
+    }
+
     private fun buildStatusText(renderState: RenderState): String {
         val assistanceText = renderState.assistanceState.statusText
         if (renderState.mode == ScreenDetectorSession.DetectionMode.ACCESSIBILITY &&
@@ -1308,6 +1339,9 @@ class ScreenDetectorService : LifecycleService() {
         private const val DISABLED_IMAGE_ALPHA = 96
         private const val STATUS_WIDTH_DP = 176
         private const val CONTROL_BUTTON_GAP_DP = 8
+        private const val DRAG_HANDLE_WIDTH_DP = 36
+        private const val DRAG_HANDLE_HEIGHT_DP = 4
+        private const val DRAG_HANDLE_TOUCH_HEIGHT_DP = 12
         private const val COLLAPSED_SIZE_DP = 52
         private const val COLLAPSED_WINDOW_ALPHA = 0.7f
         private const val COLLAPSED_BADGE_SIZE_DP = 10
@@ -1320,5 +1354,6 @@ class ScreenDetectorService : LifecycleService() {
         private val IDLE_BADGE_COLOR = 0xFF9AA3AF.toInt()
         private val COLLAPSED_BADGE_STROKE_COLOR = 0xFFFFFFFF.toInt()
         private val TOUCH_CONTROLS_DIVIDER_COLOR = 0x401F2933
+        private val DRAG_HANDLE_COLOR = 0x521F2933
     }
 }

@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class AccessibilityTextSource(
     private val context: Context,
     private val quizzes: LiveData<List<Quiz>>,
-    private val onMatchesDetected: (List<QuizGraphicItem>, Int) -> Unit,
+    private val onMatchesDetected: (List<QuizGraphicItem>, Int, List<Rect>) -> Unit,
     private val onPageActivityDetected: () -> Unit
 ) : QuizAccessibilityService.Callback {
 
@@ -156,6 +156,7 @@ class AccessibilityTextSource(
             pendingScanAllowPaused = false
         }
         ScreenDetectorSession.clearScreenFrameInfo()
+        ScreenDetectorSession.clearDangerousActionBounds()
     }
 
     override fun onAccessibilityContentChanged(hasPageMovement: Boolean) {
@@ -195,11 +196,11 @@ class AccessibilityTextSource(
         }
         lastScanStartedAtMs = now
         val screenBounds: Rect
-        val nodes: List<QuizAccessibilityService.TextNode>
+        val pageSnapshot: QuizAccessibilityService.PageSnapshot
         try {
             screenBounds = getScreenBounds()
             publishScreenFrameInfo(screenBounds)
-            nodes = service.collectVisibleTextNodes(appContext.packageName, screenBounds)
+            pageSnapshot = service.collectPageSnapshot(appContext.packageName, screenBounds)
         } catch (e: Exception) {
             Log.e(TAG, "Unable to collect accessibility text nodes.", e)
             finishScan()
@@ -210,6 +211,7 @@ class AccessibilityTextSource(
 
         matchScope.launch {
             try {
+                val nodes = pageSnapshot.textNodes
                 val candidates = buildTextCandidates(nodes, screenBounds)
                 val quizIndex = getQuizIndex(quizSnapshot)
                 val matches = candidates.asSequence()
@@ -242,6 +244,7 @@ class AccessibilityTextSource(
                     }
                     publishStableMatches(
                         displayMatches = displayMatches,
+                        dangerousActionBounds = pageSnapshot.dangerousActionBounds,
                         nodeCount = nodes.size,
                         candidateCount = candidates.size
                     )
@@ -298,6 +301,7 @@ class AccessibilityTextSource(
 
     private fun publishStableMatches(
         displayMatches: List<QuizGraphicItem>,
+        dangerousActionBounds: List<Rect>,
         nodeCount: Int,
         candidateCount: Int
     ) {
@@ -329,7 +333,11 @@ class AccessibilityTextSource(
             "stable accessibility scan version=$publishedSnapshotVersion, " +
                 "nodes=$nodeCount, candidates=$candidateCount, matches=${displayMatches.size}"
         )
-        onMatchesDetected(displayMatches, publishedSnapshotVersion)
+        onMatchesDetected(
+            displayMatches,
+            publishedSnapshotVersion,
+            dangerousActionBounds.map(::Rect)
+        )
     }
 
     private fun scheduleStabilityScan(delayMs: Long) {

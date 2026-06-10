@@ -43,6 +43,16 @@
     <item>60</item>
   </string-array>
 
+  <string-array name="pref_entries_accessibility_vertical_swipe_mode">
+    <item>@string/pref_accessibility_vertical_swipe_fixed</item>
+    <item>@string/pref_accessibility_vertical_swipe_smart</item>
+  </string-array>
+
+  <string-array name="pref_entry_values_accessibility_vertical_swipe_mode">
+    <item>@string/pref_value_accessibility_vertical_swipe_fixed</item>
+    <item>@string/pref_value_accessibility_vertical_swipe_smart</item>
+  </string-array>
+
   <string-array name="pref_entries_face_detector_landmark_mode">
     <item>@string/pref_entries_face_detector_landmark_mode_no_landmarks</item>
     <item>@string/pref_entries_face_detector_landmark_mode_all_landmarks</item>

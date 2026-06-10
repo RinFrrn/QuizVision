@@ -28,6 +28,17 @@ class QuizAccessibilityService : AccessibilityService() {
         val rect: Rect
     )
 
+    data class PageSnapshot(
+        val textNodes: List<TextNode>,
+        val dangerousActionBounds: List<Rect>
+    )
+
+    enum class ClickSequenceResult {
+        COMPLETED,
+        CANCELLED,
+        BLOCKED_BY_DANGEROUS_ACTION
+    }
+
     enum class PageAxis {
         HORIZONTAL,
         VERTICAL
@@ -89,25 +100,56 @@ class QuizAccessibilityService : AccessibilityService() {
     fun clickPointsSequentially(
         points: List<Point>,
         startIndex: Int = 0,
+        excludedPackageName: String,
+        screenBounds: Rect,
         shouldContinue: () -> Boolean = { true },
         onPointCompleted: (Int) -> Unit = {},
-        onComplete: (Boolean) -> Unit
+        onComplete: (ClickSequenceResult) -> Unit
     ) {
         if (points.isEmpty() || startIndex !in 0..points.size) {
-            onComplete(false)
+            onComplete(ClickSequenceResult.CANCELLED)
             return
         }
         if (startIndex == points.size) {
-            onComplete(true)
+            onComplete(ClickSequenceResult.COMPLETED)
+            return
+        }
+        val remainingPoints = points.subList(startIndex, points.size)
+        if (hasDangerousActionAtAnyPoint(
+                remainingPoints,
+                excludedPackageName,
+                screenBounds
+            )
+        ) {
+            onComplete(ClickSequenceResult.BLOCKED_BY_DANGEROUS_ACTION)
             return
         }
         activeGestureCompletion?.invoke(false)
-        activeGestureCompletion = onComplete
+        var blockedByDangerousAction = false
+        activeGestureCompletion = { success ->
+            onComplete(
+                when {
+                    success -> ClickSequenceResult.COMPLETED
+                    blockedByDangerousAction ->
+                        ClickSequenceResult.BLOCKED_BY_DANGEROUS_ACTION
+                    else -> ClickSequenceResult.CANCELLED
+                }
+            )
+        }
         val generation = ++gestureGeneration
         dispatchNextPoint(
             points = points.map(::Point),
             index = startIndex,
             generation = generation,
+            isPointBlocked = { point ->
+                val blocked = hasDangerousActionAtAnyPoint(
+                    listOf(point),
+                    excludedPackageName,
+                    screenBounds
+                )
+                blockedByDangerousAction = blockedByDangerousAction || blocked
+                blocked
+            },
             shouldContinue = shouldContinue,
             onPointCompleted = onPointCompleted
         )
@@ -184,6 +226,7 @@ class QuizAccessibilityService : AccessibilityService() {
         points: List<Point>,
         index: Int,
         generation: Int,
+        isPointBlocked: (Point) -> Boolean,
         shouldContinue: () -> Boolean,
         onPointCompleted: (Int) -> Unit
     ) {
@@ -200,6 +243,10 @@ class QuizAccessibilityService : AccessibilityService() {
         }
 
         val point = points[index]
+        if (isPointBlocked(point)) {
+            completeGesture(generation, false)
+            return
+        }
         val path = Path().apply {
             moveTo(point.x.toFloat(), point.y.toFloat())
         }
@@ -226,6 +273,7 @@ class QuizAccessibilityService : AccessibilityService() {
                                 points = points,
                                 index = index + 1,
                                 generation = generation,
+                                isPointBlocked = isPointBlocked,
                                 shouldContinue = shouldContinue,
                                 onPointCompleted = onPointCompleted
                             )
@@ -387,34 +435,63 @@ class QuizAccessibilityService : AccessibilityService() {
         completion?.invoke(false)
     }
 
-    fun collectVisibleTextNodes(excludedPackageName: String, screenBounds: Rect): List<TextNode> {
-        val nodes = mutableListOf<TextNode>()
+    fun collectPageSnapshot(
+        excludedPackageName: String,
+        screenBounds: Rect
+    ): PageSnapshot {
+        val textNodes = mutableListOf<TextNode>()
+        val dangerousActionBounds = mutableListOf<Rect>()
         val interactiveWindows = windows.orEmpty()
             .sortedByDescending { it.layer }
         if (interactiveWindows.isNotEmpty()) {
             for (window in interactiveWindows) {
-                collectWindowTextNodes(window, excludedPackageName, screenBounds, nodes)
+                collectWindowSnapshot(
+                    window,
+                    excludedPackageName,
+                    screenBounds,
+                    textNodes,
+                    dangerousActionBounds
+                )
             }
         } else {
-            val root = rootInActiveWindow ?: return emptyList()
+            val root = rootInActiveWindow
+                ?: return PageSnapshot(emptyList(), emptyList())
             try {
-                traverseNode(root, excludedPackageName, screenBounds, nodes)
+                traverseNode(
+                    root,
+                    excludedPackageName,
+                    screenBounds,
+                    textNodes,
+                    dangerousActionBounds
+                )
             } finally {
                 root.recycle()
             }
         }
-        return nodes
+        return PageSnapshot(
+            textNodes = textNodes,
+            dangerousActionBounds = dangerousActionBounds
+                .distinctBy { it.flattenToString() }
+                .map(::Rect)
+        )
     }
 
-    private fun collectWindowTextNodes(
+    private fun collectWindowSnapshot(
         window: AccessibilityWindowInfo,
         excludedPackageName: String,
         screenBounds: Rect,
-        outNodes: MutableList<TextNode>
+        outTextNodes: MutableList<TextNode>,
+        outDangerousActionBounds: MutableList<Rect>
     ) {
         val root = window.root ?: return
         try {
-            traverseNode(root, excludedPackageName, screenBounds, outNodes)
+            traverseNode(
+                root,
+                excludedPackageName,
+                screenBounds,
+                outTextNodes,
+                outDangerousActionBounds
+            )
         } finally {
             root.recycle()
         }
@@ -424,13 +501,26 @@ class QuizAccessibilityService : AccessibilityService() {
         node: AccessibilityNodeInfo,
         excludedPackageName: String,
         screenBounds: Rect,
-        outNodes: MutableList<TextNode>
+        outTextNodes: MutableList<TextNode>,
+        outDangerousActionBounds: MutableList<Rect>
     ) {
-        addNodeTextIfNeeded(node, excludedPackageName, screenBounds, outNodes)
+        addNodeTextIfNeeded(node, excludedPackageName, screenBounds, outTextNodes)
+        addDangerousActionBoundsIfNeeded(
+            node,
+            excludedPackageName,
+            screenBounds,
+            outDangerousActionBounds
+        )
         for (index in 0 until node.childCount) {
             val child = node.getChild(index) ?: continue
             try {
-                traverseNode(child, excludedPackageName, screenBounds, outNodes)
+                traverseNode(
+                    child,
+                    excludedPackageName,
+                    screenBounds,
+                    outTextNodes,
+                    outDangerousActionBounds
+                )
             } finally {
                 child.recycle()
             }
@@ -466,6 +556,78 @@ class QuizAccessibilityService : AccessibilityService() {
         outNodes.add(TextNode(text, Rect(rect)))
     }
 
+    private fun addDangerousActionBoundsIfNeeded(
+        node: AccessibilityNodeInfo,
+        excludedPackageName: String,
+        screenBounds: Rect,
+        outBounds: MutableList<Rect>
+    ) {
+        if (!node.isVisibleToUser || node.packageName?.toString() == excludedPackageName) {
+            return
+        }
+        val labels = listOfNotNull(node.text, node.contentDescription)
+            .map { it.toString().replace(WHITESPACE_REGEX, " ").trim() }
+        if (labels.none(::isDangerousActionLabel)) {
+            return
+        }
+        val clickableBounds = findClickableAncestorBounds(node, screenBounds) ?: return
+        val lowerScreenThreshold =
+            screenBounds.top + (screenBounds.height() * DANGEROUS_ACTION_MIN_Y_RATIO).toInt()
+        if (clickableBounds.centerY() < lowerScreenThreshold) {
+            return
+        }
+        outBounds.add(clickableBounds)
+    }
+
+    private fun findClickableAncestorBounds(
+        startNode: AccessibilityNodeInfo,
+        screenBounds: Rect
+    ): Rect? {
+        var current = AccessibilityNodeInfo.obtain(startNode)
+        repeat(MAX_CLICKABLE_ANCESTOR_DEPTH + 1) {
+            val rect = Rect()
+            current.getBoundsInScreen(rect)
+            if (current.isClickable && rect.intersect(screenBounds) && !rect.isEmpty) {
+                current.recycle()
+                return Rect(rect)
+            }
+            val parent = current.parent
+            current.recycle()
+            if (parent == null) {
+                return null
+            }
+            current = parent
+        }
+        current.recycle()
+        return null
+    }
+
+    private fun hasDangerousActionAtAnyPoint(
+        points: List<Point>,
+        excludedPackageName: String,
+        screenBounds: Rect
+    ): Boolean {
+        if (points.isEmpty()) {
+            return false
+        }
+        val dangerousBounds = collectPageSnapshot(
+            excludedPackageName,
+            screenBounds
+        ).dangerousActionBounds
+        return points.any { point ->
+            dangerousBounds.any { bounds -> bounds.contains(point.x, point.y) }
+        }
+    }
+
+    private fun isDangerousActionLabel(label: String): Boolean {
+        val normalized = label
+            .lowercase()
+            .replace(DANGEROUS_ACTION_LABEL_SEPARATOR_REGEX, "")
+        return DANGEROUS_ACTION_LABELS.any { dangerousLabel ->
+            normalized == dangerousLabel || normalized.contains(dangerousLabel)
+        }
+    }
+
     companion object {
         @Volatile
         var instance: QuizAccessibilityService? = null
@@ -483,10 +645,29 @@ class QuizAccessibilityService : AccessibilityService() {
         private const val VERTICAL_SWIPE_DURATION_MS = 700L
         private const val VERTICAL_SWIPE_START_RATIO = 0.92f
         private const val VERTICAL_SWIPE_END_RATIO = 0.05f
-        private const val DEFAULT_VERTICAL_SWIPE_DISTANCE_RATIO = 0.70f
+        private const val DEFAULT_VERTICAL_SWIPE_DISTANCE_RATIO = 0.60f
+        private const val DANGEROUS_ACTION_MIN_Y_RATIO = 0.55f
+        private const val MAX_CLICKABLE_ANCESTOR_DEPTH = 4
         private const val PERMISSION_RETURN_INITIAL_DELAY_MS = 120L
         private const val PERMISSION_RETURN_STEP_DELAY_MS = 240L
         private const val MAX_PERMISSION_RETURN_ATTEMPTS = 3
         private val WHITESPACE_REGEX = Regex("\\s+")
+        private val DANGEROUS_ACTION_LABEL_SEPARATOR_REGEX =
+            Regex("[\\s\\p{P}\\p{S}]+")
+        private val DANGEROUS_ACTION_LABELS = setOf(
+            "交卷",
+            "提交",
+            "提交试卷",
+            "提交答卷",
+            "结束考试",
+            "结束答题",
+            "完成答题",
+            "submit",
+            "submitexam",
+            "finishquiz",
+            "finishexam",
+            "endquiz",
+            "endexam"
+        )
     }
 }

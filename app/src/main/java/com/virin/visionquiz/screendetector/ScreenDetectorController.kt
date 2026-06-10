@@ -93,8 +93,10 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         quizzes: LiveData<List<Quiz>>
     ) {
         pendingPermissionPrompt = null
-        accessibilityFloatingWindowEnabled = true
-        accessibilityAnswerDotsOnlyEnabled = true
+        accessibilityFloatingWindowEnabled =
+            PreferenceUtils.shouldShowAccessibilityFloatingControl(activity)
+        accessibilityAnswerDotsOnlyEnabled =
+            PreferenceUtils.shouldUseAccessibilitySimplifiedAnswerDisplay(activity)
         val request = StartRequest.AccessibilityQuiz(libraryId, quizzes)
         pendingStartRequest = request
         permissionHostActivity = activity
@@ -307,6 +309,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         ScreenDetectorSession.setMode(ScreenDetectorSession.DetectionMode.NONE)
         ScreenDetectorSession.clearMatches()
         ScreenDetectorSession.clearScreenFrameInfo()
+        ScreenDetectorSession.clearDangerousActionBounds()
         ScreenDetectorSession.clearAssistanceState()
     }
 
@@ -448,9 +451,11 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
 
     private fun handleAccessibilityMatches(
         matches: List<com.virin.visionquiz.util.QuizGraphicItem>,
-        snapshotVersion: Int
+        snapshotVersion: Int,
+        dangerousActionBounds: List<android.graphics.Rect>
     ) {
         latestStableSnapshotVersion = snapshotVersion
+        ScreenDetectorSession.publishDangerousActionBounds(dangerousActionBounds)
         ScreenDetectorSession.publishMatches(matches)
         if (!assistanceEnabled || !isDetectionRunning) {
             return
@@ -524,8 +529,8 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             it.isComplete && it.questionFingerprint !in answeredQuestionFingerprints
         }
         if (answerTargets.isEmpty()) {
-            if (selectedPageAxis == QuizAccessibilityService.PageAxis.VERTICAL) {
-                continueWithPageDirection()
+            if (hasUnansweredDangerousActionBlockedTarget(plan)) {
+                handleDangerousActionBlocked()
                 return
             }
             val clippedTarget = plan.bottomClippedTarget?.takeIf {
@@ -583,6 +588,18 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             pauseAssistance("无障碍服务已断开")
             return
         }
+        val activity = hostActivity
+        if (activity == null) {
+            ScreenDetectorSession.finishAnswerClick(execution.fingerprint)
+            pauseAssistance("应用页面已断开")
+            return
+        }
+        val frameInfo = ScreenDetectorSession.screenFrameInfo.value
+        if (frameInfo == null) {
+            ScreenDetectorSession.finishAnswerClick(execution.fingerprint)
+            pauseAssistance("屏幕尺寸不可用")
+            return
+        }
 
         assistanceBusy = true
         val generation = assistanceGeneration
@@ -594,6 +611,8 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         service.clickPointsSequentially(
             points = execution.points,
             startIndex = pendingAnswerPointIndex,
+            excludedPackageName = activity.packageName,
+            screenBounds = android.graphics.Rect(0, 0, frameInfo.width, frameInfo.height),
             shouldContinue = {
                 generation == assistanceGeneration &&
                     isAnswerExecutionCurrent(execution)
@@ -608,8 +627,8 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                         }
                 }
             }
-        ) { success ->
-            if (success) {
+        ) { result ->
+            if (result == QuizAccessibilityService.ClickSequenceResult.COMPLETED) {
                 ScreenDetectorSession.markAnswerClickDispatched(
                     execution.fingerprint,
                     execution.contentFingerprint
@@ -622,7 +641,17 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                 return@clickPointsSequentially
             }
             assistanceBusy = false
-            if (!success) {
+            if (result == QuizAccessibilityService.ClickSequenceResult.BLOCKED_BY_DANGEROUS_ACTION ||
+                ScreenDetectorSession.buildAnswerClickPlan()
+                    ?.let(::hasUnansweredDangerousActionBlockedTarget) == true
+            ) {
+                pendingAnswerPlan = null
+                pendingAnswerPointIndex = 0
+                accessibilitySource?.requestFreshScan()
+                handleDangerousActionBlocked()
+                return@clickPointsSequentially
+            }
+            if (result != QuizAccessibilityService.ClickSequenceResult.COMPLETED) {
                 if (isDetectionRunning) {
                     pauseAssistance("答案点击被中断")
                 }
@@ -635,6 +664,26 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             )
             scheduleAutoAdvance(ANSWER_SETTLE_DELAY_MS, ::runAssistanceStep)
         }
+    }
+
+    private fun hasUnansweredDangerousActionBlockedTarget(
+        plan: ScreenDetectorSession.AnswerClickPlan
+    ): Boolean {
+        return plan.targets.any {
+            it.isBlockedByDangerousAction &&
+                it.questionFingerprint !in answeredQuestionFingerprints
+        }
+    }
+
+    private fun handleDangerousActionBlocked() {
+        if (selectedPageAxis == QuizAccessibilityService.PageAxis.VERTICAL) {
+            continueWithPageDirection()
+            return
+        }
+        waitForManualPage(
+            "答案被底部操作按钮遮挡，请选择上滑",
+            ScreenDetectorSession.AssistanceIndicator.ERROR
+        )
     }
 
     private fun shouldWaitForAnswerOverlayRender(): Boolean {
@@ -683,6 +732,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         latestStableSnapshotVersion = 0
         ScreenDetectorSession.clearMatches()
         ScreenDetectorSession.clearAnnotationBounds()
+        ScreenDetectorSession.clearDangerousActionBounds()
         if (!assistanceEnabled || !isDetectionRunning) {
             return
         }
@@ -792,7 +842,10 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
 
         assistanceBusy = true
         val generation = assistanceGeneration
-        val verticalTargetPosition = if (axis == QuizAccessibilityService.PageAxis.VERTICAL) {
+        val verticalTargetPosition = if (
+            axis == QuizAccessibilityService.PageAxis.VERTICAL &&
+            PreferenceUtils.shouldUseSmartAccessibilityVerticalSwipe(service)
+        ) {
             ScreenDetectorSession.buildAnswerClickPlan()
                 ?.targets
                 ?.takeIf { it.size >= MIN_QUESTIONS_FOR_ALIGNED_VERTICAL_SWIPE }
@@ -1209,6 +1262,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         }
         floatingWindowCheckBox.setOnCheckedChangeListener { _, isChecked ->
             accessibilityFloatingWindowEnabled = isChecked
+            PreferenceUtils.setShowAccessibilityFloatingControl(activity, isChecked)
             updateAccessibilityDialogPermissionButtons(
                 activity,
                 notificationButton,
@@ -1219,6 +1273,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         }
         answerDotsOnlyCheckBox.setOnCheckedChangeListener { _, isChecked ->
             accessibilityAnswerDotsOnlyEnabled = isChecked
+            PreferenceUtils.setAccessibilitySimplifiedAnswerDisplay(activity, isChecked)
         }
         updateAccessibilityDialogPermissionButtons(
             activity,

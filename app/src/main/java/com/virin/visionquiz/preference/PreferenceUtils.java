@@ -388,6 +388,46 @@ public class PreferenceUtils {
         MAX_SEARCH_MATCH_SCORE);
   }
 
+  public static boolean shouldShowAccessibilityFloatingControl(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_accessibility_show_floating_control);
+    return sharedPreferences.getBoolean(prefKey, true);
+  }
+
+  public static void setShowAccessibilityFloatingControl(Context context, boolean enabled) {
+    PreferenceManager.getDefaultSharedPreferences(context)
+        .edit()
+        .putBoolean(
+            context.getString(R.string.pref_key_accessibility_show_floating_control), enabled)
+        .apply();
+  }
+
+  public static boolean shouldUseAccessibilitySimplifiedAnswerDisplay(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey =
+        context.getString(R.string.pref_key_accessibility_simplified_answer_display);
+    return sharedPreferences.getBoolean(prefKey, true);
+  }
+
+  public static void setAccessibilitySimplifiedAnswerDisplay(Context context, boolean enabled) {
+    PreferenceManager.getDefaultSharedPreferences(context)
+        .edit()
+        .putBoolean(
+            context.getString(R.string.pref_key_accessibility_simplified_answer_display), enabled)
+        .apply();
+  }
+
+  public static boolean shouldUseSmartAccessibilityVerticalSwipe(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_accessibility_vertical_swipe_mode);
+    String smartValue =
+        context.getString(R.string.pref_value_accessibility_vertical_swipe_smart);
+    String fixedValue =
+        context.getString(R.string.pref_value_accessibility_vertical_swipe_fixed);
+    String storedValue = sharedPreferences.getString(prefKey, fixedValue);
+    return smartValue.equals(storedValue);
+  }
+
   private static double getSearchMinMatchScore(
       Context context,
       @StringRes int prefKeyId,
