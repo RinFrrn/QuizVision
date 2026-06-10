@@ -596,17 +596,15 @@ class QuizLibraryListFragment : BaseQuizFragment() {
     }
 
     private val onItemClickListBtnListener = object : QuizLibraryListAdapter.OnButtonClickListener {
-        override fun onButtonLongClicked(position: Int) {
+        override fun onButtonLongClicked(quizLibrary: QuizLibrary) {
             Toast.makeText(context, "Not yet implemented", Toast.LENGTH_SHORT).show()
         }
 
-        override fun onButtonClicked(position: Int, btnType: Int) {
+        override fun onButtonClicked(quizLibrary: QuizLibrary, btnType: Int) {
             when (btnType) {
                 QuizLibraryListAdapter.ROOT_VIEW -> {
-                    val libId = viewModel.quizLibraryList.value?.get(position)?.id
-
                     val bundle = Bundle()
-                    bundle.putInt(QuizLibraryFeaturesFragment.LIBRARY_ID, libId!!)
+                    bundle.putInt(QuizLibraryFeaturesFragment.LIBRARY_ID, quizLibrary.id)
 
                     findNavController().navigate(
                         R.id.QuizLibraryFeaturesFragment, bundle
@@ -630,18 +628,16 @@ class QuizLibraryListFragment : BaseQuizFragment() {
                         return
                     }
                     // 启动摄像头
-                    val libId = viewModel.quizLibraryList.value?.get(position)?.id
                     val intent = Intent(
                         requireActivity(), CameraXDetectorActivity::class.java
                     )
-                    intent.putExtra(CameraXDetectorActivity.LIBRARY_ID, libId!!)
+                    intent.putExtra(CameraXDetectorActivity.LIBRARY_ID, quizLibrary.id)
                     startActivity(intent)
                 }
 
                 QuizLibraryListAdapter.SCREEN_RECORD_BUTTON -> {
                     // 屏幕录制
-                    val libId = viewModel.quizLibraryList.value?.get(position)?.id
-                    startScreenDetection(libId!!)
+                    startScreenDetection(quizLibrary.id)
 //                        Snackbar.make(
 //                            binding.root,
 //                            "SCREEN_RECORD_BUTTON",
@@ -650,50 +646,31 @@ class QuizLibraryListFragment : BaseQuizFragment() {
                 }
 
                 QuizLibraryListAdapter.ACCESSIBILITY_SEARCH_BUTTON -> {
-                    val libId = viewModel.quizLibraryList.value?.get(position)?.id
-                    startAccessibilityDetection(libId!!)
+                    startAccessibilityDetection(quizLibrary.id)
                 }
 
                 QuizLibraryListAdapter.RENAME_BUTTON -> {
-                    val lib = viewModel.quizLibraryList.value?.get(position)
-
-                    if (lib != null) {
-                        RenameDialogFragment(
-                            "重新命名",
-                            lib.name,
-                            object : RenameDialogFragment.RenameDialogListener {
-                                override fun onDialogPositiveClick(newName: String) {
-                                    val newLib = QuizLibrary(lib.id, newName, lib.quizCount)
-                                    viewModel.updateQuizLibrary(newLib)
-                                }
-                            }).show(parentFragmentManager)
-                    } else {
-
-                        Snackbar.make(
-                            binding.root, "Rename Nothing".uppercase(), Snackbar.LENGTH_SHORT
-                        ).setAction("Action", null).show()
-                    }
+                    RenameDialogFragment(
+                        "重新命名",
+                        quizLibrary.name,
+                        object : RenameDialogFragment.RenameDialogListener {
+                            override fun onDialogPositiveClick(newName: String) {
+                                viewModel.updateQuizLibrary(quizLibrary.copy(name = newName))
+                            }
+                        }).show(parentFragmentManager)
                 }
 
                 QuizLibraryListAdapter.DELETE_BUTTON -> {
-                    val lib = viewModel.quizLibraryList.value?.get(position)
-
-                    if (lib != null) {
-                        MaterialAlertDialogBuilder(requireContext()).setTitle("删除题库“${lib.name}”？")
-                            .setPositiveButton(R.string.delete) { dialog, which ->
-                                // 删除题目和题库
-                                viewModel.deleteQuizLibrary(lib)
-                                dialog.dismiss() // 关闭对话框
-                            }.setNegativeButton(R.string.cancel) { dialog, which ->
-                                // 点击“取消”按钮后执行的操作
-                                dialog.dismiss() // 关闭对话框
-                            }.show()
-
-                    } else {
-                        Snackbar.make(
-                            binding.root, "Delete Nothing".uppercase(), Snackbar.LENGTH_SHORT
-                        ).setAction("Action", null).show()
-                    }
+                    MaterialAlertDialogBuilder(requireContext())
+                        .setTitle("删除题库“${quizLibrary.name}”？")
+                        .setPositiveButton(R.string.delete) { dialog, which ->
+                            viewModel.deleteQuizLibrary(quizLibrary)
+                            dialog.dismiss()
+                        }
+                        .setNegativeButton(R.string.cancel) { dialog, which ->
+                            dialog.dismiss()
+                        }
+                        .show()
 
                 }
             }
@@ -784,9 +761,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
             }
             // 批量 - 合并
             R.id.merge -> {
-                val libs = getAdapter().getSelectedItems().mapNotNull { position ->
-                    viewModel.quizLibraryList.value?.get(position)
-                }
+                val libs = getAdapter().getSelectedLibraries()
 
                 if (libs.size > 1) {
                     RenameDialogFragment(
@@ -822,9 +797,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
             }
             // 批量 - 删除
             R.id.delete -> {
-                val libs = getAdapter().getSelectedItems().mapNotNull { position ->
-                    viewModel.quizLibraryList.value?.get(position)
-                }
+                val libs = getAdapter().getSelectedLibraries()
 
                 if (libs.isNotEmpty()) {
                     MaterialAlertDialogBuilder(requireContext()).setTitle("删除 ${libs.size} 个题库？")

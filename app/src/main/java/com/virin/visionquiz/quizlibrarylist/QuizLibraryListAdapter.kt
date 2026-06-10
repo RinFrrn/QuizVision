@@ -30,9 +30,15 @@ class QuizLibraryListAdapter constructor(
     private val selectionListener: SelectionListener
 ) : ListAdapter<QuizLibrary, QuizLibraryListAdapter.ViewHolder>(DiffCallback()) {
 
-    private val selectedItems = HashSet<Int>()
+    private val selectedItemIds = HashSet<Int>()
     var isSelectionMode = false
         private set
+
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long = getItem(position).id.toLong()
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
@@ -42,9 +48,10 @@ class QuizLibraryListAdapter constructor(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(getItem(position), buttonClickListener)
+        val quizLibrary = getItem(position)
+        holder.bind(quizLibrary, buttonClickListener)
 
-        holder.binding.cardView.isChecked = selectedItems.contains(position)
+        holder.binding.cardView.isChecked = selectedItemIds.contains(quizLibrary.id)
 
         holder.binding.cameraBtn.isEnabled = isSelectionMode.not()
         holder.binding.screenRecordBtn.isEnabled = isSelectionMode.not()
@@ -58,41 +65,26 @@ class QuizLibraryListAdapter constructor(
         fun bind(quizLibrary: QuizLibrary, listener: OnButtonClickListener) {
             binding.cardView.setOnClickListener {
                 if (isSelectionMode) {
-                    toggleSelection(adapterPosition)
+                    toggleSelection(quizLibrary)
                 } else {
-                    val position = adapterPosition
-                    if (position != RecyclerView.NO_POSITION) {
-                        listener.onButtonClicked(position, ROOT_VIEW)
-                    }
+                    listener.onButtonClicked(quizLibrary, ROOT_VIEW)
                 }
             }
             binding.cardView.setOnLongClickListener {
                 if (!isSelectionMode) {
                     enterSelectionMode()
-                    toggleSelection(adapterPosition)
+                    toggleSelection(quizLibrary)
                 }
-//                val position = adapterPosition
-//                if (position != RecyclerView.NO_POSITION) {
-//                    listener.onButtonLongClicked(position)
-//                }
                 true
             }
             binding.cameraBtn.setOnClickListener {
-                val position = adapterPosition
-                if (position != RecyclerView.NO_POSITION) {
-                    listener.onButtonClicked(position, CAMERA_BUTTON)
-                }
+                listener.onButtonClicked(quizLibrary, CAMERA_BUTTON)
             }
             binding.screenRecordBtn.setOnClickListener {
-                val position = adapterPosition
-                if (position != RecyclerView.NO_POSITION) {
-                    listener.onButtonClicked(position, SCREEN_RECORD_BUTTON)
-                }
+                listener.onButtonClicked(quizLibrary, SCREEN_RECORD_BUTTON)
             }
             binding.moreBtn.setOnClickListener {
-                val position = adapterPosition
-//                showPopupMenu(it, listener, position)
-                showListPopupWindow(it, listener, position)
+                showListPopupWindow(it, listener, quizLibrary)
             }
 
             binding.quizLibrary = quizLibrary
@@ -101,7 +93,7 @@ class QuizLibraryListAdapter constructor(
         }
 
         private fun showListPopupWindow(
-            view: View, listener: OnButtonClickListener, position: Int
+            view: View, listener: OnButtonClickListener, quizLibrary: QuizLibrary
         ) {
             val items: List<ListPopupItem> = listOf(
                 ListPopupItem(
@@ -131,7 +123,7 @@ class QuizLibraryListAdapter constructor(
             listPopupWindow.width = 200.dp//ListPopupWindow.WRAP_CONTENT
             listPopupWindow.height = ListPopupWindow.WRAP_CONTENT
             listPopupWindow.setOnItemClickListener { parent, view, pos, id ->
-                items[pos].action?.let { action -> listener.onButtonClicked(position, action) }
+                items[pos].action?.let { action -> listener.onButtonClicked(quizLibrary, action) }
                 listPopupWindow.dismiss()
             }
             listPopupWindow.show()
@@ -159,7 +151,11 @@ class QuizLibraryListAdapter constructor(
         }
 
 
-        private fun showPopupMenu(view: View, listener: OnButtonClickListener, position: Int) {
+        private fun showPopupMenu(
+            view: View,
+            listener: OnButtonClickListener,
+            quizLibrary: QuizLibrary
+        ) {
 //            val ctxWrapper = ContextThemeWrapper(view.context, R.style.Widget_Material3_PopupMenu_ListPopupWindow)
             val popup = PopupMenu(context, view)
             popup.menuInflater.inflate(R.menu.quiz_item_menu, popup.menu)
@@ -167,8 +163,8 @@ class QuizLibraryListAdapter constructor(
             popup.setOnMenuItemClickListener { menuItem ->
                 // Respond to menu item click.
                 when (menuItem.itemId) {
-                    R.id.rename -> listener.onButtonClicked(position, RENAME_BUTTON)
-                    R.id.delete -> listener.onButtonClicked(position, DELETE_BUTTON)
+                    R.id.rename -> listener.onButtonClicked(quizLibrary, RENAME_BUTTON)
+                    R.id.delete -> listener.onButtonClicked(quizLibrary, DELETE_BUTTON)
                 }
                 true
             }
@@ -182,15 +178,18 @@ class QuizLibraryListAdapter constructor(
         }
     }
 
-    private fun toggleSelection(position: Int) {
-        if (selectedItems.contains(position)) {
-            selectedItems.remove(position)
+    private fun toggleSelection(quizLibrary: QuizLibrary) {
+        if (selectedItemIds.contains(quizLibrary.id)) {
+            selectedItemIds.remove(quizLibrary.id)
         } else {
-            selectedItems.add(position)
+            selectedItemIds.add(quizLibrary.id)
         }
-        notifyItemChanged(position)
+        val position = currentList.indexOfFirst { it.id == quizLibrary.id }
+        if (position != RecyclerView.NO_POSITION) {
+            notifyItemChanged(position)
+        }
 
-        selectionListener.onSelectionChanged(selectedItems)
+        selectionListener.onSelectionChanged(selectedItemIds)
     }
 
     fun enterSelectionMode() {
@@ -211,14 +210,13 @@ class QuizLibraryListAdapter constructor(
     }
 
     private fun clearSelection() {
-        selectedItems.clear()
+        selectedItemIds.clear()
 //        notifyDataSetChanged()
         notifyItemRangeChanged(0, itemCount)
     }
 
-    fun getSelectedItems(): Set<Int> {
-        return selectedItems
-    }
+    fun getSelectedLibraries(): List<QuizLibrary> =
+        currentList.filter { it.id in selectedItemIds }
 
     private class DiffCallback : DiffUtil.ItemCallback<QuizLibrary>() {
         override fun areItemsTheSame(
@@ -313,13 +311,9 @@ class QuizLibraryListAdapter constructor(
 
 
     interface OnButtonClickListener {
-        /**
-         * @param position: position in list
-         * @param btnType: 1 to camera, 2 to screen record, 3 to more
-         */
-        fun onButtonClicked(position: Int, btnType: Int)
+        fun onButtonClicked(quizLibrary: QuizLibrary, btnType: Int)
 
-        fun onButtonLongClicked(position: Int)
+        fun onButtonLongClicked(quizLibrary: QuizLibrary)
     }
 
     interface SelectionListener {
