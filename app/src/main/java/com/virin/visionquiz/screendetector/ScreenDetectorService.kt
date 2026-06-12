@@ -10,6 +10,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -74,7 +75,12 @@ class ScreenDetectorService : LifecycleService() {
     private var answerDotsOnly = true
 
     private var libId = 0
-    private val controlSnapPaddingPx by lazy { dpToPx(CONTROL_SNAP_PADDING_DP) }
+    private val controlHorizontalPaddingPx by lazy {
+        dpToPx(CONTROL_HORIZONTAL_PADDING_DP)
+    }
+    private val controlVerticalPaddingPx by lazy {
+        dpToPx(CONTROL_VERTICAL_PADDING_DP)
+    }
     private val touchSlopPx by lazy { ViewConfiguration.get(this).scaledTouchSlop }
     private var dragStartRawX = 0f
     private var dragStartRawY = 0f
@@ -169,6 +175,15 @@ class ScreenDetectorService : LifecycleService() {
         ScreenDetectorSession.clearOverlayBounds()
         ScreenDetectorSession.clearAnnotationBounds()
         super.onDestroy()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val root = controlRootView ?: return
+        val params = controlLayoutParams ?: return
+        root.post {
+            clampControlBarAfterLayout(root, params)
+        }
     }
 
     private fun showWindows() {
@@ -268,11 +283,15 @@ class ScreenDetectorService : LifecycleService() {
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         )
-        val windowBounds = getOverlayWindowBounds()
+        val windowBounds = getControlAvailableWindowBounds()
         val initialPositionRanges = getControlPositionRanges(
             windowBounds,
             controlBar.measuredWidth,
             controlBar.measuredHeight
+        )
+        val initialY = FloatingControlPositionCalculator.initialY(
+            initialPositionRanges.vertical,
+            INITIAL_CONTROL_Y_RATIO
         )
         val layoutParams = WindowManager.LayoutParams().apply {
             width = WindowManager.LayoutParams.WRAP_CONTENT
@@ -285,10 +304,18 @@ class ScreenDetectorService : LifecycleService() {
             format = PixelFormat.RGBA_8888
             gravity = Gravity.TOP or Gravity.START
             x = initialPositionRanges.horizontal.first
-            y = initialPositionRanges.vertical.last
+            y = initialY
         }
         controlRootView = controlBar
         controlLayoutParams = layoutParams
+        controlBar.setOnApplyWindowInsetsListener { _, insets ->
+            controlBar.post {
+                if (controlRootView === controlBar) {
+                    clampControlBarAfterLayout(controlBar, layoutParams)
+                }
+            }
+            insets
+        }
         controlBar.addOnLayoutChangeListener { root, left, top, right, bottom,
                                                oldLeft, oldTop, oldRight, oldBottom ->
             if (right - left == oldRight - oldLeft && bottom - top == oldBottom - oldTop) {
@@ -299,7 +326,7 @@ class ScreenDetectorService : LifecycleService() {
         windowManager.addView(controlBar, layoutParams)
         publishControlBounds()
         controlBar.post {
-            alignControlBarToBottom()
+            clampControlBarAfterLayout(controlBar, layoutParams)
             publishControlBounds()
         }
     }
@@ -644,7 +671,7 @@ class ScreenDetectorService : LifecycleService() {
         root: View,
         params: WindowManager.LayoutParams
     ) {
-        val windowBounds = getOverlayWindowBounds()
+        val windowBounds = getControlAvailableWindowBounds()
         val positionRanges = getControlPositionRanges(
             windowBounds,
             root.width,
@@ -655,9 +682,13 @@ class ScreenDetectorService : LifecycleService() {
         } else {
             params.x.coerceIn(positionRanges.horizontal)
         }
-        val targetY = params.y.coerceIn(positionRanges.vertical)
-        if (targetX != params.x || targetY != params.y) {
-            updateControlBarPosition(root, params, targetX, targetY)
+        val targetPosition = FloatingControlPositionCalculator.clamp(
+            targetX,
+            params.y,
+            positionRanges
+        )
+        if (targetPosition.x != params.x || targetPosition.y != params.y) {
+            updateControlBarPosition(root, params, targetPosition.x, targetPosition.y)
         }
         publishControlBounds()
     }
@@ -715,7 +746,7 @@ class ScreenDetectorService : LifecycleService() {
         root: View,
         params: WindowManager.LayoutParams
     ) {
-        val windowBounds = getOverlayWindowBounds()
+        val windowBounds = getControlAvailableWindowBounds()
         val width = if (root.width > 0) root.width else 0
         val height = if (root.height > 0) root.height else 0
         val positionRanges = getControlPositionRanges(windowBounds, width, height)
@@ -740,7 +771,7 @@ class ScreenDetectorService : LifecycleService() {
         }
         val root = controlRootView ?: return
         val params = controlLayoutParams ?: return
-        val windowBounds = getOverlayWindowBounds()
+        val windowBounds = getControlAvailableWindowBounds()
         isSnappedToRight =
             params.x + root.width / 2 > windowBounds.width / 2
         isControlCollapsed = collapsed
@@ -750,7 +781,7 @@ class ScreenDetectorService : LifecycleService() {
         renderCurrentMarkerOverlay()
         root.requestLayout()
         root.post {
-            val currentWindowBounds = getOverlayWindowBounds()
+            val currentWindowBounds = getControlAvailableWindowBounds()
             val positionRanges = getControlPositionRanges(
                 currentWindowBounds,
                 root.width,
@@ -775,37 +806,15 @@ class ScreenDetectorService : LifecycleService() {
         windowBounds: OverlayWindowBounds,
         controlWidth: Int,
         controlHeight: Int
-    ): ControlPositionRanges {
-        val insets = getControlWindowInsets()
-        return ControlPositionRanges(
-            horizontal = getContainedPositionRange(
-                windowSize = windowBounds.width,
-                controlSize = controlWidth,
-                startInset = insets.left,
-                endInset = insets.right
-            ),
-            vertical = getContainedPositionRange(
-                windowSize = windowBounds.height,
-                controlSize = controlHeight,
-                startInset = insets.top,
-                endInset = insets.bottom
-            )
+    ): FloatingControlPositionCalculator.PositionRanges {
+        return FloatingControlPositionCalculator.calculateRanges(
+            availableWidth = windowBounds.width,
+            availableHeight = windowBounds.height,
+            controlWidth = controlWidth,
+            controlHeight = controlHeight,
+            horizontalPadding = controlHorizontalPaddingPx,
+            verticalPadding = controlVerticalPaddingPx
         )
-    }
-
-    private fun getContainedPositionRange(
-        windowSize: Int,
-        controlSize: Int,
-        startInset: Int,
-        endInset: Int
-    ): IntRange {
-        val minimum = startInset + controlSnapPaddingPx
-        val maximum = windowSize - endInset - controlSize - controlSnapPaddingPx
-        return if (maximum >= minimum) {
-            minimum..maximum
-        } else {
-            startInset..maxOf(startInset, windowSize - endInset - controlSize)
-        }
     }
 
     private fun createControlIconButton(
@@ -824,20 +833,6 @@ class ScreenDetectorService : LifecycleService() {
                 dpToPx(32)
             )
         }
-    }
-
-    private fun alignControlBarToBottom() {
-        val root = controlRootView ?: return
-        val params = controlLayoutParams ?: return
-        val windowBounds = getOverlayWindowBounds()
-        val positionRanges = getControlPositionRanges(
-            windowBounds,
-            root.width,
-            root.height
-        )
-        params.x = positionRanges.horizontal.first
-        params.y = positionRanges.vertical.last
-        windowManager.updateViewLayout(root, params)
     }
 
     private fun renderControlBar(renderState: RenderState) {
@@ -1282,13 +1277,21 @@ class ScreenDetectorService : LifecycleService() {
         }
     }
 
+    private fun getControlAvailableWindowBounds(): OverlayWindowBounds {
+        val windowBounds = getOverlayWindowBounds()
+        val insets = getControlWindowInsets()
+        return OverlayWindowBounds(
+            width = (windowBounds.width - insets.left - insets.right).coerceAtLeast(0),
+            height = (windowBounds.height - insets.top - insets.bottom).coerceAtLeast(0)
+        )
+    }
+
     private fun getControlWindowInsets(): ControlWindowInsets {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val insets = windowManager.currentWindowMetrics.windowInsets
                 .getInsetsIgnoringVisibility(
                     WindowInsets.Type.systemBars() or
-                        WindowInsets.Type.displayCutout() or
-                        WindowInsets.Type.mandatorySystemGestures()
+                        WindowInsets.Type.displayCutout()
                 )
             return ControlWindowInsets(
                 left = insets.left,
@@ -1321,11 +1324,6 @@ class ScreenDetectorService : LifecycleService() {
     data class OverlayWindowBounds(
         val width: Int,
         val height: Int
-    )
-
-    private data class ControlPositionRanges(
-        val horizontal: IntRange,
-        val vertical: IntRange
     )
 
     private data class ControlWindowInsets(
@@ -1380,7 +1378,9 @@ class ScreenDetectorService : LifecycleService() {
         private const val REQUEST_STOP_DETECTION = 2309
         private const val MARKER_WINDOW_ALPHA = 0.74f
         private const val SNAP_ANIMATION_DURATION_MS = 180L
-        private const val CONTROL_SNAP_PADDING_DP = 8
+        private const val CONTROL_HORIZONTAL_PADDING_DP = 4
+        private const val CONTROL_VERTICAL_PADDING_DP = 8
+        private const val INITIAL_CONTROL_Y_RATIO = 0.82f
         private const val ENABLED_IMAGE_ALPHA = 255
         private const val DISABLED_IMAGE_ALPHA = 96
         private const val STATUS_WIDTH_DP = 176
