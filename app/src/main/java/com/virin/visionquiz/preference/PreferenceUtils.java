@@ -367,6 +367,18 @@ public class PreferenceUtils {
     return DEFAULT_SCREEN_CAPTURE_FRAME_RATE;
   }
 
+  public static boolean shouldDetectScreenChangesBeforeSearch(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_screen_search_detect_changes);
+    return sharedPreferences.getBoolean(prefKey, true);
+  }
+
+  public static boolean shouldShowScreenOcrAnswerFrames(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_screen_search_show_answer_frames);
+    return sharedPreferences.getBoolean(prefKey, false);
+  }
+
   public static double getCameraSearchMinMatchScore(Context context) {
     return getSearchMinMatchScore(
         context,

@@ -29,7 +29,8 @@ class QuizRecognitionProcessor(
     private val context: Context,
     private val quizzes: LiveData<List<Quiz>>,
     private val onMatchesDetected: ((List<QuizGraphicItem>) -> Unit)? = null,
-    private val minMatchScore: Double = QuizManager.DEFAULT_MIN_MATCH_SCORE
+    private val minMatchScore: Double = QuizManager.DEFAULT_MIN_MATCH_SCORE,
+    private val locateScreenAnswerRects: Boolean = false
 ) : VisionProcessorBase<Text>(context) {
 
     private val textRecognizer: TextRecognizer = TextRecognition.getClient(
@@ -51,18 +52,27 @@ class QuizRecognitionProcessor(
 
     private data class RecognizedTextItem(
         val text: String,
-        val rect: Rect
+        val rect: Rect,
+        val startOrder: Int,
+        val endOrder: Int
+    )
+
+    private data class MatchedTextItem(
+        val item: QuizGraphicItem,
+        val source: RecognizedTextItem
     )
 
     private fun createRecognizedTextItem(
         text: String,
-        boundingBox: Rect
+        boundingBox: Rect,
+        startOrder: Int,
+        endOrder: Int = startOrder
     ): RecognizedTextItem? {
         val rect = Rect(boundingBox)
         if (!isValidRecognizedTextItem(text, rect)) {
             return null
         }
-        return RecognizedTextItem(text, rect)
+        return RecognizedTextItem(text, rect, startOrder, endOrder)
     }
 
     private fun isValidRecognizedTextItem(text: String, rect: Rect): Boolean {
@@ -79,18 +89,22 @@ class QuizRecognitionProcessor(
     }
 
     private fun getMatchedQuizGraphicItem(
-        text: String,
-        textRect: Rect,
+        recognizedTextItem: RecognizedTextItem,
         quizIndex: QuizManager.QuizMatchIndex
-    ): QuizGraphicItem? {
+    ): MatchedTextItem? {
         val bestMatch = QuizManager.matchQuiz(
-            text,
+            recognizedTextItem.text,
             quizIndex,
             minScore = minMatchScore
         ).firstOrNull()
         if (bestMatch != null) {
-            return QuizGraphicItem(
-                bestMatch.first, bestMatch.second, textRect
+            return MatchedTextItem(
+                item = QuizGraphicItem(
+                    bestMatch.first,
+                    bestMatch.second,
+                    recognizedTextItem.rect
+                ),
+                source = recognizedTextItem
             )
         }
         return null
@@ -135,7 +149,8 @@ class QuizRecognitionProcessor(
     }
 
     private fun buildDisplayMatches(
-        matchedQuizs: List<QuizGraphicItem>,
+        matchedQuizs: List<MatchedTextItem>,
+        lineCandidates: List<OcrOptionLocator.TextCandidate>,
         imageWidth: Int,
         imageHeight: Int
     ): List<QuizGraphicItem> {
@@ -143,16 +158,167 @@ class QuizRecognitionProcessor(
             return emptyList()
         }
 
-        return matchedQuizs.groupBy(::matchIdentity)
+        val bestMatches = matchedQuizs.groupBy { matchIdentity(it.item) }
             .mapNotNull { (_, items) ->
-                val best = items.maxByOrNull { it.distance } ?: return@mapNotNull null
-                QuizGraphicItem(
-                    best.question,
-                    best.distance,
-                    padAndClampRect(best.rect, imageWidth, imageHeight)
-                )
+                items.maxByOrNull { it.item.distance }
             }
+        val matchesByReadingOrder = bestMatches.sortedWith(
+            compareBy<MatchedTextItem> { it.source.startOrder }
+                .thenBy { it.source.rect.top }
+                .thenBy { it.source.rect.left }
+        )
+
+        return matchesByReadingOrder.mapIndexed { index, match ->
+            val locatedOptions = if (locateScreenAnswerRects) {
+                val nextQuestionStartOrder = matchesByReadingOrder
+                    .getOrNull(index + 1)
+                    ?.source
+                    ?.startOrder
+                OcrOptionLocator.locate(
+                    question = OcrOptionLocator.QuestionMatch(
+                        options = match.item.question.options,
+                        answerIndices = match.item.question.answer,
+                        bounds = match.source.rect.toLocatorBounds(),
+                        startOrder = match.source.startOrder,
+                        endOrder = resolveQuestionEndOrder(match, lineCandidates)
+                    ),
+                    candidates = lineCandidates,
+                    nextQuestionStartOrder = nextQuestionStartOrder,
+                    imageHeight = imageHeight
+                )
+            } else {
+                OcrOptionLocator.Result(emptyList(), emptyList())
+            }
+            match.item.copy(
+                rect = padAndClampRect(match.item.rect, imageWidth, imageHeight),
+                answerRects = locatedOptions.answerBounds.map {
+                    padAndClampRect(it.toAndroidRect(), imageWidth, imageHeight)
+                },
+                optionRects = locatedOptions.optionBounds.map {
+                    padAndClampRect(it.toAndroidRect(), imageWidth, imageHeight)
+                }
+            )
+        }
             .sortedByDescending { it.distance }
+    }
+
+    private fun resolveQuestionEndOrder(
+        match: MatchedTextItem,
+        lineCandidates: List<OcrOptionLocator.TextCandidate>
+    ): Int {
+        if (match.source.endOrder >= match.source.startOrder) {
+            return match.source.endOrder
+        }
+        val normalizedPrompt = QuizManager.normalizeQuestionText(match.item.question.prompt)
+        if (normalizedPrompt.isBlank()) {
+            return match.source.endOrder
+        }
+        val accumulatedText = StringBuilder()
+        val questionLines = lineCandidates
+            .asSequence()
+            .filter { it.order >= match.source.startOrder }
+            .filter { it.order % ORDER_SCALE == LINE_CANDIDATE_ORDER_OFFSET }
+            .filter { match.source.rect.contains(it.bounds.toAndroidRect()) }
+            .sortedBy { it.order }
+            .toList()
+        for (candidate in questionLines) {
+            accumulatedText.append(candidate.text)
+            val normalizedAccumulated = QuizManager.normalizeQuestionText(
+                accumulatedText.toString()
+            )
+            if (
+                normalizedAccumulated.contains(normalizedPrompt) ||
+                (
+                    normalizedPrompt.length >= MIN_PROMPT_PREFIX_MATCH_LENGTH &&
+                        normalizedPrompt.contains(normalizedAccumulated) &&
+                        normalizedAccumulated.length * 2 >= normalizedPrompt.length
+                    )
+            ) {
+                return candidate.order + ORDER_SCALE - LINE_CANDIDATE_ORDER_OFFSET - 1
+            }
+        }
+        return match.source.endOrder
+    }
+
+    private fun Rect.toLocatorBounds(): OcrOptionLocator.Bounds {
+        return OcrOptionLocator.Bounds(left, top, right, bottom)
+    }
+
+    private fun OcrOptionLocator.Bounds.toAndroidRect(): Rect {
+        return Rect(left, top, right, bottom)
+    }
+
+    private fun createLineCandidate(
+        text: String,
+        boundingBox: Rect,
+        order: Int
+    ): OcrOptionLocator.TextCandidate? {
+        val rect = Rect(boundingBox)
+        if (
+            text.isBlank() ||
+            rect.width() <= MIN_TEXT_RECT_SIZE ||
+            rect.height() <= MIN_TEXT_RECT_SIZE ||
+            rect.width() * rect.height() <= MIN_TEXT_RECT_AREA
+        ) {
+            return null
+        }
+        return OcrOptionLocator.TextCandidate(
+            text = text,
+            bounds = rect.toLocatorBounds(),
+            order = order
+        )
+    }
+
+    private fun buildRecognizedTextItems(
+        results: Text,
+        lineCandidates: MutableList<OcrOptionLocator.TextCandidate>
+    ): List<RecognizedTextItem> {
+        val recognizedTextItems = mutableListOf<RecognizedTextItem>()
+        var lineOrder = 0
+        results.textBlocks.forEach { textBlock ->
+            val blockStartOrder = lineOrder * ORDER_SCALE
+            textBlock.lines.forEach { line ->
+                val lineBaseOrder = lineOrder * ORDER_SCALE
+                line.boundingBox?.let { boundingBox ->
+                    createLineCandidate(
+                        line.text,
+                        boundingBox,
+                        lineBaseOrder + LINE_CANDIDATE_ORDER_OFFSET
+                    )
+                        ?.let(lineCandidates::add)
+                    if (!shouldGroupRecognizedTextInBlocks) {
+                        createRecognizedTextItem(
+                            line.text,
+                            boundingBox,
+                            lineBaseOrder,
+                            lineBaseOrder + ORDER_SCALE - 1
+                        )
+                            ?.let(recognizedTextItems::add)
+                    }
+                }
+                line.elements.forEachIndexed { elementIndex, element ->
+                    element.boundingBox?.let { boundingBox ->
+                        createLineCandidate(
+                            element.text,
+                            boundingBox,
+                            lineBaseOrder + elementIndex
+                        )?.let(lineCandidates::add)
+                    }
+                }
+                lineOrder++
+            }
+            if (shouldGroupRecognizedTextInBlocks) {
+                textBlock.boundingBox?.let { boundingBox ->
+                    createRecognizedTextItem(
+                        text = textBlock.text,
+                        boundingBox = boundingBox,
+                        startOrder = blockStartOrder,
+                        endOrder = blockStartOrder - 1
+                    )?.let(recognizedTextItems::add)
+                }
+            }
+        }
+        return recognizedTextItems
     }
 
     private fun matchIdentity(item: QuizGraphicItem): String {
@@ -193,45 +359,27 @@ class QuizRecognitionProcessor(
 
         val generation = matchGeneration.incrementAndGet()
         val quizSnapshot = quizzes.value ?: emptyList()
-        val recognizedTextItems: MutableList<RecognizedTextItem> = ArrayList()
+        val lineCandidates = mutableListOf<OcrOptionLocator.TextCandidate>()
+        val recognizedTextItems = buildRecognizedTextItems(results, lineCandidates)
         addMatchesGraphic(graphicOverlay, displayedMatches)
 //        Log.e("###", quizzes.value?.size.toString())
 
 //        runIO {
 //            Log.d(TAG, "Text is: " + text.text)
 
-        for (textBlock in results.textBlocks) {
-//            println("###  textBlock ${textBlock.boundingBox}")
-
-            if (shouldGroupRecognizedTextInBlocks) {
-                textBlock.boundingBox?.let { boundingBox ->
-                    createRecognizedTextItem(textBlock.text, boundingBox)?.let(recognizedTextItems::add)
-//                    matched?.let {
-//                        val newQus = it.question.copy(prompt = "$boundingBox")
-//                        matchedQuizs.add(it.copy(question = newQus))
-//                    }
-                }
-            } else {
-                for (line in textBlock.lines) {
-                    line.boundingBox?.let { boundingBox ->
-                        createRecognizedTextItem(line.text, boundingBox)?.let(recognizedTextItems::add)
-                    }
-                }
-            }
-        }
-
         val imageWidth = graphicOverlay.imageWidth
         val imageHeight = graphicOverlay.imageHeight
         matchScope.launch {
             val quizIndex = getQuizIndex(quizSnapshot)
-            val matchedQuizs: MutableList<QuizGraphicItem> = ArrayList()
+            val matchedQuizs: MutableList<MatchedTextItem> = ArrayList()
             for (item in recognizedTextItems) {
-                val matched = getMatchedQuizGraphicItem(item.text, item.rect, quizIndex)
+                val matched = getMatchedQuizGraphicItem(item, quizIndex)
                 matched?.let { matchedQuizs.add(it) }
             }
 
             val sortedMatches = buildDisplayMatches(
                 matchedQuizs = matchedQuizs,
+                lineCandidates = lineCandidates,
                 imageWidth = imageWidth,
                 imageHeight = imageHeight
             )
@@ -263,6 +411,9 @@ class QuizRecognitionProcessor(
         private const val MIN_TEXT_RECT_AREA = 24
         private const val MIN_NORMALIZED_TEXT_LENGTH = 2
         private const val DISPLAY_RECT_PADDING_PX = 4
+        private const val MIN_PROMPT_PREFIX_MATCH_LENGTH = 6
+        private const val ORDER_SCALE = 1_000
+        private const val LINE_CANDIDATE_ORDER_OFFSET = 900
 
         private fun logExtrasForTesting(text: Text?) {
             if (text != null) {

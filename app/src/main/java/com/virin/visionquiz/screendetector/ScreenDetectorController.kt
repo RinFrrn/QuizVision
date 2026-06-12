@@ -183,7 +183,9 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                                     ScreenDetectorSession.publishMatches(matches)
                                 }
                             },
-                            minMatchScore = PreferenceUtils.getScreenSearchMinMatchScore(activity)
+                            minMatchScore = PreferenceUtils.getScreenSearchMinMatchScore(activity),
+                            locateScreenAnswerRects =
+                                PreferenceUtils.shouldShowScreenOcrAnswerFrames(activity)
                         )
                     )
                 }
@@ -513,7 +515,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             phase = ScreenDetectorSession.AssistancePhase.RECOGNIZING_ANSWERS,
             statusText = "已识别新题，准备作答"
         )
-        scheduleAssistanceStep(NEW_PAGE_SETTLE_DELAY_MS)
+        runAssistanceStep()
     }
 
     private fun runAssistanceStep() {
@@ -898,7 +900,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                 pageDirection = axis.toSessionPageDirection(),
                 statusText = "等待识别新题"
             )
-            accessibilitySource?.requestFreshScan()
+            accessibilitySource?.requestPageChangeScan()
             schedulePageChangeTimeout(generation, pageFingerprint)
         }
     }
@@ -1537,7 +1539,6 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
     private const val NOTIFICATION_PERMISSION_REFRESH_ATTEMPTS = 20
     private const val ANSWER_SETTLE_DELAY_MS = 550L
     private const val AUTO_PAGE_DELAY_MS = 120L
-    private const val NEW_PAGE_SETTLE_DELAY_MS = 240L
     private const val OVERLAY_RENDER_RETRY_DELAY_MS = 48L
     private const val ASSISTANCE_RESUME_DELAY_MS = 220L
     private const val PAGE_CHANGE_TIMEOUT_MS = 3_500L

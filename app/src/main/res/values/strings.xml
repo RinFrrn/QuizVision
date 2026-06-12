@@ -88,6 +88,8 @@
     <string name="pref_key_camerax_front_camera_target_resolution" translatable="false">cfctas</string>
     <string name="pref_key_camera_live_viewport" translatable="false">clv</string>
     <string name="pref_key_screen_search_interval_ms" translatable="false">ssim</string>
+    <string name="pref_key_screen_search_detect_changes" translatable="false">ssdc</string>
+    <string name="pref_key_screen_search_show_answer_frames" translatable="false">sssaf</string>
     <string name="pref_key_screen_capture_frame_rate" translatable="false">scfr</string>
     <string name="pref_key_accessibility_search_interval_ms" translatable="false">asim</string>
     <string name="pref_key_camera_search_min_match_score" translatable="false">csmm</string>
@@ -98,6 +100,8 @@
     <string name="pref_key_accessibility_vertical_swipe_mode" translatable="false">avsm</string>
     <string name="pref_value_accessibility_vertical_swipe_fixed" translatable="false">fixed</string>
     <string name="pref_value_accessibility_vertical_swipe_smart" translatable="false">smart</string>
+    <string name="pref_category_general_display" translatable="true">General display</string>
+    <string name="pref_category_screen_search" translatable="true">Screen search</string>
     <string name="pref_category_match_threshold" translatable="true">Match threshold</string>
     <string name="pref_title_rear_camera_preview_size" translatable="true">Rear camera preview size</string>
     <string name="pref_title_front_camera_preview_size" translatable="true">Front camera preview size</string>
@@ -106,6 +110,10 @@
     <string name="pref_title_camera_live_viewport" translatable="true">Enable live viewport</string>
     <string name="pref_summary_camera_live_viewport" translatable="true">Do not block camera preview drawing on detection</string>
     <string name="pref_title_screen_search_interval" translatable="true">Screen search interval</string>
+    <string name="pref_title_screen_search_detect_changes" translatable="true">Recognize only when the screen changes</string>
+    <string name="pref_summary_screen_search_detect_changes" translatable="true">Ignore small animations and repeat OCR only after a stable, significant screen change.</string>
+    <string name="pref_title_screen_search_show_answer_frames" translatable="true">Highlight correct answers</string>
+    <string name="pref_summary_screen_search_show_answer_frames" translatable="true">Locate and outline correct options during screen OCR. This does not affect accessibility search.</string>
     <string name="pref_title_screen_capture_frame_rate" translatable="true">Screen capture frame rate</string>
     <string name="pref_title_accessibility_search_interval" translatable="true">Accessibility search interval</string>
     <string name="pref_category_accessibility_search" translatable="true">Accessibility search</string>

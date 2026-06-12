@@ -57,7 +57,8 @@ class SearchSettingsFragment : Fragment() {
                     orientation = LinearLayout.VERTICAL
                     setPadding(16.dp(context), 16.dp(context), 16.dp(context), 24.dp(context))
                     addCameraSection(context)
-                    addTextRecognitionSection(context)
+                    addGeneralDisplaySection(context)
+                    addScreenSearchSection(context)
                     addAccessibilitySection(context)
                     addMatchThresholdSection(context)
                 },
@@ -106,20 +107,8 @@ class SearchSettingsFragment : Fragment() {
         addSection(context, getString(R.string.pref_category_title_camera), rows)
     }
 
-    private fun LinearLayout.addTextRecognitionSection(context: Context) {
+    private fun LinearLayout.addGeneralDisplaySection(context: Context) {
         val rows = listOf(
-            createSwitchRow(
-                context = context,
-                keyResId = R.string.pref_key_group_recognized_text_in_blocks,
-                titleResId = R.string.pref_title_group_recognized_text_in_blocks,
-                defaultValue = true
-            ),
-            createSwitchRow(
-                context = context,
-                keyResId = R.string.pref_key_show_text_confidence,
-                titleResId = R.string.pref_title_show_text_confidence,
-                defaultValue = false
-            ),
             createSwitchRow(
                 context = context,
                 keyResId = R.string.pref_key_brief_answer_display,
@@ -134,6 +123,24 @@ class SearchSettingsFragment : Fragment() {
                 entriesResId = R.array.pref_entries_quiz_overlay_text_size,
                 valuesResId = R.array.pref_entry_values_quiz_overlay_text_size
             ),
+            createSwitchRow(
+                context = context,
+                keyResId = R.string.pref_key_show_text_confidence,
+                titleResId = R.string.pref_title_show_text_confidence,
+                defaultValue = false
+            ),
+            createSwitchRow(
+                context = context,
+                keyResId = R.string.pref_key_group_recognized_text_in_blocks,
+                titleResId = R.string.pref_title_group_recognized_text_in_blocks,
+                defaultValue = true
+            )
+        )
+        addSection(context, getString(R.string.pref_category_general_display), rows)
+    }
+
+    private fun LinearLayout.addScreenSearchSection(context: Context) {
+        val rows = listOf(
             createArrayListRow(
                 context = context,
                 keyResId = R.string.pref_key_screen_search_interval_ms,
@@ -142,6 +149,20 @@ class SearchSettingsFragment : Fragment() {
                 entriesResId = R.array.pref_entries_screen_search_interval,
                 valuesResId = R.array.pref_entry_values_screen_search_interval
             ),
+            createSwitchRow(
+                context = context,
+                keyResId = R.string.pref_key_screen_search_detect_changes,
+                titleResId = R.string.pref_title_screen_search_detect_changes,
+                summary = getString(R.string.pref_summary_screen_search_detect_changes),
+                defaultValue = true
+            ),
+            createSwitchRow(
+                context = context,
+                keyResId = R.string.pref_key_screen_search_show_answer_frames,
+                titleResId = R.string.pref_title_screen_search_show_answer_frames,
+                summary = getString(R.string.pref_summary_screen_search_show_answer_frames),
+                defaultValue = false
+            ),
             createArrayListRow(
                 context = context,
                 keyResId = R.string.pref_key_screen_capture_frame_rate,
@@ -149,7 +170,13 @@ class SearchSettingsFragment : Fragment() {
                 defaultValue = "30",
                 entriesResId = R.array.pref_entries_screen_capture_frame_rate,
                 valuesResId = R.array.pref_entry_values_screen_capture_frame_rate
-            ),
+            )
+        )
+        addSection(context, getString(R.string.pref_category_screen_search), rows)
+    }
+
+    private fun LinearLayout.addAccessibilitySection(context: Context) {
+        val rows = listOf(
             createArrayListRow(
                 context = context,
                 keyResId = R.string.pref_key_accessibility_search_interval_ms,
@@ -157,13 +184,7 @@ class SearchSettingsFragment : Fragment() {
                 defaultValue = "250",
                 entriesResId = R.array.pref_entries_screen_search_interval,
                 valuesResId = R.array.pref_entry_values_screen_search_interval
-            )
-        )
-        addSection(context, getString(R.string.pref_category_text_recognition), rows)
-    }
-
-    private fun LinearLayout.addAccessibilitySection(context: Context) {
-        val rows = listOf(
+            ),
             createArrayListRow(
                 context = context,
                 keyResId = R.string.pref_key_accessibility_vertical_swipe_mode,

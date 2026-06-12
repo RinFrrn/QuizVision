@@ -100,12 +100,18 @@
     <string name="pref_title_camera_live_viewport">启用实时视图</string>
     <string name="pref_summary_camera_live_viewport">检测时不阻塞摄像头预览绘制</string>
     <string name="pref_category_text_recognition">文字识别</string>
+    <string name="pref_category_general_display">通用显示</string>
+    <string name="pref_category_screen_search">屏幕搜题</string>
     <string name="pref_title_screen_search_interval">屏幕搜题间隔</string>
+    <string name="pref_title_screen_search_detect_changes">仅在屏幕变化时重新识别</string>
+    <string name="pref_summary_screen_search_detect_changes">忽略小动画，仅在屏幕出现稳定且明显的变化后重新识别。</string>
+    <string name="pref_title_screen_search_show_answer_frames">框出正确答案</string>
+    <string name="pref_summary_screen_search_show_answer_frames">屏幕 OCR 时定位并框出正确选项，不影响无障碍搜题。</string>
     <string name="pref_title_screen_capture_frame_rate">屏幕采集帧率</string>
     <string name="pref_title_accessibility_search_interval">无障碍搜题间隔</string>
     <string name="pref_category_accessibility_search">无障碍搜题</string>
     <string name="pref_title_accessibility_vertical_swipe_mode">无障碍上滑方式</string>
-    <string name="pref_summary_accessibility_vertical_swipe_mode" formatted="false">固定距离每次上滑屏幕高度的 60%；智能滑动优先对齐最后一题，无法计算时回退到 60%。</string>
+    <string name="pref_summary_accessibility_vertical_swipe_mode" formatted="false">智能滑动优先对齐最后一题，无法计算时回退到固定距离。</string>
     <string name="pref_accessibility_vertical_swipe_fixed">固定距离滑动</string>
     <string name="pref_accessibility_vertical_swipe_smart">智能滑动</string>
     <string name="pref_category_match_threshold">匹配阈值</string>

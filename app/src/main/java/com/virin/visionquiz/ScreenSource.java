@@ -25,6 +25,7 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.Rect;
+import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.Log;
 
@@ -65,6 +66,9 @@ import java.util.concurrent.atomic.AtomicInteger;
     private EncodeBuilder screenShareKit;
 
     private final GraphicOverlay graphicOverlay;
+    private final ScreenFrameChangeDetector frameChangeDetector =
+            new ScreenFrameChangeDetector();
+    private final boolean screenChangeDetectionEnabled;
 
     /**
      * Dedicated thread and associated runnable for calling into the detector with frames, as the
@@ -88,6 +92,8 @@ import java.util.concurrent.atomic.AtomicInteger;
         this.activity = activity;
         overlayMaskPaddingPx =
                 Math.round(OVERLAY_MASK_PADDING_DP * activity.getResources().getDisplayMetrics().density);
+        screenChangeDetectionEnabled =
+                PreferenceUtils.shouldDetectScreenChangesBeforeSearch(activity);
         graphicOverlay = new GraphicOverlay(activity, (AttributeSet) null);
         graphicOverlay.clear();
         processingRunnable = new FrameProcessingRunnable();
@@ -123,6 +129,7 @@ import java.util.concurrent.atomic.AtomicInteger;
             return this;
         }
         Log.e(TAG, "start");
+        frameChangeDetector.reset();
         Point captureSize = getNativeCaptureSize();
         int frameRate = PreferenceUtils.getScreenCaptureFrameRate(activity);
         screenShareKit = ScreenShareKit.INSTANCE.init((FragmentActivity) activity);
@@ -152,6 +159,7 @@ import java.util.concurrent.atomic.AtomicInteger;
     public synchronized void pause() {
         processingRunnable.setPaused(true);
         cancelCurrentScan();
+        frameChangeDetector.reset();
         cleanScreen();
     }
 
@@ -199,6 +207,7 @@ import java.util.concurrent.atomic.AtomicInteger;
         screenShareKit = null;
         ScreenDetectorSession.clearScreenFrameInfo();
         cancelCurrentScan();
+        frameChangeDetector.reset();
         started = false;
     }
 
@@ -248,6 +257,9 @@ import java.util.concurrent.atomic.AtomicInteger;
         } finally {
             if (generation != 0) {
                 ScreenDetectorSession.finishScreenScan(generation);
+                if (screenChangeDetectionEnabled) {
+                    frameChangeDetector.onScanFinished();
+                }
             }
             processorCallDispatched.set(false);
             isProcessingFrame.set(false);
@@ -343,6 +355,22 @@ import java.util.concurrent.atomic.AtomicInteger;
                         }
                         if (processor == null || !isProcessingFrame.compareAndSet(false, true)) {
                             return;
+                        }
+                        if (screenChangeDetectionEnabled) {
+                            ScreenFrameChangeDetector.Decision changeDecision =
+                                    frameChangeDetector.evaluate(
+                                            data.rgba,
+                                            data.width,
+                                            data.height,
+                                            data.stride,
+                                            data.rotation,
+                                            SystemClock.elapsedRealtime(),
+                                            shouldRetryOnce
+                                    );
+                            if (changeDecision != ScreenFrameChangeDetector.Decision.SCAN) {
+                                isProcessingFrame.set(false);
+                                return;
+                            }
                         }
                         List<Rect> fallbackAnnotationBounds =
                                 ScreenDetectorSession.getAnnotationBoundsSnapshot();

@@ -36,19 +36,7 @@
 
     </PreferenceCategory>
 
-    <PreferenceCategory android:title="@string/pref_category_text_recognition">
-
-        <SwitchPreference
-            android:defaultValue="true"
-            android:key="@string/pref_key_group_recognized_text_in_blocks"
-            android:persistent="true"
-            android:title="@string/pref_title_group_recognized_text_in_blocks" />
-
-        <SwitchPreference
-            android:defaultValue="false"
-            android:key="@string/pref_key_show_text_confidence"
-            android:persistent="true"
-            android:title="@string/pref_title_show_text_confidence" />
+    <PreferenceCategory android:title="@string/pref_category_general_display">
 
         <SwitchPreference
             android:defaultValue="false"
@@ -64,6 +52,22 @@
             android:persistent="true"
             android:title="@string/pref_title_quiz_overlay_text_size" />
 
+        <SwitchPreference
+            android:defaultValue="false"
+            android:key="@string/pref_key_show_text_confidence"
+            android:persistent="true"
+            android:title="@string/pref_title_show_text_confidence" />
+
+        <SwitchPreference
+            android:defaultValue="true"
+            android:key="@string/pref_key_group_recognized_text_in_blocks"
+            android:persistent="true"
+            android:title="@string/pref_title_group_recognized_text_in_blocks" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/pref_category_screen_search">
+
         <ListPreference
             android:defaultValue="750"
             android:entries="@array/pref_entries_screen_search_interval"
@@ -72,6 +76,20 @@
             android:persistent="true"
             android:title="@string/pref_title_screen_search_interval" />
 
+        <SwitchPreference
+            android:defaultValue="true"
+            android:key="@string/pref_key_screen_search_detect_changes"
+            android:persistent="true"
+            android:summary="@string/pref_summary_screen_search_detect_changes"
+            android:title="@string/pref_title_screen_search_detect_changes" />
+
+        <SwitchPreference
+            android:defaultValue="false"
+            android:key="@string/pref_key_screen_search_show_answer_frames"
+            android:persistent="true"
+            android:summary="@string/pref_summary_screen_search_show_answer_frames"
+            android:title="@string/pref_title_screen_search_show_answer_frames" />
+
         <ListPreference
             android:defaultValue="30"
             android:entries="@array/pref_entries_screen_capture_frame_rate"
@@ -79,6 +97,10 @@
             android:key="@string/pref_key_screen_capture_frame_rate"
             android:persistent="true"
             android:title="@string/pref_title_screen_capture_frame_rate" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/pref_category_accessibility_search">
 
         <ListPreference
             android:defaultValue="250"
