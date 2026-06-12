@@ -45,12 +45,12 @@
                     app:showAsAction="never" />
 
                 <item
-                    android:id="@+id/about"
-                    android:icon="@drawable/round_info_24"
+                    android:id="@+id/ai_settings"
+                    android:icon="@drawable/icon_science_24px"
                     android:iconTint="?attr/colorOnSurfaceVariant"
                     android:iconTintMode="src_in"
-                    android:orderInCategory="100"
-                    android:title="@string/about"
+                    android:orderInCategory="95"
+                    android:title="@string/ai_settings_title"
                     app:showAsAction="never" />
             </group>
 
@@ -71,6 +71,15 @@
                     android:iconTintMode="src_in"
                     android:orderInCategory="100"
                     android:title="@string/screen_test"
+                    app:showAsAction="never" />
+
+                <item
+                    android:id="@+id/about"
+                    android:icon="@drawable/round_info_24"
+                    android:iconTint="?attr/colorOnSurfaceVariant"
+                    android:iconTintMode="src_in"
+                    android:orderInCategory="100"
+                    android:title="@string/about"
                     app:showAsAction="never" />
             </group>
         </menu>

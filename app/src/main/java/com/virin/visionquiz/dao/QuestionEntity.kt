@@ -109,6 +109,23 @@ data class PracticeSession(
     @ColumnInfo(name = "updated_at") val updatedAt: Long = System.currentTimeMillis()
 )
 
+@Entity(
+    indices = [
+        Index(value = ["quiz_id", "type"], unique = true),
+        Index(value = ["library_id"])
+    ]
+)
+data class AiExplanationCache(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @ColumnInfo(name = "quiz_id") val quizId: Int,
+    @ColumnInfo(name = "library_id") val libraryId: Int,
+    val type: String,
+    val fingerprint: String,
+    val content: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "updated_at") val updatedAt: Long = System.currentTimeMillis()
+)
+
 enum class QuizStudyMode(val value: String, val label: String) {
     ORDERED_PRACTICE("ordered_practice", "顺序背题"),
     RANDOM_PRACTICE("random_practice", "随机背题"),

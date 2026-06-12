@@ -714,6 +714,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
             menu.findItem(R.id.more),
             menu.findItem(R.id.search_settings),
             menu.findItem(R.id.import_settings),
+            menu.findItem(R.id.ai_settings),
             menu.findItem(R.id.select),
             menu.findItem(R.id.about),
             menu.findItem(R.id.camera_test),
@@ -753,6 +754,14 @@ class QuizLibraryListFragment : BaseQuizFragment() {
                 intent.putExtra(
                     SettingsActivity.EXTRA_LAUNCH_SOURCE,
                     SettingsActivity.LaunchSource.QUIZ_CAMERAX
+                )
+                startActivity(intent)
+            }
+            R.id.ai_settings -> {
+                val intent = Intent(requireContext(), SettingsActivity::class.java)
+                intent.putExtra(
+                    SettingsActivity.EXTRA_LAUNCH_SOURCE,
+                    SettingsActivity.LaunchSource.AI_SETTINGS
                 )
                 startActivity(intent)
             }

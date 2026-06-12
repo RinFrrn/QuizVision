@@ -25,6 +25,7 @@ import android.view.ContextThemeWrapper
 import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.view.WindowManager
+import android.view.ViewTreeObserver
 import android.view.animation.DecelerateInterpolator
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -66,6 +67,7 @@ class ScreenDetectorService : LifecycleService() {
     private var isSnappedToRight = false
     private var latestRenderState: RenderState? = null
     private var lastMarkerRenderKey: MarkerRenderKey? = null
+    private var pendingScreenScanHiddenAckGeneration = 0
     private var lastCollapsedRenderState: CollapsedRenderState? = null
     private var showControlWindow = true
     private var showMarkerOverlayWindow = true
@@ -106,6 +108,9 @@ class ScreenDetectorService : LifecycleService() {
                 }
                 .combine(ScreenDetectorSession.assistanceState) { renderState, assistanceState ->
                     renderState.copy(assistanceState = assistanceState)
+                }
+                .combine(ScreenDetectorSession.screenScanState) { renderState, screenScanState ->
+                    renderState.copy(screenScanState = screenScanState)
                 }
                 .collect { renderState ->
                     latestRenderState = renderState
@@ -152,6 +157,7 @@ class ScreenDetectorService : LifecycleService() {
         removeViewIfAttached(markerOverlayView)
         markerOverlayView = null
         lastMarkerRenderKey = null
+        pendingScreenScanHiddenAckGeneration = 0
         removeViewIfAttached(controlRootView)
         controlRootView = null
         expandedControlBar = null
@@ -1151,6 +1157,16 @@ class ScreenDetectorService : LifecycleService() {
         val state = renderState.state
         val matches = renderState.matches
         val frameInfo = renderState.frameInfo
+        if (
+            renderState.mode == ScreenDetectorSession.DetectionMode.SCREEN_OCR &&
+            renderState.screenScanState.hideResults
+        ) {
+            clearMarkerOverlayForScreenScan(
+                overlay,
+                renderState.screenScanState.generation
+            )
+            return
+        }
         if (state == ScreenDetectorSession.DetectionState.STOPPED || frameInfo == null) {
             clearMarkerOverlay(overlay)
             return
@@ -1206,6 +1222,34 @@ class ScreenDetectorService : LifecycleService() {
         overlay.clear()
         ScreenDetectorSession.clearAnnotationBounds()
         lastMarkerRenderKey = null
+    }
+
+    private fun clearMarkerOverlayForScreenScan(
+        overlay: GraphicOverlay,
+        generation: Int
+    ) {
+        clearMarkerOverlay(overlay)
+        if (generation <= pendingScreenScanHiddenAckGeneration) {
+            return
+        }
+        pendingScreenScanHiddenAckGeneration = generation
+        val observer = overlay.viewTreeObserver
+        if (!observer.isAlive) {
+            ScreenDetectorSession.acknowledgeScreenResultsHidden(generation)
+            return
+        }
+        val listener = object : ViewTreeObserver.OnDrawListener {
+            override fun onDraw() {
+                overlay.post {
+                    if (overlay.viewTreeObserver.isAlive) {
+                        overlay.viewTreeObserver.removeOnDrawListener(this)
+                    }
+                    ScreenDetectorSession.acknowledgeScreenResultsHidden(generation)
+                }
+            }
+        }
+        observer.addOnDrawListener(listener)
+        overlay.postInvalidateOnAnimation()
     }
 
     private fun publishControlBounds() {
@@ -1299,7 +1343,9 @@ class ScreenDetectorService : LifecycleService() {
         val answerClickState: ScreenDetectorSession.AnswerClickState =
             ScreenDetectorSession.AnswerClickState(),
         val assistanceState: ScreenDetectorSession.AssistanceState =
-            ScreenDetectorSession.AssistanceState()
+            ScreenDetectorSession.AssistanceState(),
+        val screenScanState: ScreenDetectorSession.ScreenScanState =
+            ScreenDetectorSession.ScreenScanState()
     )
 
     private data class MarkerRenderKey(

@@ -47,7 +47,8 @@ public class SettingsActivity extends AppCompatActivity {
         CAMERAXSOURCE_DEMO(
                 R.string.pref_screen_title_cameraxsource_demo, CameraXSourceDemoPreferenceFragment.class),
         QUIZ_CAMERA(R.string.pref_screen_title_quiz_camera, QuizCameraPreferenceFragment.class),
-        QUIZ_CAMERAX(R.string.pref_screen_title_quiz_camerax, QuizCameraXPreferenceFragment.class);
+        QUIZ_CAMERAX(R.string.pref_screen_title_quiz_camerax, QuizCameraXPreferenceFragment.class),
+        AI_SETTINGS(R.string.ai_settings_title, QuizCameraPreferenceFragment.class);
 
         private final int titleResId;
         private final Class<? extends PreferenceFragment> prefFragmentClass;
@@ -77,6 +78,11 @@ public class SettingsActivity extends AppCompatActivity {
                 getSupportFragmentManager()
                         .beginTransaction()
                         .replace(R.id.settings_container, new SearchSettingsFragment())
+                        .commit();
+            } else if (launchSource == LaunchSource.AI_SETTINGS) {
+                getSupportFragmentManager()
+                        .beginTransaction()
+                        .replace(R.id.settings_container, new AiSettingsFragment())
                         .commit();
             } else {
                 try {

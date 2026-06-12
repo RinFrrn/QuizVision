@@ -48,6 +48,7 @@ import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages the camera and allows UI updates on top of it (e.g. overlaying extra Graphics or
@@ -80,6 +81,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
     private boolean started = false;
     private final int overlayMaskPaddingPx;
     private final AtomicBoolean isProcessingFrame = new AtomicBoolean(false);
+    private final AtomicBoolean processorCallDispatched = new AtomicBoolean(false);
+    private final AtomicInteger activeScanGeneration = new AtomicInteger();
 
     public ScreenSource(Activity activity) {
         this.activity = activity;
@@ -148,6 +151,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
     public synchronized void pause() {
         processingRunnable.setPaused(true);
+        cancelCurrentScan();
         cleanScreen();
     }
 
@@ -194,7 +198,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
         }
         screenShareKit = null;
         ScreenDetectorSession.clearScreenFrameInfo();
-        isProcessingFrame.set(false);
+        cancelCurrentScan();
         started = false;
     }
 
@@ -228,6 +232,35 @@ import java.util.concurrent.atomic.AtomicBoolean;
                 frameProcessor.stop();
             }
             frameProcessor = processor;
+        }
+    }
+
+    public void finishCurrentScan() {
+        finishCurrentScan(null);
+    }
+
+    public void finishCurrentScan(Runnable publishResults) {
+        int generation = activeScanGeneration.getAndSet(0);
+        try {
+            if (generation != 0 && publishResults != null) {
+                publishResults.run();
+            }
+        } finally {
+            if (generation != 0) {
+                ScreenDetectorSession.finishScreenScan(generation);
+            }
+            processorCallDispatched.set(false);
+            isProcessingFrame.set(false);
+        }
+    }
+
+    private void cancelCurrentScan() {
+        synchronized (processorLock) {
+            activeScanGeneration.set(0);
+            ScreenDetectorSession.cancelScreenScan();
+            if (!processorCallDispatched.get()) {
+                isProcessingFrame.set(false);
+            }
         }
     }
 
@@ -304,47 +337,92 @@ import java.util.concurrent.atomic.AtomicBoolean;
                     }
 
                     try {
+                        VisionImageProcessor processor;
                         synchronized (processorLock) {
-                            if (frameProcessor == null) {
+                            processor = frameProcessor;
+                        }
+                        if (processor == null || !isProcessingFrame.compareAndSet(false, true)) {
+                            return;
+                        }
+                        List<Rect> fallbackAnnotationBounds =
+                                ScreenDetectorSession.getAnnotationBoundsSnapshot();
+                        int scanGeneration = ScreenDetectorSession.beginScreenScan();
+                        activeScanGeneration.set(scanGeneration);
+                        processorCallDispatched.set(false);
+                        boolean resultsHidden =
+                                ScreenDetectorSession.awaitScreenResultsHidden(
+                                        scanGeneration,
+                                        SCREEN_RESULTS_HIDE_TIMEOUT_MS
+                                );
+                        if (resultsHidden) {
+                            fallbackAnnotationBounds.clear();
+                        }
+                        synchronized (lock) {
+                            pendingFrameData = null;
+                            while (
+                                    active
+                                            && (!paused || shouldRetryOnce)
+                                            && pendingFrameData == null
+                            ) {
+                                try {
+                                    lock.wait();
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                    cancelCurrentScan();
+                                    return;
+                                }
+                            }
+                            if (!active || (paused && !shouldRetryOnce)) {
+                                cancelCurrentScan();
                                 return;
                             }
-                            if (!isProcessingFrame.compareAndSet(false, true)) {
-                                return;
-                            }
-                            if (data.width > 0
-                                    && data.height > 0
-                                    && (data.width != latestWidth || data.height != latestHeight)) {
-                                latestWidth = data.width;
-                                latestHeight = data.height;
-                            }
-                            Bitmap bitmap = createBitmapFromRgba(data);
-                            if (bitmap == null) {
-                                isProcessingFrame.set(false);
-                                return;
-                            }
-                            final Bitmap processedBitmap =
-                                    maskOverlayBoundsIfNeeded(
-                                            bitmap,
-                                            data.width,
-                                            data.height,
-                                            data.rotation
-                                    );
-                            graphicOverlay.setImageSourceInfo(
-                                    processedBitmap.getWidth(),
-                                    processedBitmap.getHeight(),
-                                    false
-                            );
-                            ScreenDetectorSession.publishScreenFrameInfo(
-                                    processedBitmap.getWidth(),
-                                    processedBitmap.getHeight()
-                            );
-                            frameProcessor.processBitmap(processedBitmap, graphicOverlay, () -> {
+                            data = pendingFrameData;
+                            pendingFrameData = null;
+                        }
+                        if (data.width > 0
+                                && data.height > 0
+                                && (data.width != latestWidth || data.height != latestHeight)) {
+                            latestWidth = data.width;
+                            latestHeight = data.height;
+                        }
+                        Bitmap bitmap = createBitmapFromRgba(data);
+                        if (bitmap == null) {
+                            finishCurrentScan();
+                            return;
+                        }
+                        final Bitmap processedBitmap =
+                                maskOverlayBoundsIfNeeded(
+                                        bitmap,
+                                        data.width,
+                                        data.height,
+                                        data.rotation,
+                                        fallbackAnnotationBounds
+                                );
+                        graphicOverlay.setImageSourceInfo(
+                                processedBitmap.getWidth(),
+                                processedBitmap.getHeight(),
+                                false
+                        );
+                        ScreenDetectorSession.publishScreenFrameInfo(
+                                processedBitmap.getWidth(),
+                                processedBitmap.getHeight()
+                        );
+                        synchronized (processorLock) {
+                            if (
+                                    frameProcessor != processor
+                                        || activeScanGeneration.get() != scanGeneration
+                            ) {
                                 processedBitmap.recycle();
-                                isProcessingFrame.set(false);
+                                finishCurrentScan();
+                                return;
+                            }
+                            processorCallDispatched.set(true);
+                            processor.processBitmap(processedBitmap, graphicOverlay, () -> {
+                                processedBitmap.recycle();
                             });
                         }
                     } catch (Exception t) {
-                        isProcessingFrame.set(false);
+                        finishCurrentScan();
                         Log.e(TAG, "Exception thrown from receiver.", t);
                     }
                 }
@@ -369,6 +447,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
                         timer = null;
                     }
                     pendingFrameData = null;
+                    lock.notifyAll();
                 }
             }
         }
@@ -456,6 +535,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
         }
     }
 
+    private static final long SCREEN_RESULTS_HIDE_TIMEOUT_MS = 180L;
+
     private Bitmap createBitmapFromRgba(FrameData data) {
         if (data.rgba == null || data.width <= 0 || data.height <= 0 || data.stride <= 0) {
             return null;
@@ -498,7 +579,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
             Bitmap bitmap,
             int sourceWidth,
             int sourceHeight,
-            int rotation
+            int rotation,
+            List<Rect> fallbackAnnotationBounds
     ) {
         Rect overlayBounds = ScreenDetectorSession.getOverlayBoundsSnapshot();
         List<Rect> annotationBounds = ScreenDetectorSession.getAnnotationBoundsSnapshot();
@@ -507,6 +589,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
             maskSourceBounds.add(overlayBounds);
         }
         maskSourceBounds.addAll(annotationBounds);
+        maskSourceBounds.addAll(fallbackAnnotationBounds);
         if (maskSourceBounds.isEmpty() || sourceWidth <= 0 || sourceHeight <= 0) {
             return bitmap;
         }

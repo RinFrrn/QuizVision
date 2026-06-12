@@ -1,6 +1,7 @@
 package com.virin.visionquiz.quizstudy
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.media.AudioManager
 import android.media.ToneGenerator
@@ -36,6 +37,9 @@ import com.google.android.material.color.MaterialColors
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.virin.visionquiz.R
+import com.virin.visionquiz.ai.AiConfigStore
+import com.virin.visionquiz.ai.AiExplanationType
+import com.virin.visionquiz.ai.AiMarkdownRenderer
 import com.virin.visionquiz.dao.PracticeSession
 import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizAnswerRecord
@@ -45,6 +49,7 @@ import com.virin.visionquiz.dao.answerString
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.dao.isSupportedStudyType
 import com.virin.visionquiz.databinding.FragmentQuizRunnerBinding
+import com.virin.visionquiz.preference.SettingsActivity
 import com.virin.visionquiz.quizlibraryfeatures.QuizLibraryFeaturesFragment
 import com.virin.visionquiz.util.BaseQuizFragment
 import com.virin.visionquiz.util.NavigationBackAnimationSource
@@ -94,6 +99,9 @@ class QuizRunnerFragment : BaseQuizFragment() {
     private var correctAnswerToneGenerator: ToneGenerator? = null
     private var wrongAnswerToneGenerator: ToneGenerator? = null
     private var answerRecords: List<QuizAnswerRecord> = emptyList()
+    private var selectedAiType = AiExplanationType.ANALYSIS
+    private var lastAiConfigSignature: String? = null
+    private var aiMarkdownRenderer: AiMarkdownRenderer? = null
     private var runnerTextSize = RunnerTextSize.NORMAL
     private val historyDateFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
     private val timerHandler = Handler(Looper.getMainLooper())
@@ -119,6 +127,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        aiMarkdownRenderer = AiMarkdownRenderer(requireContext())
         restoreRunnerState(savedInstanceState)
         optionShuffleEnabled = readInitialOptionShuffleEnabled()
         practiceAnswerSoundEnabled = QuizStudySettings.readPracticeAnswerSoundEnabled(requireContext())
@@ -138,10 +147,12 @@ class QuizRunnerFragment : BaseQuizFragment() {
         binding.showAnswerButton.setOnClickListener { showAnswer() }
         binding.favoriteButton.setOnClickListener { toggleFavorite() }
         binding.answerCardButton.setOnClickListener { showAnswerCard() }
+        setupAiControls()
         applyBottomInsets()
         setupSwipeNavigation()
         setupExitConfirmation()
         setupRunnerMenu()
+        lastAiConfigSignature = currentAiConfigSignature()
 
         viewModel.favoriteQuizIds.observe(viewLifecycleOwner) { ids ->
             favoriteIds = ids.orEmpty().toSet()
@@ -156,6 +167,9 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 hasPreparedQuizList = true
                 prepareQuizList(source.orEmpty())
             }
+        }
+        viewModel.aiStates.observe(viewLifecycleOwner) {
+            renderAiState()
         }
     }
 
@@ -218,6 +232,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         correctAnswerToneGenerator = null
         wrongAnswerToneGenerator = null
         swipeNavigationTouchListener = null
+        aiMarkdownRenderer = null
         super.onDestroyView()
         _binding = null
     }
@@ -232,6 +247,14 @@ class QuizRunnerFragment : BaseQuizFragment() {
         super.onResume()
         refreshRunnerTextSize()
         resumeTimerForLifecycle()
+        val configSignature = currentAiConfigSignature()
+        if (lastAiConfigSignature != null && lastAiConfigSignature != configSignature) {
+            viewModel.clearAiUiStates()
+        }
+        lastAiConfigSignature = configSignature
+        if (_binding != null && quizzes.isNotEmpty()) {
+            renderAiSection()
+        }
     }
 
     private fun restoreRunnerState(savedInstanceState: Bundle?) {
@@ -529,6 +552,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
             isPracticeSubmitted -> isLastQuestion
             else -> true
         }
+        renderAiSection()
         applyTypeStyle(type)
         renderOptions(quiz, type)
         updateFavoriteButton()
@@ -565,6 +589,15 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 .setIcon(R.drawable.round_delete_24)
                 .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
         }
+        binding.toolbar.menu.add(Menu.NONE, MENU_AI_SETTINGS, Menu.NONE, getString(R.string.ai_settings_title))
+            .setIcon(R.drawable.icon_science_24px)
+            .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        binding.toolbar.menu.add(
+            Menu.NONE,
+            MENU_AI_PROFILE,
+            Menu.NONE,
+            getString(R.string.ai_profile_switch)
+        ).setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
         binding.toolbar.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 MENU_TEXT_SIZE -> {
@@ -599,9 +632,182 @@ class QuizRunnerFragment : BaseQuizFragment() {
                     confirmResetPracticeSession()
                     true
                 }
+                MENU_AI_SETTINGS -> {
+                    openAiSettings()
+                    true
+                }
+                MENU_AI_PROFILE -> {
+                    showAiProfileDialog()
+                    true
+                }
                 else -> false
             }
         }
+    }
+
+    private fun setupAiControls() {
+        binding.aiTypeGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            selectedAiType = when (checkedId) {
+                R.id.ai_technique_button -> AiExplanationType.TECHNIQUE
+                R.id.ai_mnemonic_button -> AiExplanationType.MNEMONIC
+                else -> AiExplanationType.ANALYSIS
+            }
+            renderAiState()
+        }
+        bindAiButton(binding.aiAnalysisButton, AiExplanationType.ANALYSIS)
+        bindAiButton(binding.aiTechniqueButton, AiExplanationType.TECHNIQUE)
+        bindAiButton(binding.aiMnemonicButton, AiExplanationType.MNEMONIC)
+        binding.aiRetryButton.setOnClickListener {
+            requestSelectedAi(forceRefresh = false)
+        }
+    }
+
+    private fun bindAiButton(button: View, type: AiExplanationType) {
+        button.setOnClickListener {
+            selectedAiType = type
+            requestSelectedAi(forceRefresh = false)
+        }
+        button.setOnLongClickListener {
+            selectedAiType = type
+            binding.aiTypeGroup.check(
+                when (type) {
+                    AiExplanationType.ANALYSIS -> R.id.ai_analysis_button
+                    AiExplanationType.TECHNIQUE -> R.id.ai_technique_button
+                    AiExplanationType.MNEMONIC -> R.id.ai_mnemonic_button
+                }
+            )
+            requestSelectedAi(forceRefresh = true)
+            true
+        }
+    }
+
+    private fun requestSelectedAi(forceRefresh: Boolean) {
+        val quiz = quizzes.getOrNull(currentIndex) ?: return
+        if (!binding.aiSection.isVisible) return
+        val config = AiConfigStore(requireContext()).read()
+        if (!config.isComplete()) {
+            showAiConfigurationRequired()
+            return
+        }
+        viewModel.requestAiExplanation(
+            quiz = quiz,
+            type = selectedAiType,
+            selectedAnswer = currentSelection.takeIf { it.isNotEmpty() },
+            forceRefresh = forceRefresh
+        )
+    }
+
+    private fun renderAiSection() {
+        val answerIsShown = answerVisible || reviewMode
+        val enabled = AiConfigStore(requireContext()).read().enabled
+        binding.aiSection.isVisible = answerIsShown && enabled
+        if (binding.aiSection.isVisible) {
+            renderAiState()
+        }
+    }
+
+    private fun renderAiState() {
+        if (_binding == null || !binding.aiSection.isVisible) return
+        val quiz = quizzes.getOrNull(currentIndex) ?: return
+        val state = viewModel.aiStates.value
+            .orEmpty()[AiRequestKey(quiz.id, selectedAiType)]
+            ?: AiExplanationUiState.Idle
+        binding.aiLoadingIndicator.isVisible = state is AiExplanationUiState.Loading
+        binding.aiRetryButton.isVisible = state is AiExplanationUiState.Error
+        binding.aiContentText.isVisible = state is AiExplanationUiState.Success
+        val states = viewModel.aiStates.value.orEmpty()
+        binding.aiAnalysisButton.isEnabled =
+            states[AiRequestKey(quiz.id, AiExplanationType.ANALYSIS)] !is AiExplanationUiState.Loading
+        binding.aiTechniqueButton.isEnabled =
+            states[AiRequestKey(quiz.id, AiExplanationType.TECHNIQUE)] !is AiExplanationUiState.Loading
+        binding.aiMnemonicButton.isEnabled =
+            states[AiRequestKey(quiz.id, AiExplanationType.MNEMONIC)] !is AiExplanationUiState.Loading
+        when (state) {
+            AiExplanationUiState.Idle -> {
+                binding.aiStatusText.setText(R.string.ai_tap_to_generate)
+                binding.aiContentText.text = ""
+            }
+            AiExplanationUiState.Loading -> {
+                binding.aiStatusText.setText(R.string.ai_loading)
+                binding.aiContentText.text = ""
+            }
+            AiExplanationUiState.ConfigurationRequired -> {
+                binding.aiStatusText.setText(R.string.ai_not_configured_message)
+                binding.aiContentText.text = ""
+            }
+            is AiExplanationUiState.Success -> {
+                binding.aiStatusText.setText(
+                    if (state.fromCache) R.string.ai_cached else R.string.ai_generated
+                )
+                aiMarkdownRenderer?.render(binding.aiContentText, state.content)
+                    ?: run { binding.aiContentText.text = state.content }
+            }
+            is AiExplanationUiState.Error -> {
+                binding.aiStatusText.text = state.message
+                binding.aiContentText.text = ""
+            }
+        }
+    }
+
+    private fun showAiConfigurationRequired() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.ai_not_configured_title)
+            .setMessage(R.string.ai_not_configured_message)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.ai_go_to_settings) { _, _ -> openAiSettings() }
+            .show()
+    }
+
+    private fun openAiSettings() {
+        startActivity(Intent(requireContext(), SettingsActivity::class.java).apply {
+            putExtra(
+                SettingsActivity.EXTRA_LAUNCH_SOURCE,
+                SettingsActivity.LaunchSource.AI_SETTINGS
+            )
+        })
+    }
+
+    private fun showAiProfileDialog() {
+        val store = AiConfigStore(requireContext())
+        val profiles = store.listProfiles()
+        val defaultId = store.getDefaultProfileId()
+        val checkedIndex = profiles.indexOfFirst { it.id == defaultId }.coerceAtLeast(0)
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.ai_profile_switch)
+            .setSingleChoiceItems(
+                profiles.map { "${it.name} · ${it.model}" }.toTypedArray(),
+                checkedIndex
+            ) { dialog, which ->
+                val selected = profiles.getOrNull(which) ?: return@setSingleChoiceItems
+                if (selected.id != defaultId) {
+                    store.setDefaultProfile(selected.id)
+                    viewModel.clearAiUiStates()
+                    lastAiConfigSignature = currentAiConfigSignature()
+                    renderAiSection()
+                    Toast.makeText(
+                        requireContext(),
+                        selected.name,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun currentAiConfigSignature(): String {
+        val config = AiConfigStore(requireContext()).read()
+        return listOf(
+            config.enabled,
+            config.profileId,
+            config.baseUrl,
+            config.model,
+            config.analysisPrompt,
+            config.techniquePrompt,
+            config.mnemonicPrompt
+        ).joinToString("\u001f")
     }
 
     private fun readInitialOptionShuffleEnabled(): Boolean {
@@ -1234,6 +1440,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         binding.answerPanel.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.resultSp)
         binding.historySummaryText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.supportSp)
         binding.historyDetailText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.supportSp)
+        binding.aiContentText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.supportSp)
     }
 
     private fun renderExamSummaryIfNeeded() {
@@ -1348,6 +1555,8 @@ class QuizRunnerFragment : BaseQuizFragment() {
         private const val MENU_OPTION_SHUFFLE = 1000
         private const val MENU_PRACTICE_SOUND = 1002
         private const val MENU_RESET_PRACTICE = 1001
+        private const val MENU_AI_SETTINGS = 1004
+        private const val MENU_AI_PROFILE = 1005
         private const val PRACTICE_CORRECT_SOUND_VOLUME = 85
         private const val PRACTICE_WRONG_SOUND_VOLUME = 100
         private const val PRACTICE_CORRECT_SOUND_DURATION_MS = 150

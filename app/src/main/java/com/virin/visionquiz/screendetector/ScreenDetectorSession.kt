@@ -14,6 +14,11 @@ object ScreenDetectorSession {
         val height: Int
     )
 
+    data class ScreenScanState(
+        val generation: Int = 0,
+        val hideResults: Boolean = false
+    )
+
     enum class DetectionState {
         STOPPED,
         RUNNING,
@@ -120,6 +125,12 @@ object ScreenDetectorSession {
     private val _screenFrameInfo = MutableStateFlow<ScreenFrameInfo?>(null)
     val screenFrameInfo: StateFlow<ScreenFrameInfo?> = _screenFrameInfo.asStateFlow()
 
+    private val screenScanLock = Object()
+    private var nextScreenScanGeneration = 0
+    private var hiddenScreenScanGeneration = 0
+    private val _screenScanState = MutableStateFlow(ScreenScanState())
+    val screenScanState: StateFlow<ScreenScanState> = _screenScanState.asStateFlow()
+
     fun attachController(controller: Controller) {
         this.controller = controller
     }
@@ -161,6 +172,76 @@ object ScreenDetectorSession {
         }
         _matches.value = emptyList()
         _renderedOverlayFingerprint.value = null
+    }
+
+    @JvmStatic
+    fun beginScreenScan(): Int {
+        synchronized(screenScanLock) {
+            val generation = ++nextScreenScanGeneration
+            _screenScanState.value = ScreenScanState(
+                generation = generation,
+                hideResults = true
+            )
+            return generation
+        }
+    }
+
+    @JvmStatic
+    fun acknowledgeScreenResultsHidden(generation: Int) {
+        synchronized(screenScanLock) {
+            val state = _screenScanState.value
+            if (state.generation != generation || !state.hideResults) {
+                return
+            }
+            hiddenScreenScanGeneration = maxOf(hiddenScreenScanGeneration, generation)
+            screenScanLock.notifyAll()
+        }
+    }
+
+    @JvmStatic
+    fun awaitScreenResultsHidden(generation: Int, timeoutMs: Long): Boolean {
+        val deadlineNanos = System.nanoTime() + timeoutMs.coerceAtLeast(0L) * 1_000_000L
+        synchronized(screenScanLock) {
+            while (
+                hiddenScreenScanGeneration < generation &&
+                _screenScanState.value.generation == generation &&
+                _screenScanState.value.hideResults
+            ) {
+                val remainingNanos = deadlineNanos - System.nanoTime()
+                if (remainingNanos <= 0L) {
+                    break
+                }
+                val waitMillis = remainingNanos / 1_000_000L
+                val waitNanos = (remainingNanos % 1_000_000L).toInt()
+                try {
+                    screenScanLock.wait(waitMillis, waitNanos)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
+            return hiddenScreenScanGeneration >= generation
+        }
+    }
+
+    @JvmStatic
+    fun finishScreenScan(generation: Int) {
+        synchronized(screenScanLock) {
+            if (_screenScanState.value.generation != generation) {
+                return
+            }
+            _screenScanState.value = ScreenScanState(generation = generation)
+            screenScanLock.notifyAll()
+        }
+    }
+
+    @JvmStatic
+    fun cancelScreenScan() {
+        synchronized(screenScanLock) {
+            val generation = _screenScanState.value.generation
+            _screenScanState.value = ScreenScanState(generation = generation)
+            screenScanLock.notifyAll()
+        }
     }
 
     @JvmStatic

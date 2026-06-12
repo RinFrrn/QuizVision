@@ -15,9 +15,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         QuizFavorite::class,
         ExamSession::class,
         QuizAnswerRecord::class,
-        PracticeSession::class
+        PracticeSession::class,
+        AiExplanationCache::class
     ],
-    version = 5
+    version = 6
 )
 @TypeConverters(Converters::class)
 abstract class QuizDatabase : RoomDatabase() {
@@ -27,6 +28,7 @@ abstract class QuizDatabase : RoomDatabase() {
     abstract fun examSessionDao(): ExamSessionDao
     abstract fun answerRecordDao(): QuizAnswerRecordDao
     abstract fun practiceSessionDao(): PracticeSessionDao
+    abstract fun aiExplanationCacheDao(): AiExplanationCacheDao
 
     companion object {
         private const val DB_NAME = "quizzes_database.db"
@@ -112,6 +114,32 @@ abstract class QuizDatabase : RoomDatabase() {
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_PracticeSession_library_id_mode ON PracticeSession(library_id, mode)")
             }
         }
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS AiExplanationCache (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        quiz_id INTEGER NOT NULL,
+                        library_id INTEGER NOT NULL,
+                        type TEXT NOT NULL,
+                        fingerprint TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_AiExplanationCache_quiz_id_type " +
+                        "ON AiExplanationCache(quiz_id, type)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_AiExplanationCache_library_id " +
+                        "ON AiExplanationCache(library_id)"
+                )
+            }
+        }
 
         @Volatile
         private var instance: QuizDatabase? = null
@@ -124,7 +152,13 @@ abstract class QuizDatabase : RoomDatabase() {
 
         private fun buildDatabase(context: Context): QuizDatabase {
             return Room.databaseBuilder(context, QuizDatabase::class.java, DB_NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6
+                )
                 .build()
         }
     }

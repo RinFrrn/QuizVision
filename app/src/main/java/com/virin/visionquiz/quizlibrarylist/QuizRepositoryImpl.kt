@@ -14,6 +14,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
     private val examSessionDao: ExamSessionDao
     private val answerRecordDao: QuizAnswerRecordDao
     private val practiceSessionDao: PracticeSessionDao
+    private val aiExplanationCacheDao: AiExplanationCacheDao
 
     init {
         database = QuizDatabase.getInstance(context)
@@ -23,6 +24,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
         examSessionDao = database.examSessionDao()
         answerRecordDao = database.answerRecordDao()
         practiceSessionDao = database.practiceSessionDao()
+        aiExplanationCacheDao = database.aiExplanationCacheDao()
     }
 
     override suspend fun getQuizLibraryById(id: Int): QuizLibrary {
@@ -51,6 +53,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
             answerRecordDao.deleteAnswerRecordsByLibraryId(quizLibrary.id)
             examSessionDao.deleteExamSessionsByLibraryId(quizLibrary.id)
             practiceSessionDao.deletePracticeSessionsByLibraryId(quizLibrary.id)
+            aiExplanationCacheDao.deleteByLibraryId(quizLibrary.id)
             quizDao.deleteQuizzesByCategoryId(quizLibrary.id)
             quizLibDao.deleteCategoryById(quizLibrary.id)
         }
@@ -93,6 +96,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
     override suspend fun deleteQuiz(quiz: Quiz) {
         database.withTransaction {
             favoriteDao.deleteFavoriteByQuizId(quiz.id)
+            aiExplanationCacheDao.deleteByQuizId(quiz.id)
             quizDao.deleteQuiz(quiz)
         }
     }

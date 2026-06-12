@@ -160,22 +160,28 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             when (request) {
                 is StartRequest.ProcessorTest -> {
                     Log.i(TAG, "Using on-device OCR Processor for screen text")
-                    cameraSource = ScreenSource(activity)
-                    cameraSource?.setMachineLearningFrameProcessor(
+                    val source = ScreenSource(activity)
+                    cameraSource = source
+                    source.setMachineLearningFrameProcessor(
                         OriginalRecognitionProcessor(activity) { matches ->
-                            ScreenDetectorSession.publishMatches(matches)
+                            source.finishCurrentScan {
+                                ScreenDetectorSession.publishMatches(matches)
+                            }
                         }
                     )
                 }
                 is StartRequest.Quiz -> {
                     Log.i(TAG, "Using on-device Quiz recognition Processor for Quiz")
-                    cameraSource = ScreenSource(activity)
-                    cameraSource?.setMachineLearningFrameProcessor(
+                    val source = ScreenSource(activity)
+                    cameraSource = source
+                    source.setMachineLearningFrameProcessor(
                         QuizRecognitionProcessor(
                             activity,
                             request.quizzes,
                             onMatchesDetected = { matches ->
-                                ScreenDetectorSession.publishMatches(matches)
+                                source.finishCurrentScan {
+                                    ScreenDetectorSession.publishMatches(matches)
+                                }
                             },
                             minMatchScore = PreferenceUtils.getScreenSearchMinMatchScore(activity)
                         )

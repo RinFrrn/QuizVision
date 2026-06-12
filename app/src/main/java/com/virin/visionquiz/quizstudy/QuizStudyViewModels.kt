@@ -8,6 +8,10 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.virin.visionquiz.ai.AiConfigStore
+import com.virin.visionquiz.ai.AiExplanationRepository
+import com.virin.visionquiz.ai.AiExplanationType
+import com.virin.visionquiz.ai.AiPromptBuilder
 import com.virin.visionquiz.dao.ExamSession
 import com.virin.visionquiz.dao.PracticeSession
 import com.virin.visionquiz.dao.Quiz
@@ -20,7 +24,10 @@ import com.virin.visionquiz.dao.isSupportedStudyType
 import com.virin.visionquiz.quizlibrarylist.QuizRepository
 import com.virin.visionquiz.quizlibrarylist.QuizRepositoryImpl
 import java.util.Calendar
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 data class SupportedQuizStats(
@@ -37,6 +44,22 @@ data class LibraryAnswerStats(
     val totalWrong: Int = 0,
     val accuracyPercent: Int? = null
 )
+
+data class AiRequestKey(
+    val quizId: Int,
+    val type: AiExplanationType
+)
+
+sealed class AiExplanationUiState {
+    data object Idle : AiExplanationUiState()
+    data object Loading : AiExplanationUiState()
+    data object ConfigurationRequired : AiExplanationUiState()
+    data class Success(
+        val content: String,
+        val fromCache: Boolean
+    ) : AiExplanationUiState()
+    data class Error(val message: String) : AiExplanationUiState()
+}
 
 internal fun buildActiveWrongQuizIds(records: List<QuizAnswerRecord>): Set<Int> {
     val states = linkedMapOf<Int, WrongQuizState>()
@@ -169,10 +192,19 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
     AndroidViewModel(application) {
 
     private val repository: QuizRepository = QuizRepositoryImpl(application)
+    private val aiRepository = AiExplanationRepository(application)
+    private val aiConfigStore = AiConfigStore(application)
+    private val aiJobs = ConcurrentHashMap<AiRequestKey, Job>()
+    private val aiStateLock = Any()
+    private val aiStateMap = mutableMapOf<AiRequestKey, AiExplanationUiState>()
+    private val _aiStates =
+        MutableLiveData<Map<AiRequestKey, AiExplanationUiState>>(emptyMap())
+
     val quizList: LiveData<List<Quiz>> = repository.getQuizListByLibraryId(libraryId)
     val favoriteQuizIds: LiveData<List<Int>> = repository.getFavoriteQuizIdsByLibraryId(libraryId)
     val answerRecords: LiveData<List<QuizAnswerRecord>> = repository.getAnswerRecordsByLibraryId(libraryId)
     val examSessionId: MutableLiveData<Int?> = MutableLiveData(null)
+    val aiStates: LiveData<Map<AiRequestKey, AiExplanationUiState>> = _aiStates
     var examStartedAt: Long? = null
         private set
 
@@ -180,6 +212,71 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
         viewModelScope.launch {
             repository.setQuizFavorite(quiz, isFavorite)
         }
+    }
+
+    fun requestAiExplanation(
+        quiz: Quiz,
+        type: AiExplanationType,
+        selectedAnswer: Set<Int>?,
+        forceRefresh: Boolean = false
+    ) {
+        val key = AiRequestKey(quiz.id, type)
+        val config = aiConfigStore.read()
+        if (!config.isComplete()) {
+            updateAiState(key, AiExplanationUiState.ConfigurationRequired)
+            return
+        }
+        if (aiJobs[key]?.isActive == true && !forceRefresh) return
+        aiJobs.remove(key)?.cancel()
+        updateAiState(key, AiExplanationUiState.Loading)
+        aiJobs[key] = viewModelScope.launch(Dispatchers.IO) {
+            val prompt = AiPromptBuilder.build(
+                quiz = quiz,
+                type = type,
+                taskPrompt = config.promptFor(type),
+                selectedAnswer = selectedAnswer
+            )
+            val result = runCatching {
+                aiRepository.getOrGenerate(
+                    quizId = quiz.id,
+                    libraryId = quiz.libraryId,
+                    type = type,
+                    config = config,
+                    prompt = prompt,
+                    forceRefresh = forceRefresh
+                )
+            }
+            result.onSuccess {
+                updateAiState(
+                    key,
+                    AiExplanationUiState.Success(it.content, it.fromCache)
+                )
+            }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) return@onFailure
+                updateAiState(
+                    key,
+                    AiExplanationUiState.Error(it.message ?: "AI 请求失败")
+                )
+            }
+            aiJobs.remove(key)
+        }
+    }
+
+    fun clearAiUiStates() {
+        aiJobs.values.forEach { it.cancel() }
+        aiJobs.clear()
+        synchronized(aiStateLock) {
+            aiStateMap.clear()
+        }
+        _aiStates.value = emptyMap()
+    }
+
+    private fun updateAiState(key: AiRequestKey, state: AiExplanationUiState) {
+        val snapshot = synchronized(aiStateLock) {
+            aiStateMap[key] = state
+            aiStateMap.toMap()
+        }
+        _aiStates.postValue(snapshot)
     }
 
     fun recordPracticeAnswer(

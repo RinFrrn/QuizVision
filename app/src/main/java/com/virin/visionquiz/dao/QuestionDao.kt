@@ -162,3 +162,21 @@ interface PracticeSessionDao {
     @Query("DELETE FROM PracticeSession WHERE library_id = :libraryId")
     suspend fun deletePracticeSessionsByLibraryId(libraryId: Int)
 }
+
+@Dao
+interface AiExplanationCacheDao {
+    @Query("SELECT * FROM AiExplanationCache WHERE quiz_id = :quizId AND type = :type LIMIT 1")
+    suspend fun getCache(quizId: Int, type: String): AiExplanationCache?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCache(cache: AiExplanationCache)
+
+    @Query("DELETE FROM AiExplanationCache WHERE quiz_id = :quizId")
+    suspend fun deleteByQuizId(quizId: Int)
+
+    @Query("DELETE FROM AiExplanationCache WHERE library_id = :libraryId")
+    suspend fun deleteByLibraryId(libraryId: Int)
+
+    @Query("DELETE FROM AiExplanationCache")
+    suspend fun clearAll()
+}
