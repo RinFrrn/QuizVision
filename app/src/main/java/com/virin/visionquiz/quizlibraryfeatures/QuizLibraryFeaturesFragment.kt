@@ -33,12 +33,14 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.CircularProgressIndicator
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.radiobutton.MaterialRadioButton
 import com.google.android.material.snackbar.Snackbar
 import com.virin.visionquiz.R
 import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizLibrary
 import com.virin.visionquiz.dao.QuizStudyMode
+import com.virin.visionquiz.dao.isSupportedStudyType
 import com.virin.visionquiz.databinding.FragmentQuizLibraryDetailBinding
 import com.virin.visionquiz.quizdetector.CameraXDetectorActivity
 import com.virin.visionquiz.quizlist.QuizListFragment
@@ -48,6 +50,7 @@ import com.virin.visionquiz.quizstudy.QuizLibraryFeaturesViewModel
 import com.virin.visionquiz.quizstudy.QuizRunnerFragment
 import com.virin.visionquiz.screendetector.ScreenDetectorController
 import com.virin.visionquiz.util.BaseQuizFragment
+import com.virin.visionquiz.util.SimilarQuizStore
 import com.virin.visionquiz.util.QuizExportUtil
 import com.virin.visionquiz.util.applyCollapsingQuizTopBarInsets
 import com.virin.visionquiz.util.configureQuizTopBar
@@ -153,7 +156,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
             updateFeatureTitleTransition()
         }
 
-        val features = listOf(
+        val features = mutableListOf(
             StudyFeature("顺序背题", "按题库顺序练习支持题型", R.drawable.icon_list_arrow_24px, FeatureAction.ORDERED_PRACTICE),
             StudyFeature("随机背题", "随机顺序练习支持题型", R.drawable.icon_shuffle_24px, FeatureAction.RANDOM_PRACTICE),
             StudyFeature("模拟考试", "按题型配置数量并随机组卷", R.drawable.icon_science_24px, FeatureAction.EXAM),
@@ -161,6 +164,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
             StudyFeature("错题库", "查看尚未巩固的错题", R.drawable.icon_error_24px, FeatureAction.WRONG),
             StudyFeature("作答历史", "查看每次背题和考试记录", R.drawable.icon_history_edu_24px, FeatureAction.HISTORY),
             StudyFeature("考试历史", "回顾每场考试成绩和逐题详情", R.drawable.icon_experiment_24px, FeatureAction.EXAM_HISTORY),
+            StudyFeature("相似题分析", "分析题库中的相似题目，辅助记忆", R.drawable.icon_document_search_24px, FeatureAction.SIMILAR_ANALYSIS),
             StudyFeature("题目列表", "查看和搜索全部题型", R.drawable.round_more_horiz_24, FeatureAction.QUIZ_LIST)
         )
         val adapter = QuizLibFeaturesAdapter(features, LibraryAnswerStats()) { feature ->
@@ -174,6 +178,16 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
             }
         }
         binding.studyFeaturesRecyclerView.adapter = adapter
+
+        SimilarQuizStore.progress.observe(viewLifecycleOwner) { map ->
+            val p = map[libraryId]
+            if (p != null && !p.done) {
+                adapter.updateFeatureDescription(FeatureAction.SIMILAR_ANALYSIS, p.text)
+            } else {
+                val baseText = if (SimilarQuizStore.hasAnalysis(requireContext(), libraryId)) "已完成，点击重新分析" else "分析题库中的相似题目，辅助记忆"
+                adapter.updateFeatureDescription(FeatureAction.SIMILAR_ANALYSIS, baseText)
+            }
+        }
 
         viewModel.library.observe(viewLifecycleOwner) { library ->
             libraryTitle = library?.name ?: "题库"
@@ -289,6 +303,69 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
                 true
             }
             else -> false
+        }
+    }
+
+    private fun computeSimilarAnalysis() {
+        val quizzes = viewModel.quizList.value
+        if (quizzes.isNullOrEmpty()) {
+            Toast.makeText(requireContext(), "题库为空", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (SimilarQuizStore.hasAnalysis(requireContext(), libraryId)) {
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle("重新分析？")
+                .setMessage("已有分析结果，是否重新计算？")
+                .setPositiveButton("重新分析") { _, _ -> runSimilarAnalysis(quizzes) }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        } else {
+            runSimilarAnalysis(quizzes)
+        }
+    }
+
+    private fun runSimilarAnalysis(quizzes: List<Quiz>) {
+        val total = quizzes.count { it.isSupportedStudyType() }
+        val contentView = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24.dp(), 20.dp(), 24.dp(), 8.dp())
+        }
+        val progressText = TextView(requireContext()).apply {
+            text = "正在分析相似题目... 0 / $total"
+            setTextColor(MaterialColors.getColor(binding.root, R.attr.colorOnSurface))
+            textSize = 14f
+        }
+        val progressBar = LinearProgressIndicator(requireContext()).apply {
+            max = total
+            progress = 0
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 12.dp() }
+            trackCornerRadius = 4.dp()
+        }
+        contentView.addView(progressText)
+        contentView.addView(progressBar)
+        val dialog = MaterialAlertDialogBuilder(requireContext())
+            .setView(contentView)
+            .setNeutralButton("隐藏", null)
+            .create()
+        dialog.setCanceledOnTouchOutside(false)
+        dialog.show()
+        dialog.getButton(android.content.DialogInterface.BUTTON_NEUTRAL).setOnClickListener {
+            dialog.dismiss()
+        }
+        SimilarQuizStore.startAnalysis(requireContext(), libraryId, quizzes)
+        SimilarQuizStore.progress.observe(viewLifecycleOwner) { map ->
+            val p = map[libraryId] ?: return@observe
+            progressBar.progress = p.current
+            progressText.text = "正在分析相似题目... ${p.current} / ${p.total}"
+            if (p.done) {
+                dialog.dismiss()
+                _binding?.root?.let { root ->
+                    Snackbar.make(root, "相似题分析完成", Snackbar.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -569,6 +646,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
             )
             FeatureAction.HISTORY -> findNavController().navigate(R.id.QuizHistoryFragment, bundle)
             FeatureAction.EXAM_HISTORY -> findNavController().navigate(R.id.ExamHistoryFragment, bundle)
+            FeatureAction.SIMILAR_ANALYSIS -> computeSimilarAnalysis()
             FeatureAction.QUIZ_LIST -> findNavController().navigate(
                 R.id.QuizListFragment,
                 bundleOf(QuizListFragment.LIBRARY_ID to libraryId)
@@ -591,6 +669,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         WRONG,
         HISTORY,
         EXAM_HISTORY,
+        SIMILAR_ANALYSIS,
         QUIZ_LIST
     }
 
@@ -605,7 +684,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
 }
 
 class QuizLibFeaturesAdapter(
-    private var features: List<QuizLibraryFeaturesFragment.StudyFeature>,
+    private var features: MutableList<QuizLibraryFeaturesFragment.StudyFeature>,
     private var answerStats: LibraryAnswerStats,
     private val onItemClick: (QuizLibraryFeaturesFragment.StudyFeature) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
@@ -626,8 +705,16 @@ class QuizLibFeaturesAdapter(
     }
 
     fun submitList(newFeatures: List<QuizLibraryFeaturesFragment.StudyFeature>) {
-        features = newFeatures
+        features = newFeatures.toMutableList()
         notifyDataSetChanged()
+    }
+
+    fun updateFeatureDescription(action: QuizLibraryFeaturesFragment.FeatureAction, description: String) {
+        val index = features.indexOfFirst { it.action == action }
+        if (index >= 0 && features[index].description != description) {
+            features[index] = features[index].copy(description = description)
+            notifyItemChanged(index)
+        }
     }
 
     fun updateAnswerStats(newStats: LibraryAnswerStats) {

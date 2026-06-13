@@ -32,6 +32,8 @@ class AiConfigStore(private val context: Context) {
             analysisPrompt = analysisPrompt(),
             techniquePrompt = techniquePrompt(),
             mnemonicPrompt = mnemonicPrompt(),
+            questionExtensionPrompt = questionExtensionPrompt(),
+            similarAnalysisPrompt = similarAnalysisPrompt(),
             profileId = profile.id,
             profileName = profile.name
         )
@@ -143,13 +145,21 @@ class AiConfigStore(private val context: Context) {
         quickReviewPrompt: String,
         analysisPrompt: String,
         techniquePrompt: String,
-        mnemonicPrompt: String
+        mnemonicPrompt: String,
+        questionExtensionPrompt: String = AiPromptBuilder.DEFAULT_QUESTION_EXTENSION_PROMPT,
+        similarAnalysisPrompt: String = AiPromptBuilder.DEFAULT_SIMILAR_ANALYSIS_PROMPT,
+        contextualSuggestionsPrompt: String = AiPromptBuilder.DEFAULT_CONTEXTUAL_SUGGESTIONS_PROMPT,
+        contextualQaPrompt: String = AiPromptBuilder.DEFAULT_CONTEXTUAL_QA_PROMPT
     ) {
         prefs.edit()
             .putString(KEY_QUICK_REVIEW_PROMPT, quickReviewPrompt.trim())
             .putString(KEY_ANALYSIS_PROMPT, analysisPrompt.trim())
             .putString(KEY_TECHNIQUE_PROMPT, techniquePrompt.trim())
             .putString(KEY_MNEMONIC_PROMPT, mnemonicPrompt.trim())
+            .putString(KEY_QUESTION_EXTENSION_PROMPT, questionExtensionPrompt.trim())
+            .putString(KEY_SIMILAR_ANALYSIS_PROMPT, similarAnalysisPrompt.trim())
+            .putString(KEY_CONTEXTUAL_SUGGESTIONS_PROMPT, contextualSuggestionsPrompt.trim())
+            .putString(KEY_CONTEXTUAL_QA_PROMPT, contextualQaPrompt.trim())
             .apply()
     }
 
@@ -173,6 +183,26 @@ class AiConfigStore(private val context: Context) {
     fun mnemonicPrompt(): String = prefs.getString(
         KEY_MNEMONIC_PROMPT,
         AiPromptBuilder.DEFAULT_MNEMONIC_PROMPT
+    ).orEmpty()
+
+    fun questionExtensionPrompt(): String = prefs.getString(
+        KEY_QUESTION_EXTENSION_PROMPT,
+        AiPromptBuilder.DEFAULT_QUESTION_EXTENSION_PROMPT
+    ).orEmpty()
+
+    fun similarAnalysisPrompt(): String = prefs.getString(
+        KEY_SIMILAR_ANALYSIS_PROMPT,
+        AiPromptBuilder.DEFAULT_SIMILAR_ANALYSIS_PROMPT
+    ).orEmpty()
+
+    fun contextualSuggestionsPrompt(): String = prefs.getString(
+        KEY_CONTEXTUAL_SUGGESTIONS_PROMPT,
+        AiPromptBuilder.DEFAULT_CONTEXTUAL_SUGGESTIONS_PROMPT
+    ).orEmpty()
+
+    fun contextualQaPrompt(): String = prefs.getString(
+        KEY_CONTEXTUAL_QA_PROMPT,
+        AiPromptBuilder.DEFAULT_CONTEXTUAL_QA_PROMPT
     ).orEmpty()
 
     private fun ensureProfilesMigrated() {
@@ -319,6 +349,10 @@ class AiConfigStore(private val context: Context) {
         private const val KEY_ANALYSIS_PROMPT = "analysis_prompt"
         private const val KEY_TECHNIQUE_PROMPT = "technique_prompt"
         private const val KEY_MNEMONIC_PROMPT = "mnemonic_prompt"
+        private const val KEY_QUESTION_EXTENSION_PROMPT = "question_extension_prompt"
+        private const val KEY_SIMILAR_ANALYSIS_PROMPT = "similar_analysis_prompt"
+        private const val KEY_CONTEXTUAL_SUGGESTIONS_PROMPT = "contextual_suggestions_prompt"
+        private const val KEY_CONTEXTUAL_QA_PROMPT = "contextual_qa_prompt"
         private const val KEY_LEGACY_BASE_URL = "base_url"
         private const val KEY_LEGACY_API_KEY = "api_key_encrypted"
         private const val KEY_LEGACY_MODEL = "model"

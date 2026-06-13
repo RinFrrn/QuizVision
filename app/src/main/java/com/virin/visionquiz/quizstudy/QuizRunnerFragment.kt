@@ -1,6 +1,5 @@
 package com.virin.visionquiz.quizstudy
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.media.AudioManager
@@ -11,29 +10,38 @@ import android.os.Looper
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.Menu
-import android.view.MenuInflater
 import android.view.MenuItem
-import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.ViewGroup
-import android.view.VelocityTracker
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.addCallback
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
-import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.chip.Chip
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -47,13 +55,13 @@ import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizAnswerRecord
 import com.virin.visionquiz.dao.QuizStudyMode
 import com.virin.visionquiz.dao.QuizUiType
-import com.virin.visionquiz.dao.answerString
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.dao.isSupportedStudyType
 import com.virin.visionquiz.databinding.FragmentQuizRunnerBinding
 import com.virin.visionquiz.preference.SettingsActivity
 import com.virin.visionquiz.quizlibraryfeatures.QuizLibraryFeaturesFragment
 import com.virin.visionquiz.util.BaseQuizFragment
+import com.virin.visionquiz.util.SimilarQuizStore
 import com.virin.visionquiz.util.NavigationBackAnimationSource
 import com.virin.visionquiz.util.configureQuizTopBar
 import com.virin.visionquiz.util.convertNumToChar
@@ -88,19 +96,16 @@ class QuizRunnerFragment : BaseQuizFragment() {
     private val recordedPracticeQuizIds = mutableSetOf<Int>()
     private var favoriteIds: Set<Int> = emptySet()
     private var hasPreparedQuizList = false
-    private var hasAnimatedInitialPracticeContent = false
     private var practiceSessionId = 0
     private var practiceSessionStartedAt = 0L
-    private var swipeNavigationTouchListener: View.OnTouchListener? = null
     private var restoredQuizOrderIds: IntArray? = null
-    private var isPageAnimating = false
     private var optionShuffleEnabled = false
     private val shuffledOptionOrders = mutableMapOf<Int, List<Int>>()  // quizId -> shuffled indices
-    private var pendingPracticeSessionPersist: Runnable? = null
     private var practiceAnswerSoundEnabled = true
     private var correctAnswerToneGenerator: ToneGenerator? = null
     private var wrongAnswerToneGenerator: ToneGenerator? = null
     private var answerRecords: List<QuizAnswerRecord> = emptyList()
+    private val answerRecordsByQuizId = mutableMapOf<Int, List<QuizAnswerRecord>>()
     private var lastAiConfigSignature: String? = null
     private var aiMarkdownRenderer: AiMarkdownRenderer? = null
     private var runnerTextSize = RunnerTextSize.NORMAL
@@ -110,6 +115,23 @@ class QuizRunnerFragment : BaseQuizFragment() {
     private var timerPausedAt: Long = 0L
     private var examDurationMillis: Long = 0L
     private var examAutoSubmitted = false
+    private var pagerRevision = 0
+    private val aiTrigger = mutableStateOf(0)
+    private var examSummaryText: String? = null
+    private var pagerScrollInProgress = false
+    private var pendingPagerRefresh = false
+    private val pagerRefreshRunnable = Runnable {
+        if (pendingPagerRefresh) {
+            pendingPagerRefresh = false
+            refreshPagerState()
+        }
+    }
+    private val practicePersistRunnable = Runnable { flushPracticePersist() }
+    private val pagerState = mutableStateOf(QuizRunnerPagerState())
+    private var cachedAiConfigStore: AiConfigStore? = null
+    private var cachedAiConfig: AiConfig? = null
+    private var cachedComposeColors: QuizRunnerComposeColors? = null
+
     private val timerRunnable = object : Runnable {
         override fun run() {
             updateTimerText()
@@ -142,15 +164,15 @@ class QuizRunnerFragment : BaseQuizFragment() {
             onNavigationClick = { requestExitConfirmation(fromNavigationButton = true) }
         )
 
-        binding.previousButton.setOnClickListener { goToQuestion(currentIndex - 1, animate = true) }
-        binding.nextButton.setOnClickListener { goToQuestion(currentIndex + 1, animate = true) }
-        binding.submitButton.setOnClickListener { handleSubmit() }
-        binding.showAnswerButton.setOnClickListener { showAnswer() }
+        binding.previousButton.setOnClickListener { goToQuestion(currentIndex - 1) }
+        binding.nextButton.setOnClickListener { goToQuestion(currentIndex + 1) }
+        binding.showAnswerButton.setOnClickListener {
+            showAnswer()
+        }
         binding.favoriteButton.setOnClickListener { toggleFavorite() }
         binding.answerCardButton.setOnClickListener { showAnswerCard() }
-        setupAiControls()
+        setupQuizPager()
         applyBottomInsets()
-        setupSwipeNavigation()
         setupExitConfirmation()
         setupRunnerMenu()
         lastAiConfigSignature = currentAiConfigSignature()
@@ -158,11 +180,13 @@ class QuizRunnerFragment : BaseQuizFragment() {
         viewModel.favoriteQuizIds.observe(viewLifecycleOwner) { ids ->
             favoriteIds = ids.orEmpty().toSet()
             updateFavoriteButton()
-            renderAiSection()
+            maybeAutoRequestQuickReview(readCachedAiConfig())
+            refreshPagerState()
         }
         viewModel.answerRecords.observe(viewLifecycleOwner) { records ->
             answerRecords = records.orEmpty()
-            renderPracticeHistory()
+            answerRecordsByQuizId.clear()
+            refreshPagerState()
         }
         viewModel.quizList.observe(viewLifecycleOwner) { source ->
             if (!hasPreparedQuizList) {
@@ -170,8 +194,11 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 prepareQuizList(source.orEmpty())
             }
         }
-        viewModel.aiStates.observe(viewLifecycleOwner) {
-            renderAiState()
+        viewModel.aiStates.observe(viewLifecycleOwner) { states ->
+            val currentQuizId = quizzes.getOrNull(currentIndex)?.id ?: return@observe
+            if (!states.orEmpty().keys.any { it.quizId == currentQuizId }) return@observe
+            maybeAutoRequestContextualSuggestions()
+            aiTrigger.value++
         }
     }
 
@@ -193,6 +220,33 @@ class QuizRunnerFragment : BaseQuizFragment() {
             insets
         }
         ViewCompat.requestApplyInsets(binding.root)
+    }
+
+    private fun setupQuizPager() {
+        binding.quizPager.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.quizPager.setContent {
+            QuizRunnerPager(
+                state = pagerState.value,
+                callbacks = QuizRunnerPagerCallbacks(
+                    pageState = ::buildPagerPageState,
+                    onPageSettled = ::onPagerPageSettled,
+                    onOptionClick = ::onPagerOptionClick,
+                    onSubmit = ::onPagerSubmit,
+                    onGenerateAi = ::onPagerGenerateAi,
+                    onOpenAiSettings = ::openAiSettings,
+                    onRequestContextualSuggestions = ::onPagerContextualSuggestionsRequest,
+                    onContextualSuggestionClick = ::onPagerContextualSuggestionClick,
+                    onScrollChanged = ::onPagerScrollChanged,
+                    aiTrigger = aiTrigger,
+                    renderMarkdown = { target, content ->
+                        aiMarkdownRenderer?.render(target, content)
+                            ?: run { target.text = content }
+                    }
+                )
+            )
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -226,14 +280,13 @@ class QuizRunnerFragment : BaseQuizFragment() {
     }
 
     override fun onDestroyView() {
-        pendingPracticeSessionPersist?.let { binding.root.removeCallbacks(it) }
-        pendingPracticeSessionPersist = null
         stopTimer()
         correctAnswerToneGenerator?.release()
         wrongAnswerToneGenerator?.release()
         correctAnswerToneGenerator = null
         wrongAnswerToneGenerator = null
-        swipeNavigationTouchListener = null
+        timerHandler.removeCallbacks(pagerRefreshRunnable)
+        timerHandler.removeCallbacks(practicePersistRunnable)
         aiMarkdownRenderer = null
         super.onDestroyView()
         _binding = null
@@ -249,13 +302,15 @@ class QuizRunnerFragment : BaseQuizFragment() {
         super.onResume()
         refreshRunnerTextSize()
         resumeTimerForLifecycle()
+        cachedAiConfig = null
+        cachedComposeColors = null
         val configSignature = currentAiConfigSignature()
         if (lastAiConfigSignature != null && lastAiConfigSignature != configSignature) {
             viewModel.clearAiUiStates()
         }
         lastAiConfigSignature = configSignature
         if (_binding != null && quizzes.isNotEmpty()) {
-            renderAiSection()
+            render()
         }
     }
 
@@ -325,7 +380,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 val byId = supported.associateBy { it.id }
                 quizzes = restoredOrder.mapNotNull { byId[it] }
                 renderPreparedQuizList()
-                schedulePracticeSessionPersist()
             } else {
                 viewModel.loadPracticeSession(mode) { session ->
                     if (_binding == null) return@loadPracticeSession
@@ -372,7 +426,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
             }
         }
         renderPreparedQuizList()
-        schedulePracticeSessionPersist()
     }
 
     private fun buildPracticeTimerStartedAt(session: PracticeSession): Long {
@@ -386,16 +439,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
     }
 
     private fun renderPreparedQuizList() {
-        val shouldAnimateInitialPracticeContent =
-            mode != QuizStudyMode.EXAM &&
-                quizzes.isNotEmpty() &&
-                !binding.contentGroup.isVisible &&
-                !hasAnimatedInitialPracticeContent
-        if (shouldAnimateInitialPracticeContent) {
-            binding.questionScrollView.animate().cancel()
-            binding.questionScrollView.alpha = 0f
-        }
-
         binding.emptyView.isVisible = quizzes.isEmpty()
         binding.contentGroup.isVisible = quizzes.isNotEmpty()
         if (quizzes.isNotEmpty()) {
@@ -407,23 +450,12 @@ class QuizRunnerFragment : BaseQuizFragment() {
                     readExamDurationMillisFromArgs()
                 }
                 viewModel.ensureExamSession(quizzes.size)
+                if (reviewMode && examSummaryText == null) {
+                    examSummaryText = buildExamSummaryText()
+                }
             }
             startTimerIfNeeded()
             render()
-            if (shouldAnimateInitialPracticeContent) {
-                animateInitialPracticeContent()
-            }
-        }
-    }
-
-    private fun animateInitialPracticeContent() {
-        hasAnimatedInitialPracticeContent = true
-        binding.questionScrollView.doOnPreDraw {
-            if (_binding == null) return@doOnPreDraw
-            binding.questionScrollView.animate()
-                .alpha(1f)
-                .setDuration(INITIAL_CONTENT_FADE_DURATION_MS)
-                .start()
         }
     }
 
@@ -519,47 +551,257 @@ class QuizRunnerFragment : BaseQuizFragment() {
     private fun render() {
         val quiz = quizzes.getOrNull(currentIndex) ?: return
         val type = quiz.inferredUiType()
-        applyRunnerTextSize()
         binding.progressText.text = "第 ${currentIndex + 1} / ${quizzes.size} 题"
         binding.typeText.text = type.label
-        binding.promptText.text = quiz.prompt
-        binding.answerPanel.isVisible = answerVisible || reviewMode
-        binding.answerPanel.text = "答案：${quiz.answerString()}"
-        binding.resultText.isVisible = answerVisible || reviewMode
-        binding.resultText.text = buildResultText(quiz)
-
         binding.previousButton.isEnabled = currentIndex > 0
         binding.nextButton.isEnabled = currentIndex < quizzes.lastIndex
-        binding.showAnswerButton.isVisible = mode != QuizStudyMode.EXAM || reviewMode
         val isPracticeSubmitted = mode != QuizStudyMode.EXAM && recordedPracticeQuizIds.contains(quiz.id)
-        val isLastQuestion = currentIndex == quizzes.lastIndex
-        binding.showAnswerButton.isEnabled = when {
-            mode == QuizStudyMode.EXAM -> reviewMode
-            else -> !isPracticeSubmitted
-        }
-        binding.submitButton.text = when {
-            mode == QuizStudyMode.EXAM -> "交卷"
-            isPracticeSubmitted && isLastQuestion -> "交卷"
-            else -> "提交"
-        }
-        binding.submitButton.isVisible = when {
-            reviewMode -> false
-            mode == QuizStudyMode.EXAM -> isLastQuestion
-            isPracticeSubmitted -> isLastQuestion
-            else -> true
-        }
-        binding.submitButton.isEnabled = when {
-            reviewMode -> false
-            mode == QuizStudyMode.EXAM -> true
-            isPracticeSubmitted -> isLastQuestion
-            else -> true
-        }
-        renderAiSection()
+        val showAnswerSection = mode != QuizStudyMode.EXAM || reviewMode
+        binding.showAnswerButton.isVisible = showAnswerSection
+        binding.showAnswerButton.text = "看答案"
+        binding.showAnswerButton.setIconResource(R.drawable.icon_person_raised_hand_24px)
+        binding.showAnswerButton.isEnabled = showAnswerSection && !isPracticeSubmitted
         applyTypeStyle(type)
-        renderOptions(quiz, type)
         updateFavoriteButton()
-        renderExamSummaryIfNeeded()
-        renderPracticeHistory()
+        refreshPagerState()
+        binding.root.post { maybeAutoRequestQuickReview(readCachedAiConfig()) }
+    }
+
+    private fun refreshPagerState() {
+        if (_binding == null) return
+        pagerRevision++
+        pagerState.value = QuizRunnerPagerState(
+            currentPage = currentIndex.coerceIn(0, quizzes.lastIndex.coerceAtLeast(0)),
+            quizzes = quizzes,
+            revision = pagerRevision,
+            colors = resolveCachedComposeColors(),
+            textSize = QuizRunnerComposeTextSize(
+                promptSp = runnerTextSize.promptSp,
+                optionSp = runnerTextSize.optionSp,
+                resultSp = runnerTextSize.resultSp,
+                supportSp = runnerTextSize.supportSp
+            )
+        )
+    }
+
+    private fun readCachedAiConfig(): AiConfig {
+        cachedAiConfig?.let { return it }
+        val store = cachedAiConfigStore ?: AiConfigStore(requireContext()).also { cachedAiConfigStore = it }
+        val config = store.read()
+        cachedAiConfig = config
+        return config
+    }
+
+    private fun invalidateAiConfigCache() {
+        cachedAiConfig = null
+    }
+
+    private fun resolveCachedComposeColors(): QuizRunnerComposeColors {
+        cachedComposeColors?.let { return it }
+        val colors = resolveComposeColors()
+        cachedComposeColors = colors
+        return colors
+    }
+
+    private fun buildPagerPageState(index: Int): QuizRunnerPageState? {
+        val quiz = quizzes.getOrNull(index) ?: return null
+        val config = readCachedAiConfig()
+        val aiStates = viewModel.aiStates.value.orEmpty()
+        val selection = selectionForPage(index, quiz)
+        val pageAnswerVisible = QuizRunnerInteractionPolicy.isAnswerVisible(
+            mode = mode,
+            reviewMode = reviewMode,
+            quizId = quiz.id,
+            submittedPracticeQuizIds = recordedPracticeQuizIds
+        )
+        val isPracticeSubmitted =
+            mode != QuizStudyMode.EXAM && quiz.id in recordedPracticeQuizIds
+        val isLastQuestion = index == quizzes.lastIndex
+        val history = buildPracticeHistoryText(quiz, pageAnswerVisible)
+        return QuizRunnerPageState(
+            quiz = quiz,
+            mode = mode,
+            selection = selection,
+            optionOrder = optionOrderFor(quiz),
+            answerVisible = pageAnswerVisible,
+            reviewMode = reviewMode,
+            resultText = buildResultText(quiz, selection),
+            examSummary = examSummaryText.takeIf {
+                reviewMode && mode == QuizStudyMode.EXAM
+            },
+            historySummary = history?.first,
+            historyDetail = history?.second,
+            aiEnabled = pageAnswerVisible && config.enabled,
+            aiConfigComplete = config.isComplete(),
+            quickAiState = aiStates[
+                AiRequestKey(quiz.id, AiExplanationType.QUICK_REVIEW)
+            ] ?: AiExplanationUiState.Idle,
+            detailedAiState = aiStates[
+                AiRequestKey(quiz.id, AiExplanationType.DETAILED_ANALYSIS)
+            ] ?: AiExplanationUiState.Idle,
+            contextualSuggestionsState = aiStates[
+                AiRequestKey(quiz.id, AiExplanationType.CONTEXTUAL_SUGGESTIONS)
+            ] ?: AiExplanationUiState.Idle,
+            contextualSuggestions = run {
+                val state = aiStates[AiRequestKey(quiz.id, AiExplanationType.CONTEXTUAL_SUGGESTIONS)]
+                if (state is AiExplanationUiState.Success) {
+                    parseContextualSuggestions(state.content)
+                } else emptyList()
+            },
+            contextualQaStates = run {
+                val result = mutableMapOf<Int, AiExplanationUiState>()
+                for (i in 0 until 3) {
+                    val state = aiStates[AiRequestKey(quiz.id, AiExplanationType.CONTEXTUAL_QA, "$i")]
+                    if (state != null) result[i] = state
+                }
+                result
+            },
+            currentQuizId = quiz.id,
+            submitVisible = when {
+                reviewMode -> false
+                mode == QuizStudyMode.EXAM -> isLastQuestion
+                isPracticeSubmitted -> isLastQuestion
+                else -> true
+            },
+            submitEnabled = when {
+                reviewMode -> false
+                mode == QuizStudyMode.EXAM -> true
+                isPracticeSubmitted -> isLastQuestion
+                else -> true
+            },
+            submitLabel = when {
+                mode == QuizStudyMode.EXAM -> "交卷"
+                isPracticeSubmitted && isLastQuestion -> "交卷"
+                else -> "提交"
+            }
+        )
+    }
+
+    private fun selectionForPage(index: Int, quiz: Quiz): Set<Int> {
+        if (index == currentIndex) return currentSelection
+        return if (mode == QuizStudyMode.EXAM) {
+            examAnswers[quiz.id].orEmpty()
+        } else {
+            practiceAnswers[quiz.id].orEmpty()
+        }
+    }
+
+    private fun optionOrderFor(quiz: Quiz): List<Int> {
+        return if (optionShuffleEnabled) {
+            shuffledOptionOrders.getOrPut(quiz.id) { quiz.options.indices.shuffled() }
+        } else {
+            quiz.options.indices.toList()
+        }
+    }
+
+    private fun buildPracticeHistoryText(
+        quiz: Quiz,
+        pageAnswerVisible: Boolean
+    ): Pair<String, String>? {
+        if (mode == QuizStudyMode.EXAM || !pageAnswerVisible) return null
+        val records = answerRecordsByQuizId.getOrPut(quiz.id) {
+            answerRecords.asSequence()
+                .filter {
+                    it.quizId == quiz.id && it.mode != QuizStudyMode.EXAM.value
+                }
+                .sortedByDescending { it.answeredAt }
+                .toList()
+        }
+        val correctCount = records.count { it.isCorrect }
+        val rate = if (records.isEmpty()) 0 else correctCount * 100 / records.size
+        val summary =
+            "历史作答 ${records.size} 次 · 正确 $correctCount 次 · 正确率 $rate%"
+        val detail = if (records.isEmpty()) {
+            "暂无历史记录"
+        } else {
+            records.take(5).mapIndexed { index, record ->
+                val result = if (record.isCorrect) "正确" else "错误"
+                "${index + 1}. ${historyDateFormat.format(Date(record.answeredAt))}  $result"
+            }.joinToString("\n")
+        }
+        return summary to detail
+    }
+
+    private fun resolveComposeColors(): QuizRunnerComposeColors {
+        fun color(attr: Int): Color = Color(MaterialColors.getColor(binding.root, attr))
+        return QuizRunnerComposeColors(
+            primary = color(R.attr.colorPrimary),
+            onPrimary = color(R.attr.colorOnPrimary),
+            primaryContainer = color(R.attr.colorPrimaryContainer),
+            onPrimaryContainer = color(R.attr.colorOnPrimaryContainer),
+            secondaryContainer = color(R.attr.colorSecondaryContainer),
+            onSecondaryContainer = color(R.attr.colorOnSecondaryContainer),
+            tertiaryContainer = color(R.attr.colorTertiaryContainer),
+            onTertiaryContainer = color(R.attr.colorOnTertiaryContainer),
+            error = color(R.attr.colorError),
+            errorContainer = color(R.attr.colorErrorContainer),
+            onErrorContainer = color(R.attr.colorOnErrorContainer),
+            surface = color(R.attr.colorSurface),
+            onSurface = color(R.attr.colorOnSurface),
+            surfaceContainer = color(R.attr.colorSurfaceContainer),
+            surfaceContainerHigh = color(R.attr.colorSurfaceContainerHigh),
+            surfaceContainerLow = color(R.attr.colorSurfaceContainerLow),
+            onSurfaceVariant = color(R.attr.colorOnSurfaceVariant),
+            outline = color(R.attr.colorOutline),
+            outlineVariant = color(R.attr.colorOutlineVariant)
+        )
+    }
+
+    private fun onPagerPageSettled(page: Int) {
+        if (page !in quizzes.indices || page == currentIndex) return
+        saveCurrentQuestionSelection(persist = false)
+        currentIndex = page
+        loadSelectionForCurrentQuestion()
+        render()
+        persistPracticeSession()
+    }
+
+    private fun onPagerOptionClick(page: Int, optionIndex: Int) {
+        if (!moveToPagerPage(page)) return
+        val quiz = quizzes[page]
+        val type = quiz.inferredUiType()
+        currentSelection = QuizRunnerInteractionPolicy.nextSelection(
+            type = type,
+            current = currentSelection,
+            optionIndex = optionIndex
+        )
+        if (mode == QuizStudyMode.EXAM) {
+            examAnswers[quiz.id] = currentSelection
+        } else {
+            practiceAnswers[quiz.id] = currentSelection
+        }
+        if (shouldAutoSubmitPractice(type)) {
+            handleSubmit()
+        } else {
+            render()
+            persistPracticeSession()
+        }
+    }
+
+    private fun onPagerSubmit(page: Int) {
+        if (moveToPagerPage(page)) {
+            handleSubmit()
+        }
+    }
+
+    private fun onPagerGenerateAi(
+        page: Int,
+        type: AiExplanationType,
+        forceRefresh: Boolean
+    ) {
+        if (moveToPagerPage(page)) {
+            requestAi(type, forceRefresh)
+        }
+    }
+
+    private fun moveToPagerPage(page: Int): Boolean {
+        if (page !in quizzes.indices) return false
+        if (page != currentIndex) {
+            saveCurrentQuestionSelection(persist = false)
+            currentIndex = page
+            loadSelectionForCurrentQuestion()
+        }
+        return true
     }
 
     private fun setupExitConfirmation() {
@@ -647,33 +889,65 @@ class QuizRunnerFragment : BaseQuizFragment() {
         }
     }
 
-    private fun setupAiControls() {
-        binding.aiGenerateQuickButton.setOnClickListener {
-            requestAi(AiExplanationType.QUICK_REVIEW, forceRefresh = false)
+
+    private val REQUIRED_DETAIL_AI_TYPES = setOf(
+        AiExplanationType.QUICK_REVIEW,
+        AiExplanationType.DETAILED_ANALYSIS,
+        AiExplanationType.CONTEXTUAL_SUGGESTIONS
+    )
+
+    private fun navigateToQuizByQuizId(quizId: Int) {
+        val targetIndex = quizzes.indexOfFirst { it.id == quizId }
+        if (targetIndex >= 0) {
+            goToQuestion(targetIndex)
         }
-        binding.aiGenerateQuickButton.setOnLongClickListener {
-            requestAi(AiExplanationType.QUICK_REVIEW, forceRefresh = true)
-            true
-        }
-        binding.aiDetailedButton.setOnClickListener {
-            requestAi(AiExplanationType.DETAILED_ANALYSIS, forceRefresh = false)
-        }
-        binding.aiDetailedButton.setOnLongClickListener {
-            requestAi(AiExplanationType.DETAILED_ANALYSIS, forceRefresh = true)
-            true
-        }
-        binding.aiRetryButton.setOnClickListener {
-            requestAi(AiExplanationType.QUICK_REVIEW, forceRefresh = false)
-        }
-        binding.aiDetailedRetryButton.setOnClickListener {
-            requestAi(AiExplanationType.DETAILED_ANALYSIS, forceRefresh = false)
+    }
+
+    private fun maybeAutoRequestContextualSuggestions() {
+        val quiz = quizzes.getOrNull(currentIndex) ?: return
+        val config = readCachedAiConfig()
+        if (!config.isComplete()) return
+        val aiStates = viewModel.aiStates.value.orEmpty()
+        val quickState = aiStates[AiRequestKey(quiz.id, AiExplanationType.QUICK_REVIEW)]
+        if (quickState !is AiExplanationUiState.Success) return
+        val suggestionsState = aiStates[AiRequestKey(quiz.id, AiExplanationType.CONTEXTUAL_SUGGESTIONS)]
+        if (suggestionsState != null && suggestionsState !is AiExplanationUiState.Idle) return
+        viewModel.requestContextualSuggestions(
+            quiz = quiz,
+            selectedAnswer = currentSelection.takeIf { it.isNotEmpty() }
+        )
+    }
+    private fun onPagerContextualSuggestionsRequest(page: Int) {
+        if (!moveToPagerPage(page)) return
+        val quiz = quizzes.getOrNull(page) ?: return
+        viewModel.requestContextualSuggestions(
+            quiz = quiz,
+            selectedAnswer = currentSelection.takeIf { it.isNotEmpty() }
+        )
+    }
+
+    private fun onPagerContextualSuggestionClick(page: Int, suggestionIndex: Int, suggestionText: String) {
+        if (!moveToPagerPage(page)) return
+        val quiz = quizzes.getOrNull(page) ?: return
+        viewModel.requestContextualQa(
+            quiz = quiz,
+            suggestionIndex = suggestionIndex,
+            suggestionText = suggestionText,
+            selectedAnswer = currentSelection.takeIf { it.isNotEmpty() }
+        )
+    }
+
+    private fun onPagerScrollChanged(inProgress: Boolean) {
+        pagerScrollInProgress = inProgress
+        if (!inProgress && pendingPagerRefresh) {
+            pendingPagerRefresh = false
+            refreshPagerState()
         }
     }
 
     private fun requestAi(type: AiExplanationType, forceRefresh: Boolean) {
         val quiz = quizzes.getOrNull(currentIndex) ?: return
-        if (!binding.aiSection.isVisible) return
-        val config = AiConfigStore(requireContext()).read()
+        val config = readCachedAiConfig()
         if (!config.isComplete()) {
             showAiConfigurationRequired()
             return
@@ -684,16 +958,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
             selectedAnswer = currentSelection.takeIf { it.isNotEmpty() },
             forceRefresh = forceRefresh
         )
-    }
-
-    private fun renderAiSection() {
-        val answerIsShown = answerVisible || reviewMode
-        val config = AiConfigStore(requireContext()).read()
-        binding.aiSection.isVisible = answerIsShown && config.enabled
-        if (binding.aiSection.isVisible) {
-            renderAiState(config.isComplete())
-            maybeAutoRequestQuickReview(config)
-        }
     }
 
     private fun maybeAutoRequestQuickReview(config: AiConfig) {
@@ -715,135 +979,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
             type = AiExplanationType.QUICK_REVIEW,
             selectedAnswer = currentSelection.takeIf { it.isNotEmpty() }
         )
-    }
-
-    private fun renderAiState(
-        configComplete: Boolean = AiConfigStore(requireContext()).read().isComplete()
-    ) {
-        if (_binding == null || !binding.aiSection.isVisible) return
-        val quiz = quizzes.getOrNull(currentIndex) ?: return
-        val states = viewModel.aiStates.value.orEmpty()
-        val quickState = states[AiRequestKey(quiz.id, AiExplanationType.QUICK_REVIEW)]
-            ?: AiExplanationUiState.Idle
-        val detailedState = states[AiRequestKey(quiz.id, AiExplanationType.DETAILED_ANALYSIS)]
-            ?: AiExplanationUiState.Idle
-        renderQuickReviewState(quickState, configComplete)
-        renderDetailedAnalysisState(quickState, detailedState)
-    }
-
-    private fun renderQuickReviewState(
-        state: AiExplanationUiState,
-        configComplete: Boolean
-    ) {
-        val quiz = quizzes.getOrNull(currentIndex) ?: return
-        binding.aiLoadingIndicator.isVisible =
-            state is AiExplanationUiState.Loading || state is AiExplanationUiState.Streaming
-        binding.aiRetryButton.isVisible = state is AiExplanationUiState.Error
-        binding.aiContentText.isVisible = when (state) {
-            is AiExplanationUiState.Streaming,
-            is AiExplanationUiState.Success -> true
-            is AiExplanationUiState.Error -> state.partialContent.isNotBlank()
-            else -> false
-        }
-        val autoEligible = shouldAutoRequestQuickReview(
-            answerShown = answerVisible || reviewMode,
-            isCorrect = quiz.isCorrectAnswer(currentSelection),
-            isFavorite = quiz.id in favoriteIds
-        )
-        binding.aiGenerateQuickButton.isVisible =
-            state == AiExplanationUiState.Idle && (!autoEligible || !configComplete)
-        binding.aiGenerateQuickButton.isEnabled = !state.isAiRequestInProgress()
-        when (state) {
-            AiExplanationUiState.Idle -> {
-                binding.aiStatusText.setText(R.string.ai_quick_review_manual)
-                binding.aiContentText.text = ""
-            }
-            AiExplanationUiState.Loading -> {
-                binding.aiStatusText.setText(R.string.ai_loading)
-                binding.aiContentText.text = ""
-            }
-            AiExplanationUiState.ConfigurationRequired -> {
-                binding.aiStatusText.setText(R.string.ai_not_configured_message)
-                binding.aiContentText.text = ""
-            }
-            is AiExplanationUiState.Streaming -> {
-                binding.aiStatusText.setText(R.string.ai_loading)
-                renderAiMarkdown(state.content)
-            }
-            is AiExplanationUiState.Success -> {
-                binding.aiStatusText.setText(R.string.ai_quick_review_ready)
-                renderAiMarkdown(state.content)
-            }
-            is AiExplanationUiState.Error -> {
-                binding.aiStatusText.text = state.message
-                if (state.partialContent.isNotBlank()) {
-                    renderAiMarkdown(state.partialContent)
-                } else {
-                    binding.aiContentText.text = ""
-                }
-            }
-        }
-    }
-
-    private fun renderDetailedAnalysisState(
-        quickState: AiExplanationUiState,
-        state: AiExplanationUiState
-    ) {
-        binding.aiDetailedButton.isVisible = quickState is AiExplanationUiState.Success
-        binding.aiDetailedButton.isEnabled = !state.isAiRequestInProgress()
-        val showCard = state != AiExplanationUiState.Idle
-        binding.aiDetailedCard.isVisible = showCard
-        if (!showCard) {
-            binding.aiDetailedContentText.text = ""
-            return
-        }
-        binding.aiDetailedLoadingIndicator.isVisible =
-            state is AiExplanationUiState.Loading || state is AiExplanationUiState.Streaming
-        binding.aiDetailedRetryButton.isVisible = state is AiExplanationUiState.Error
-        binding.aiDetailedContentText.isVisible = when (state) {
-            is AiExplanationUiState.Streaming,
-            is AiExplanationUiState.Success -> true
-            is AiExplanationUiState.Error -> state.partialContent.isNotBlank()
-            else -> false
-        }
-        when (state) {
-            AiExplanationUiState.Idle -> Unit
-            AiExplanationUiState.Loading -> {
-                binding.aiDetailedStatusText.setText(R.string.ai_loading)
-                binding.aiDetailedContentText.text = ""
-            }
-            AiExplanationUiState.ConfigurationRequired -> {
-                binding.aiDetailedStatusText.setText(R.string.ai_not_configured_message)
-                binding.aiDetailedContentText.text = ""
-            }
-            is AiExplanationUiState.Streaming -> {
-                binding.aiDetailedStatusText.setText(R.string.ai_loading)
-                renderAiMarkdown(binding.aiDetailedContentText, state.content)
-            }
-            is AiExplanationUiState.Success -> {
-                binding.aiDetailedStatusText.setText(
-                    if (state.fromCache) R.string.ai_cached else R.string.ai_generated
-                )
-                renderAiMarkdown(binding.aiDetailedContentText, state.content)
-            }
-            is AiExplanationUiState.Error -> {
-                binding.aiDetailedStatusText.text = state.message
-                if (state.partialContent.isNotBlank()) {
-                    renderAiMarkdown(binding.aiDetailedContentText, state.partialContent)
-                } else {
-                    binding.aiDetailedContentText.text = ""
-                }
-            }
-        }
-    }
-
-    private fun renderAiMarkdown(content: String) {
-        renderAiMarkdown(binding.aiContentText, content)
-    }
-
-    private fun renderAiMarkdown(target: TextView, content: String) {
-        aiMarkdownRenderer?.render(target, content)
-            ?: run { target.text = content }
     }
 
     private fun showAiConfigurationRequired() {
@@ -878,9 +1013,10 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 val selected = profiles.getOrNull(which) ?: return@setSingleChoiceItems
                 if (selected.id != defaultId) {
                     store.setDefaultProfile(selected.id)
+                    invalidateAiConfigCache()
                     viewModel.clearAiUiStates()
                     lastAiConfigSignature = currentAiConfigSignature()
-                    renderAiSection()
+                    render()
                     Toast.makeText(
                         requireContext(),
                         selected.name,
@@ -894,7 +1030,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
     }
 
     private fun currentAiConfigSignature(): String {
-        val config = AiConfigStore(requireContext()).read()
+        val config = readCachedAiConfig()
         return listOf(
             config.enabled,
             config.profileId,
@@ -926,12 +1062,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 val selected = levels.getOrNull(which) ?: RunnerTextSize.NORMAL
                 QuizStudySettings.saveRunnerTextSizeLevel(requireContext(), selected.value)
                 runnerTextSize = selected
-                applyRunnerTextSize()
-                for (index in 0 until binding.optionGroup.childCount) {
-                    val optionText = binding.optionGroup.getChildAt(index)
-                        .findViewById<TextView>(R.id.option_text)
-                    optionText?.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.optionSp)
-                }
+                refreshPagerState()
                 dialog.dismiss()
             }
             .setNegativeButton(R.string.cancel, null)
@@ -1001,183 +1132,10 @@ class QuizRunnerFragment : BaseQuizFragment() {
         }
     }
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun setupSwipeNavigation() {
-        val configuration = ViewConfiguration.get(requireContext())
-        val touchSlop = configuration.scaledTouchSlop.toFloat()
-        val density = resources.displayMetrics.density
-        val policy = SwipeNavigationGesturePolicy(
-            horizontalLockDistance = touchSlop * 3f,
-            verticalLockDistance = touchSlop * 2f,
-            longSwipeDistance = maxOf(
-                resources.displayMetrics.widthPixels * SWIPE_SCREEN_WIDTH_RATIO,
-                SWIPE_DISTANCE_DP * density
-            ),
-            quickSwipeDistance = maxOf(touchSlop * 5f, QUICK_SWIPE_DISTANCE_DP * density),
-            minimumFlingVelocity = maxOf(
-                configuration.scaledMinimumFlingVelocity * 2f,
-                MINIMUM_FLING_VELOCITY_DP_PER_SECOND * density
-            )
-        )
-        var downX = 0f
-        var downY = 0f
-        var gestureDirection = GestureDirection.UNDECIDED
-        var velocityTracker: VelocityTracker? = null
-        swipeNavigationTouchListener = View.OnTouchListener listener@{ v, event ->
-            val deltaX = event.x - downX
-            val deltaY = event.y - downY
-            val absDeltaX = kotlin.math.abs(deltaX)
-            val absDeltaY = kotlin.math.abs(deltaY)
-
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = event.x
-                    downY = event.y
-                    gestureDirection = GestureDirection.UNDECIDED
-                    velocityTracker?.recycle()
-                    velocityTracker = VelocityTracker.obtain().apply { addMovement(event) }
-                    v.parent.requestDisallowInterceptTouchEvent(true)
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    velocityTracker?.addMovement(event)
-                    if (gestureDirection == GestureDirection.UNDECIDED) {
-                        gestureDirection = policy.resolveDirection(absDeltaX, absDeltaY)
-                    }
-                    if (gestureDirection == GestureDirection.HORIZONTAL) {
-                        v.parent.requestDisallowInterceptTouchEvent(true)
-                    } else {
-                        v.parent.requestDisallowInterceptTouchEvent(false)
-                    }
-                }
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL -> {
-                    v.parent.requestDisallowInterceptTouchEvent(false)
-                    velocityTracker?.addMovement(event)
-                    velocityTracker?.computeCurrentVelocity(
-                        1_000,
-                        configuration.scaledMaximumFlingVelocity.toFloat()
-                    )
-                    val velocityX = velocityTracker?.xVelocity ?: 0f
-                    val velocityY = velocityTracker?.yVelocity ?: 0f
-                    if (event.actionMasked == MotionEvent.ACTION_UP &&
-                        gestureDirection == GestureDirection.HORIZONTAL &&
-                        policy.shouldNavigate(deltaX, deltaY, velocityX, velocityY)
-                    ) {
-                        if (deltaX < 0) {
-                            goToQuestion(currentIndex + 1, animate = true)
-                        } else {
-                            goToQuestion(currentIndex - 1, animate = true)
-                        }
-                        gestureDirection = GestureDirection.UNDECIDED
-                        velocityTracker?.recycle()
-                        velocityTracker = null
-                        return@listener true
-                    }
-                }
-            }
-            if (event.actionMasked == MotionEvent.ACTION_UP ||
-                event.actionMasked == MotionEvent.ACTION_CANCEL
-            ) {
-                gestureDirection = GestureDirection.UNDECIDED
-                velocityTracker?.recycle()
-                velocityTracker = null
-            }
-            gestureDirection == GestureDirection.HORIZONTAL
-        }
-        binding.questionScrollView.setOnTouchListener(swipeNavigationTouchListener)
-        binding.submitButton.setOnTouchListener(swipeNavigationTouchListener)
-        binding.showAnswerButton.setOnTouchListener(swipeNavigationTouchListener)
-    }
-
-    @SuppressLint("ClickableViewAccessibility")
-    private fun renderOptions(quiz: Quiz, type: QuizUiType) {
-        binding.optionGroup.removeAllViews()
-
-        val optionOrder = if (optionShuffleEnabled) {
-            shuffledOptionOrders.getOrPut(quiz.id) { quiz.options.indices.shuffled() }
-        } else {
-            quiz.options.indices.toList()
-        }
-        optionOrder.forEachIndexed { displayIndex, optionIndex ->
-            val option = quiz.options[optionIndex]
-            val isSelected = currentSelection.contains(optionIndex)
-            val canChangeAnswer = !reviewMode && !(mode != QuizStudyMode.EXAM && answerVisible)
-            val cardView = LayoutInflater.from(requireContext())
-                .inflate(R.layout.item_quiz_option, binding.optionGroup, false) as MaterialCardView
-            val optionText = cardView.findViewById<TextView>(R.id.option_text)
-            optionText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.optionSp)
-            optionText.text = "${convertNumToChar(displayIndex)}. $option"
-            cardView.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = resources.getDimensionPixelSize(R.dimen.quiz_study_option_gap)
-            }
-            applyOptionStyle(cardView, optionText, quiz, optionIndex)
-            if (canChangeAnswer) {
-                cardView.setOnTouchListener(swipeNavigationTouchListener)
-                cardView.isClickable = true
-                cardView.isFocusable = true
-                cardView.setOnClickListener {
-                    currentSelection = if (type == QuizUiType.MULTIPLE_CHOICE) {
-                        if (isSelected) currentSelection - optionIndex else currentSelection + optionIndex
-                    } else {
-                        setOf(optionIndex)
-                    }
-                    if (mode == QuizStudyMode.EXAM) {
-                        quizzes.getOrNull(currentIndex)?.let { q ->
-                            examAnswers[q.id] = currentSelection
-                        }
-                    }
-                    if (shouldAutoSubmitPractice(type)) {
-                        handleSubmit()
-                    } else {
-                        if (mode != QuizStudyMode.EXAM) {
-                            quizzes.getOrNull(currentIndex)?.let { q ->
-                                practiceAnswers[q.id] = currentSelection
-                            }
-                            persistPracticeSession()
-                        }
-                        renderOptions(quiz, type)
-                    }
-                }
-            }
-            binding.optionGroup.addView(cardView)
-        }
-    }
-
     private fun shouldAutoSubmitPractice(type: QuizUiType): Boolean {
         return mode != QuizStudyMode.EXAM &&
             !answerVisible &&
             type in setOf(QuizUiType.SINGLE_CHOICE, QuizUiType.JUDGEMENT)
-    }
-
-    private fun updateSelection(type: QuizUiType, index: Int, checked: Boolean): Set<Int> {
-        return if (type == QuizUiType.MULTIPLE_CHOICE) {
-            if (checked) currentSelection + index else currentSelection - index
-        } else {
-            if (checked) setOf(index) else emptySet()
-        }
-    }
-
-    private fun applyOptionStyle(card: MaterialCardView, optionText: TextView, quiz: Quiz, index: Int) {
-        val selected = currentSelection.contains(index)
-        if (!answerVisible && !reviewMode) {
-            val strokeColor = MaterialColors.getColor(card, if (selected) R.attr.colorPrimary else R.attr.colorOutlineVariant)
-            card.setStrokeColor(ColorStateList.valueOf(strokeColor))
-            card.setCardBackgroundColor(MaterialColors.getColor(card, if (selected) R.attr.colorPrimaryContainer else R.attr.colorSurface))
-            optionText.setTextColor(MaterialColors.getColor(card, if (selected) R.attr.colorOnPrimaryContainer else R.attr.colorOnSurface))
-            return
-        }
-        val correct = quiz.answer.contains(index)
-        val (backgroundAttr, textAttr, strokeAttr) = when {
-            correct -> listOf(R.attr.colorPrimaryContainer, R.attr.colorOnPrimaryContainer, R.attr.colorPrimary)
-            selected -> listOf(R.attr.colorErrorContainer, R.attr.colorOnErrorContainer, R.attr.colorError)
-            else -> listOf(R.attr.colorSurfaceContainerHigh, R.attr.colorOnSurfaceVariant, R.attr.colorOutlineVariant)
-        }
-        card.setCardBackgroundColor(MaterialColors.getColor(card, backgroundAttr))
-        card.setStrokeColor(ColorStateList.valueOf(MaterialColors.getColor(card, strokeAttr)))
-        optionText.setTextColor(MaterialColors.getColor(card, textAttr))
     }
 
     private fun handleSubmit() {
@@ -1341,10 +1299,18 @@ class QuizRunnerFragment : BaseQuizFragment() {
         }
         viewModel.finishExam(quizzes, examAnswers, sessionId)
         reviewMode = true
+        examSummaryText = buildExamSummaryText()
         currentIndex = 0
         loadSelectionForCurrentQuestion()
         render()
         showExamResultDialog()
+    }
+
+    private fun buildExamSummaryText(): String {
+        val correct = quizzes.count { quiz ->
+            quiz.isCorrectAnswer(examAnswers[quiz.id].orEmpty())
+        }
+        return "考试完成：答对 $correct 题，答错 ${quizzes.size - correct} 题，共 ${quizzes.size} 题"
     }
 
     private fun toggleFavorite() {
@@ -1355,7 +1321,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
             val state = viewModel.aiStates.value.orEmpty()[
                 AiRequestKey(quiz.id, AiExplanationType.QUICK_REVIEW)
             ] ?: AiExplanationUiState.Idle
-            val config = AiConfigStore(requireContext()).read()
+            val config = readCachedAiConfig()
             if (state == AiExplanationUiState.Idle && config.isComplete()) {
                 viewModel.requestAiExplanation(
                     quiz = quiz,
@@ -1376,53 +1342,13 @@ class QuizRunnerFragment : BaseQuizFragment() {
         )
     }
 
-    private fun goToQuestion(targetIndex: Int, animate: Boolean = false) {
+    private fun goToQuestion(targetIndex: Int) {
         if (targetIndex !in quizzes.indices || targetIndex == currentIndex) return
-        if (isPageAnimating) return
-        saveCurrentQuestionSelection()
-        if (animate) {
-            animateQuestionChange(targetIndex)
-            return
-        }
+        saveCurrentQuestionSelection(persist = false)
         currentIndex = targetIndex
         loadSelectionForCurrentQuestion()
         render()
         persistPracticeSession()
-    }
-
-    private fun animateQuestionChange(targetIndex: Int) {
-        val page = binding.questionScrollView
-        val width = page.width.takeIf { it > 0 } ?: run {
-            goToQuestion(targetIndex, animate = false)
-            return
-        }
-        val direction = if (targetIndex > currentIndex) 1 else -1
-        val travel = width * 0.22f
-
-        isPageAnimating = true
-        page.animate().cancel()
-        page.animate()
-            .translationX(-direction * travel)
-            .alpha(0f)
-            .setDuration(PAGE_ANIMATION_DURATION_MS)
-            .withEndAction {
-                currentIndex = targetIndex
-                loadSelectionForCurrentQuestion()
-                render()
-                persistPracticeSession()
-                page.scrollTo(0, 0)
-                page.translationX = direction * travel
-                page.alpha = 0f
-                page.animate()
-                    .translationX(0f)
-                    .alpha(1f)
-                    .setDuration(PAGE_ANIMATION_DURATION_MS)
-                    .withEndAction {
-                        isPageAnimating = false
-                    }
-                    .start()
-            }
-            .start()
     }
 
     private fun showAnswerCard() {
@@ -1433,7 +1359,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         val recyclerView = dialogView.findViewById<RecyclerView>(R.id.answer_card_recycler_view)
         renderAnswerCardStats(dialogView, buildAnswerCardStats())
         val adapter = AnswerCardAdapter { index ->
-            goToQuestion(index, animate = true)
+            goToQuestion(index)
         }
         configureAnswerCardGrid(recyclerView)
         recyclerView.adapter = adapter
@@ -1445,11 +1371,12 @@ class QuizRunnerFragment : BaseQuizFragment() {
             .setNegativeButton("关闭", null)
             .create()
         adapter.onItemClick = { index ->
-            goToQuestion(index, animate = true)
+            goToQuestion(index)
             dialog.dismiss()
         }
         dialog.show()
     }
+
 
     private fun configureAnswerCardGrid(recyclerView: RecyclerView) {
         val layoutManager = GridLayoutManager(
@@ -1533,7 +1460,10 @@ class QuizRunnerFragment : BaseQuizFragment() {
     }
 
     private fun buildResultText(quiz: Quiz): String {
-        val selected = currentSelection
+        return buildResultText(quiz, currentSelection)
+    }
+
+    private fun buildResultText(quiz: Quiz, selected: Set<Int>): String {
         return when {
             selected.isEmpty() -> "未作答"
             quiz.isCorrectAnswer(selected) -> "回答正确"
@@ -1547,12 +1477,8 @@ class QuizRunnerFragment : BaseQuizFragment() {
             return
         }
         runnerTextSize = newTextSize
-        applyRunnerTextSize()
-        for (index in 0 until binding.optionGroup.childCount) {
-            val optionText = binding.optionGroup.getChildAt(index)
-                .findViewById<TextView>(R.id.option_text)
-            optionText?.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.optionSp)
-        }
+        binding.emptyView.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.promptSp)
+        refreshPagerState()
     }
 
     private fun readRunnerTextSize(): RunnerTextSize {
@@ -1561,57 +1487,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         )
     }
 
-    private fun applyRunnerTextSize() {
-        binding.emptyView.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.promptSp)
-        binding.examResultText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.resultSp)
-        binding.promptText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.promptSp)
-        binding.resultText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.resultSp)
-        binding.answerPanel.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.resultSp)
-        binding.historySummaryText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.supportSp)
-        binding.historyDetailText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.supportSp)
-        binding.aiContentText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.supportSp)
-        binding.aiDetailedContentText.setTextSize(
-            TypedValue.COMPLEX_UNIT_SP,
-            runnerTextSize.supportSp
-        )
-    }
-
-    private fun renderExamSummaryIfNeeded() {
-        binding.examResultPanel.isVisible = reviewMode && mode == QuizStudyMode.EXAM
-        if (reviewMode && mode == QuizStudyMode.EXAM) {
-            val correct = quizzes.count { it.isCorrectAnswer(examAnswers[it.id].orEmpty()) }
-            binding.examResultText.text = "考试完成：答对 $correct 题，答错 ${quizzes.size - correct} 题，共 ${quizzes.size} 题"
-        }
-    }
-
-    private fun renderPracticeHistory() {
-        val quiz = quizzes.getOrNull(currentIndex) ?: run {
-            binding.historyPanel.isVisible = false
-            return
-        }
-        val shouldShow = mode != QuizStudyMode.EXAM &&
-            (answerVisible || recordedPracticeQuizIds.contains(quiz.id))
-        binding.historyPanel.isVisible = shouldShow
-        if (!shouldShow) return
-
-        val records = answerRecords
-            .filter { it.quizId == quiz.id && it.mode != QuizStudyMode.EXAM.value }
-            .sortedByDescending { it.answeredAt }
-        val correctCount = records.count { it.isCorrect }
-        val totalCount = records.size
-        val rate = if (totalCount == 0) 0 else correctCount * 100 / totalCount
-        binding.historySummaryText.text = "历史作答 $totalCount 次 · 正确 $correctCount 次 · 正确率 $rate%"
-        binding.historyDetailText.text = if (records.isEmpty()) {
-            "暂无历史记录"
-        } else {
-            records.take(5).mapIndexed { index, record ->
-                val result = if (record.isCorrect) "正确" else "错误"
-                "${index + 1}. ${historyDateFormat.format(Date(record.answeredAt))}  $result"
-            }.joinToString("\n")
-        }
-    }
-
-    private fun saveCurrentQuestionSelection() {
+    private fun saveCurrentQuestionSelection(persist: Boolean = true) {
         if (mode == QuizStudyMode.EXAM) {
             quizzes.getOrNull(currentIndex)?.let { quiz ->
                 examAnswers[quiz.id] = currentSelection
@@ -1622,7 +1498,9 @@ class QuizRunnerFragment : BaseQuizFragment() {
                     practiceAnswers[quiz.id] = currentSelection
                 }
             }
-            persistPracticeSession()
+            if (persist) {
+                persistPracticeSession()
+            }
         }
     }
 
@@ -1641,6 +1519,12 @@ class QuizRunnerFragment : BaseQuizFragment() {
     }
 
     private fun persistPracticeSession() {
+        if (mode == QuizStudyMode.EXAM || quizzes.isEmpty()) return
+        timerHandler.removeCallbacks(practicePersistRunnable)
+        timerHandler.postDelayed(practicePersistRunnable, PRACTICE_PERSIST_DEBOUNCE_MS)
+    }
+
+    private fun flushPracticePersist() {
         if (mode == QuizStudyMode.EXAM || quizzes.isEmpty()) return
         val now = System.currentTimeMillis()
         val startedAt = when {
@@ -1667,18 +1551,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
         )
     }
 
-    private fun schedulePracticeSessionPersist() {
-        if (mode == QuizStudyMode.EXAM || quizzes.isEmpty() || _binding == null) return
-        pendingPracticeSessionPersist?.let { binding.root.removeCallbacks(it) }
-        pendingPracticeSessionPersist = Runnable {
-            pendingPracticeSessionPersist = null
-            if (_binding == null) return@Runnable
-            persistPracticeSession()
-        }.also { runnable ->
-            binding.root.postDelayed(runnable, INITIAL_PERSIST_DELAY_MS)
-        }
-    }
-
     companion object {
         const val MODE = "mode"
         const val QUIZ_IDS = "quiz_ids"
@@ -1694,15 +1566,9 @@ class QuizRunnerFragment : BaseQuizFragment() {
         private const val PRACTICE_WRONG_SOUND_VOLUME = 100
         private const val PRACTICE_CORRECT_SOUND_DURATION_MS = 150
         private const val PRACTICE_WRONG_SOUND_DURATION_MS = 220
-        private const val INITIAL_CONTENT_FADE_DURATION_MS = 180L
-        private const val INITIAL_PERSIST_DELAY_MS = 450L
-        private const val PAGE_ANIMATION_DURATION_MS = 140L
         private const val TIMER_TICK_INTERVAL_MS = 1_000L
-        private const val SWIPE_SCREEN_WIDTH_RATIO = 0.18f
-        private const val SWIPE_DISTANCE_DP = 120f
-        private const val QUICK_SWIPE_DISTANCE_DP = 64f
-        private const val MINIMUM_FLING_VELOCITY_DP_PER_SECOND = 600f
         private const val ANSWER_CARD_DEFAULT_SPAN_COUNT = 5
+        private const val PRACTICE_PERSIST_DEBOUNCE_MS = 250L
         private const val ANSWER_CARD_MIN_CELL_WIDTH_DP = 48f
         private const val DEFAULT_EXAM_DURATION_MINUTES = 60
         private const val MAX_EXAM_DURATION_MINUTES = 600

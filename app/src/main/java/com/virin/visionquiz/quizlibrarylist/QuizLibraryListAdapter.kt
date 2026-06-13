@@ -22,6 +22,7 @@ import com.google.android.material.color.MaterialColors
 import com.virin.visionquiz.R
 import com.virin.visionquiz.dao.QuizLibrary
 import com.virin.visionquiz.databinding.ItemQuizLibraryBinding
+import com.virin.visionquiz.util.SimilarQuizStore
 import com.virin.visionquiz.util.dp
 
 
@@ -30,7 +31,13 @@ class QuizLibraryListAdapter constructor(
     private val selectionListener: SelectionListener
 ) : ListAdapter<QuizLibrary, QuizLibraryListAdapter.ViewHolder>(DiffCallback()) {
 
+    private var similarProgress: Map<Int, SimilarQuizStore.Progress> = emptyMap()
     private val selectedItemIds = HashSet<Int>()
+    fun updateSimilarProgress(progress: Map<Int, SimilarQuizStore.Progress>) {
+        similarProgress = progress
+        notifyDataSetChanged()
+    }
+
     var isSelectionMode = false
         private set
 
@@ -50,6 +57,10 @@ class QuizLibraryListAdapter constructor(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val quizLibrary = getItem(position)
         holder.bind(quizLibrary, buttonClickListener)
+        val p = similarProgress[quizLibrary.id]
+        if (p != null && !p.done) {
+            holder.binding.quizCount.text = p.text
+        }
 
         holder.binding.cardView.isChecked = selectedItemIds.contains(quizLibrary.id)
 

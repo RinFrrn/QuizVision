@@ -47,7 +47,8 @@ data class LibraryAnswerStats(
 
 data class AiRequestKey(
     val quizId: Int,
-    val type: AiExplanationType
+    val type: AiExplanationType,
+    val subKey: String? = null
 )
 
 sealed class AiExplanationUiState {
@@ -104,6 +105,15 @@ private data class WrongQuizState(
 )
 
 private const val WRONG_CLEAR_CORRECT_STREAK = 3
+
+fun parseContextualSuggestions(content: String): List<String> {
+    return content.lines()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .map { it.replaceFirst("^[0-9]+\\.[ \\t]*".toRegex(), "").trim() }
+        .filter { it.isNotBlank() }
+        .take(3)
+}
 
 class QuizLibraryFeaturesViewModel(application: Application, private val libraryId: Int) :
     AndroidViewModel(application) {
@@ -215,6 +225,7 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
     private val aiStateMap = mutableMapOf<AiRequestKey, AiExplanationUiState>()
     private val _aiStates =
         MutableLiveData<Map<AiRequestKey, AiExplanationUiState>>(emptyMap())
+    private val similarQuizCache = ConcurrentHashMap<Int, List<Quiz>>()
 
     val quizList: LiveData<List<Quiz>> = repository.getQuizListByLibraryId(libraryId)
     val favoriteQuizIds: LiveData<List<Int>> = repository.getFavoriteQuizIdsByLibraryId(libraryId)
@@ -236,7 +247,115 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
         selectedAnswer: Set<Int>?,
         forceRefresh: Boolean = false
     ) {
-        val key = AiRequestKey(quiz.id, type)
+        requestAiExplanationInternal(
+            quiz = quiz,
+            type = type,
+            selectedAnswer = selectedAnswer,
+            forceRefresh = forceRefresh,
+            subKey = null
+        )
+    }
+
+    fun clearAiUiStates() {
+        aiJobs.values.forEach { it.cancel() }
+        aiJobs.clear()
+        synchronized(aiStateLock) {
+            aiStateMap.clear()
+        }
+        _aiStates.value = emptyMap()
+    }
+
+    fun requestContextualSuggestions(
+        quiz: Quiz,
+        selectedAnswer: Set<Int>?
+    ) {
+        requestAiExplanationInternal(
+            quiz = quiz,
+            type = AiExplanationType.CONTEXTUAL_SUGGESTIONS,
+            selectedAnswer = selectedAnswer,
+            forceRefresh = false,
+            subKey = null
+        )
+    }
+
+    fun requestContextualQa(
+        quiz: Quiz,
+        suggestionIndex: Int,
+        suggestionText: String,
+        selectedAnswer: Set<Int>?
+    ) {
+        val key = AiRequestKey(quiz.id, AiExplanationType.CONTEXTUAL_QA, "$suggestionIndex")
+        val config = aiConfigStore.read()
+        if (!config.isComplete()) {
+            updateAiState(key, AiExplanationUiState.ConfigurationRequired)
+            return
+        }
+        if (aiJobs[key]?.isActive == true) return
+        aiJobs.remove(key)?.cancel()
+        updateAiState(key, AiExplanationUiState.Loading)
+        aiJobs[key] = viewModelScope.launch(Dispatchers.IO) {
+            var latestPartialContent = ""
+            val prompt = AiPromptBuilder.build(
+                quiz = quiz,
+                type = AiExplanationType.CONTEXTUAL_QA,
+                taskPrompt = config.promptFor(AiExplanationType.CONTEXTUAL_QA) +
+                    "\n\n用户选择的学习建议：${suggestionText}",
+                selectedAnswer = selectedAnswer
+            )
+            val result = runCatching {
+                aiRepository.getOrGenerate(
+                    quizId = quiz.id,
+                    libraryId = quiz.libraryId,
+                    type = AiExplanationType.CONTEXTUAL_QA,
+                    config = config,
+                    prompt = prompt,
+                    forceRefresh = false,
+                    onPartialContent = { content ->
+                        latestPartialContent = content
+                        updateAiState(key, AiExplanationUiState.Streaming(content))
+                    }
+                )
+            }
+            result.onSuccess {
+                updateAiState(key, AiExplanationUiState.Success(it.content, it.fromCache))
+            }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) return@onFailure
+                updateAiState(
+                    key,
+                    AiExplanationUiState.Error(
+                        message = it.message ?: "AI 请求失败",
+                        partialContent = latestPartialContent
+                    )
+                )
+            }
+            aiJobs.remove(key)
+        }
+    }
+
+    fun clearContextualStates(quizId: Int) {
+        synchronized(aiStateLock) {
+            val keysToRemove = aiStateMap.keys.filter {
+                it.quizId == quizId && it.type in setOf(
+                    AiExplanationType.CONTEXTUAL_SUGGESTIONS,
+                    AiExplanationType.CONTEXTUAL_QA
+                )
+            }
+            keysToRemove.forEach { key ->
+                aiJobs.remove(key)?.cancel()
+                aiStateMap.remove(key)
+            }
+        }
+        _aiStates.value = synchronized(aiStateLock) { aiStateMap.toMap() }
+    }
+
+    private fun requestAiExplanationInternal(
+        quiz: Quiz,
+        type: AiExplanationType,
+        selectedAnswer: Set<Int>?,
+        forceRefresh: Boolean,
+        subKey: String?
+    ) {
+        val key = AiRequestKey(quiz.id, type, subKey)
         val config = aiConfigStore.read()
         if (!config.isComplete()) {
             updateAiState(key, AiExplanationUiState.ConfigurationRequired)
@@ -268,10 +387,7 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
                 )
             }
             result.onSuccess {
-                updateAiState(
-                    key,
-                    AiExplanationUiState.Success(it.content, it.fromCache)
-                )
+                updateAiState(key, AiExplanationUiState.Success(it.content, it.fromCache))
             }.onFailure {
                 if (it is kotlinx.coroutines.CancellationException) return@onFailure
                 updateAiState(
@@ -284,15 +400,6 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
             }
             aiJobs.remove(key)
         }
-    }
-
-    fun clearAiUiStates() {
-        aiJobs.values.forEach { it.cancel() }
-        aiJobs.clear()
-        synchronized(aiStateLock) {
-            aiStateMap.clear()
-        }
-        _aiStates.value = emptyMap()
     }
 
     private fun updateAiState(key: AiRequestKey, state: AiExplanationUiState) {
@@ -392,6 +499,19 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
             repository.deletePracticeSession(libraryId, mode.value)
             onDone()
         }
+    }
+
+    fun findSimilarQuizzes(currentQuiz: Quiz): List<Quiz> {
+        return similarQuizCache.getOrPut(currentQuiz.id) {
+            com.virin.visionquiz.util.findSimilarQuizzes(
+                currentQuiz = currentQuiz,
+                candidates = quizList.value.orEmpty()
+            )
+        }
+    }
+
+    suspend fun getQuizListByIds(ids: List<Int>): List<Quiz> {
+        return repository.getQuizListByIds(ids)
     }
 
     companion object {

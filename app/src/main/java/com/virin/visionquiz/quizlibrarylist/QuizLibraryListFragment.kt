@@ -60,6 +60,7 @@ import com.virin.visionquiz.quizdetector.CameraXDetectorActivity
 import com.virin.visionquiz.quizlibraryfeatures.QuizLibraryFeaturesFragment
 import com.virin.visionquiz.screendetector.ScreenDetectorController
 import com.virin.visionquiz.util.BaseQuizFragment
+import com.virin.visionquiz.util.SimilarQuizStore
 import com.virin.visionquiz.util.PermissionManager
 import com.virin.visionquiz.util.configureQuizTopBar
 import com.virin.visionquiz.util.dp
@@ -147,6 +148,9 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 
         val adapter = QuizLibraryListAdapter(onItemClickListBtnListener, onSelectionListener)
         binding.recyclerView.adapter = adapter
+        SimilarQuizStore.progress.observe(viewLifecycleOwner) { map ->
+            adapter.updateSimilarProgress(map)
+        }
         configureQuizTopBar(binding.toolbar, TITLE, showNavigation = false)
         refreshTopBarMenu()
         setupPermissionNotice()

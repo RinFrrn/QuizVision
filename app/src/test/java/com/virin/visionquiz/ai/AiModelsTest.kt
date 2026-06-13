@@ -100,6 +100,22 @@ class AiModelsTest {
             "### 对应关系",
             "### 适用边界"
         )
+
+        val extension = AiPromptBuilder.outputFormat(AiExplanationType.QUESTION_EXTENSION)
+        assertHeadings(
+            extension,
+            "### 原题要点",
+            "### 变式问题",
+            "### 拓展建议"
+        )
+
+        val similar = AiPromptBuilder.outputFormat(AiExplanationType.SIMILAR_ANALYSIS)
+        assertHeadings(
+            similar,
+            "### 考点归纳",
+            "### 对比题",
+            "### 辨析要点"
+        )
     }
 
     @Test

@@ -11,7 +11,11 @@ enum class AiExplanationType(val value: String, val label: String) {
     DETAILED_ANALYSIS("detailed_analysis", "详细解析"),
     ANALYSIS("analysis", "解析"),
     TECHNIQUE("technique", "技巧"),
-    MNEMONIC("mnemonic", "口诀")
+    MNEMONIC("mnemonic", "口诀"),
+    QUESTION_EXTENSION("question_extension", "举一反三"),
+    SIMILAR_ANALYSIS("similar_analysis", "相似题分析"),
+    CONTEXTUAL_SUGGESTIONS("contextual_suggestions", "上下文建议"),
+    CONTEXTUAL_QA("contextual_qa", "上下文问答")
 }
 
 data class AiConfig(
@@ -23,6 +27,10 @@ data class AiConfig(
     val analysisPrompt: String,
     val techniquePrompt: String,
     val mnemonicPrompt: String,
+    val questionExtensionPrompt: String = AiPromptBuilder.DEFAULT_QUESTION_EXTENSION_PROMPT,
+    val similarAnalysisPrompt: String = AiPromptBuilder.DEFAULT_SIMILAR_ANALYSIS_PROMPT,
+    val contextualSuggestionsPrompt: String = AiPromptBuilder.DEFAULT_CONTEXTUAL_SUGGESTIONS_PROMPT,
+    val contextualQaPrompt: String = AiPromptBuilder.DEFAULT_CONTEXTUAL_QA_PROMPT,
     val profileId: String = "",
     val profileName: String = ""
 ) {
@@ -32,6 +40,10 @@ data class AiConfig(
         AiExplanationType.ANALYSIS -> analysisPrompt
         AiExplanationType.TECHNIQUE -> techniquePrompt
         AiExplanationType.MNEMONIC -> mnemonicPrompt
+        AiExplanationType.QUESTION_EXTENSION -> questionExtensionPrompt
+        AiExplanationType.SIMILAR_ANALYSIS -> similarAnalysisPrompt
+        AiExplanationType.CONTEXTUAL_SUGGESTIONS -> contextualSuggestionsPrompt
+        AiExplanationType.CONTEXTUAL_QA -> contextualQaPrompt
     }
 
     fun isComplete(): Boolean {
@@ -143,6 +155,27 @@ object AiPromptBuilder {
             "再解释其与知识点的对应关系；不适合口诀时，改用对照、分类、顺序或关键条件帮助记忆。" +
             "不得为了押韵或简化而歪曲概念、遗漏关键例外或编造事实。控制在 80–180 字。"
 
+    const val DEFAULT_QUESTION_EXTENSION_PROMPT =
+        "根据本题的核心知识点和解题思路，举一反三，延伸出 2–3 个与本题考查方向相同但情境或条件不同的变式问题。" +
+            "每个变式问题需附简要说明，指出其考查侧重点和与原题的关键差异。" +
+            "变式问题应具有实际练习价值，避免简单替换数字或无意义的文字修改。控制在 150–350 字。"
+
+    const val DEFAULT_SIMILAR_ANALYSIS_PROMPT =
+        "分析本题的核心考点和易混淆点，构造 2–3 道与本题考查知识点相似但容易做错的对比题。" +
+            "每道对比题需给出题干、选项、正确答案，并简要说明其与原题的相似之处和容易出错的关键区别。" +
+            "帮助用户识别同类题目中的细微差异，提高辨析能力。控制在 200–400 字。"
+
+    const val DEFAULT_CONTEXTUAL_SUGGESTIONS_PROMPT =
+        "根据本题的题干、选项、标准答案和用户作答情况，生成 3 个有助于深入理解本题知识点的学习建议。" +
+            "每个建议应是一个具体的、可直接回答的问题或思考方向，与本题内容紧密相关。" +
+            "建议应覆盖不同角度：如易错辨析、实际应用场景、相关知识点延伸等。" +
+            "严格按以下格式输出，每行一条，不要添加其他内容：\n1. 建议内容\n2. 建议内容\n3. 建议内容"
+
+    const val DEFAULT_CONTEXTUAL_QA_PROMPT =
+        "用户正在学习一道题目，现针对以下学习建议进行深入探讨。请结合原题的知识点，" +
+            "对用户的建议问题给出详细、准确的解答。解答应帮助用户加深理解，" +
+            "可以引用相关概念、规则、实例进行说明。控制在 150–300 字。"
+
     fun build(
         quiz: Quiz,
         type: AiExplanationType,
@@ -220,6 +253,38 @@ object AiPromptBuilder {
             使用无序列表解释记忆内容与知识点的对应关系。
             ### 适用边界
             说明例外、限制或容易误用的情形。
+            """.trimIndent()
+        AiExplanationType.QUESTION_EXTENSION ->
+            """
+            ### 原题要点
+            简要归纳原题的核心知识点和解题关键。
+            ### 变式问题
+            使用有序列表给出 2–3 个变式问题，每个问题后附简要考查说明。
+            ### 拓展建议
+            总结该类题目的拓展学习方向。
+            """.trimIndent()
+        AiExplanationType.SIMILAR_ANALYSIS ->
+            """
+            ### 考点归纳
+            简要归纳本题的核心考点和易混淆点。
+            ### 对比题
+            使用有序列表给出 2–3 道对比题，每题包含题干、选项、正确答案和关键区别说明。
+            ### 辨析要点
+            总结识别此类题目细微差异的方法。
+            """.trimIndent()
+        AiExplanationType.CONTEXTUAL_SUGGESTIONS ->
+            """
+            严格按以下格式输出，每行一条，不要添加标题或其他内容：
+            1. 建议内容
+            2. 建议内容
+            3. 建议内容
+            """.trimIndent()
+        AiExplanationType.CONTEXTUAL_QA ->
+            """
+            ### 解答
+            针对学习建议给出详细解答，结合原题知识点说明。
+            ### 要点总结
+            用简洁的要点列表总结核心收获。
             """.trimIndent()
     }
 
