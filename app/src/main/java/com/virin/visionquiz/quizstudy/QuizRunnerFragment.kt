@@ -17,6 +17,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.VelocityTracker
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -924,13 +925,26 @@ class QuizRunnerFragment : BaseQuizFragment() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupSwipeNavigation() {
-        val touchSlop = ViewConfiguration.get(requireContext()).scaledTouchSlop
-        val horizontalLockSlop = touchSlop * 1.5f
-        val verticalLockSlop = touchSlop * 2f
-        val minSwipeDistance = (touchSlop * 3).coerceAtLeast(SWIPE_DISTANCE_THRESHOLD)
+        val configuration = ViewConfiguration.get(requireContext())
+        val touchSlop = configuration.scaledTouchSlop.toFloat()
+        val density = resources.displayMetrics.density
+        val policy = SwipeNavigationGesturePolicy(
+            horizontalLockDistance = touchSlop * 3f,
+            verticalLockDistance = touchSlop * 2f,
+            longSwipeDistance = maxOf(
+                resources.displayMetrics.widthPixels * SWIPE_SCREEN_WIDTH_RATIO,
+                SWIPE_DISTANCE_DP * density
+            ),
+            quickSwipeDistance = maxOf(touchSlop * 5f, QUICK_SWIPE_DISTANCE_DP * density),
+            minimumFlingVelocity = maxOf(
+                configuration.scaledMinimumFlingVelocity * 2f,
+                MINIMUM_FLING_VELOCITY_DP_PER_SECOND * density
+            )
+        )
         var downX = 0f
         var downY = 0f
         var gestureDirection = GestureDirection.UNDECIDED
+        var velocityTracker: VelocityTracker? = null
         swipeNavigationTouchListener = View.OnTouchListener listener@{ v, event ->
             val deltaX = event.x - downX
             val deltaY = event.y - downY
@@ -942,19 +956,14 @@ class QuizRunnerFragment : BaseQuizFragment() {
                     downX = event.x
                     downY = event.y
                     gestureDirection = GestureDirection.UNDECIDED
+                    velocityTracker?.recycle()
+                    velocityTracker = VelocityTracker.obtain().apply { addMovement(event) }
                     v.parent.requestDisallowInterceptTouchEvent(true)
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    velocityTracker?.addMovement(event)
                     if (gestureDirection == GestureDirection.UNDECIDED) {
-                        gestureDirection = when {
-                            absDeltaX > horizontalLockSlop && absDeltaX > absDeltaY * 0.8f -> {
-                                GestureDirection.HORIZONTAL
-                            }
-                            absDeltaY > verticalLockSlop && absDeltaY > absDeltaX * 1.2f -> {
-                                GestureDirection.VERTICAL
-                            }
-                            else -> GestureDirection.UNDECIDED
-                        }
+                        gestureDirection = policy.resolveDirection(absDeltaX, absDeltaY)
                     }
                     if (gestureDirection == GestureDirection.HORIZONTAL) {
                         v.parent.requestDisallowInterceptTouchEvent(true)
@@ -965,10 +974,16 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL -> {
                     v.parent.requestDisallowInterceptTouchEvent(false)
+                    velocityTracker?.addMovement(event)
+                    velocityTracker?.computeCurrentVelocity(
+                        1_000,
+                        configuration.scaledMaximumFlingVelocity.toFloat()
+                    )
+                    val velocityX = velocityTracker?.xVelocity ?: 0f
+                    val velocityY = velocityTracker?.yVelocity ?: 0f
                     if (event.actionMasked == MotionEvent.ACTION_UP &&
-                        gestureDirection != GestureDirection.VERTICAL &&
-                        absDeltaX >= minSwipeDistance &&
-                        absDeltaX > absDeltaY * 0.75f
+                        gestureDirection == GestureDirection.HORIZONTAL &&
+                        policy.shouldNavigate(deltaX, deltaY, velocityX, velocityY)
                     ) {
                         if (deltaX < 0) {
                             goToQuestion(currentIndex + 1, animate = true)
@@ -976,6 +991,8 @@ class QuizRunnerFragment : BaseQuizFragment() {
                             goToQuestion(currentIndex - 1, animate = true)
                         }
                         gestureDirection = GestureDirection.UNDECIDED
+                        velocityTracker?.recycle()
+                        velocityTracker = null
                         return@listener true
                     }
                 }
@@ -984,6 +1001,8 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 event.actionMasked == MotionEvent.ACTION_CANCEL
             ) {
                 gestureDirection = GestureDirection.UNDECIDED
+                velocityTracker?.recycle()
+                velocityTracker = null
             }
             gestureDirection == GestureDirection.HORIZONTAL
         }
@@ -1583,8 +1602,10 @@ class QuizRunnerFragment : BaseQuizFragment() {
         private const val INITIAL_PERSIST_DELAY_MS = 450L
         private const val PAGE_ANIMATION_DURATION_MS = 140L
         private const val TIMER_TICK_INTERVAL_MS = 1_000L
-        private const val SWIPE_DISTANCE_THRESHOLD = 90
-        private const val SWIPE_VELOCITY_THRESHOLD = 120
+        private const val SWIPE_SCREEN_WIDTH_RATIO = 0.18f
+        private const val SWIPE_DISTANCE_DP = 120f
+        private const val QUICK_SWIPE_DISTANCE_DP = 64f
+        private const val MINIMUM_FLING_VELOCITY_DP_PER_SECOND = 600f
         private const val ANSWER_CARD_DEFAULT_SPAN_COUNT = 5
         private const val ANSWER_CARD_MIN_CELL_WIDTH_DP = 48f
         private const val DEFAULT_EXAM_DURATION_MINUTES = 60
@@ -1711,12 +1732,6 @@ private enum class AnswerCardStatus {
     ANSWERED,
     CORRECT,
     INCORRECT
-}
-
-private enum class GestureDirection {
-    UNDECIDED,
-    HORIZONTAL,
-    VERTICAL
 }
 
 private class AnswerCardAdapter(

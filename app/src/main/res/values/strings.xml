@@ -315,13 +315,13 @@
     <string name="accessibility_search_intro_title">Enable accessibility search</string>
     <string name="accessibility_search_intro_message">%1$s can read visible text exposed by Android accessibility, match it with the selected quiz library, and show results in a floating window. Turn on the %1$s accessibility service in system settings to use it.</string>
     <string name="accessibility_search_prompt_message">Accessibility search is not enabled yet. Turn on the %1$s accessibility service to match visible screen text with the selected quiz library.</string>
-    <string name="accessibility_search_ready_message">Choose how to show status controls, then start accessibility search.</string>
+    <string name="accessibility_search_ready_message">Floating window permission is required; notifications are optional. Choose the display options, then start accessibility search.</string>
     <string name="accessibility_search_enable_cta">Open permission settings</string>
     <string name="accessibility_search_start_cta">Start</string>
-    <string name="accessibility_search_enable_notifications">Enable notifications</string>
+    <string name="accessibility_search_enable_notifications">Enable notifications (optional)</string>
     <string name="accessibility_search_notifications_enabled">Notifications enabled</string>
     <string name="accessibility_search_open_notification_settings">Open notification settings</string>
-    <string name="accessibility_search_enable_overlay">Enable floating window</string>
+    <string name="accessibility_search_enable_overlay">Enable floating window (required)</string>
     <string name="accessibility_search_overlay_enabled">Floating window enabled</string>
     <string name="accessibility_search_show_overlay_window">Show floating controls</string>
     <string name="accessibility_search_show_overlay_window_summary">Controls only the floating status and action controls. Answer boxes or answer markers still follow the answer display setting.</string>

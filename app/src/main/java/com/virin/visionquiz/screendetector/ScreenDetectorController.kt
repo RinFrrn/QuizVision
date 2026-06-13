@@ -1370,13 +1370,18 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                 R.string.accessibility_search_enable_cta
             }
         )
-        enableButton.isEnabled = notificationsEnabled || overlayEnabled
+        enableButton.isEnabled = overlayEnabled
     }
 
     private fun handleAccessibilityDialogPrimaryAction(
         activity: FragmentActivity,
         dialog: DialogInterface
     ) {
+        if (!hasOverlayPermission(activity)) {
+            dialog.dismiss()
+            requestOverlayPermission(activity)
+            return
+        }
         if (!AccessibilityPermissionHelper.isServiceEnabled(activity)) {
             dialog.dismiss()
             AccessibilityPermissionHelper.openAccessibilitySettings(activity)

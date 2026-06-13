@@ -10,13 +10,13 @@
     <string name="accessibility_search_intro_title">开启无障碍搜题</string>
     <string name="accessibility_search_intro_message">%1$s 会读取 Android 无障碍系统暴露的屏幕文字，与当前题库匹配，并通过悬浮窗展示结果。使用前需要在系统设置中手动开启 %1$s 无障碍服务。</string>
     <string name="accessibility_search_prompt_message">无障碍服务未开启。开启后即可读取屏幕可访问文字，并与当前题库匹配。</string>
-    <string name="accessibility_search_ready_message">选择状态控制显示方式，然后开启无障碍搜题。</string>
+    <string name="accessibility_search_ready_message">悬浮窗权限为必需，通知权限可选。选择显示方式后开启无障碍搜题。</string>
     <string name="accessibility_search_enable_cta">去开启权限</string>
     <string name="accessibility_search_start_cta">开启</string>
-    <string name="accessibility_search_enable_notifications">开启通知</string>
+    <string name="accessibility_search_enable_notifications">开启通知（可选）</string>
     <string name="accessibility_search_notifications_enabled">已开启通知</string>
     <string name="accessibility_search_open_notification_settings">去通知设置</string>
-    <string name="accessibility_search_enable_overlay">开启悬浮窗</string>
+    <string name="accessibility_search_enable_overlay">开启悬浮窗（必需）</string>
     <string name="accessibility_search_overlay_enabled">已开启悬浮窗</string>
     <string name="accessibility_search_show_overlay_window">显示悬浮控制</string>
     <string name="accessibility_search_show_overlay_window_summary">仅控制悬浮状态与操作按钮；答案框或答案标记仍由答案显示方式控制。</string>
