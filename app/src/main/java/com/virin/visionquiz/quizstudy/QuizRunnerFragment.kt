@@ -38,6 +38,7 @@ import com.google.android.material.color.MaterialColors
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.virin.visionquiz.R
+import com.virin.visionquiz.ai.AiConfig
 import com.virin.visionquiz.ai.AiConfigStore
 import com.virin.visionquiz.ai.AiExplanationType
 import com.virin.visionquiz.ai.AiMarkdownRenderer
@@ -100,7 +101,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
     private var correctAnswerToneGenerator: ToneGenerator? = null
     private var wrongAnswerToneGenerator: ToneGenerator? = null
     private var answerRecords: List<QuizAnswerRecord> = emptyList()
-    private var selectedAiType = AiExplanationType.ANALYSIS
     private var lastAiConfigSignature: String? = null
     private var aiMarkdownRenderer: AiMarkdownRenderer? = null
     private var runnerTextSize = RunnerTextSize.NORMAL
@@ -158,6 +158,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         viewModel.favoriteQuizIds.observe(viewLifecycleOwner) { ids ->
             favoriteIds = ids.orEmpty().toSet()
             updateFavoriteButton()
+            renderAiSection()
         }
         viewModel.answerRecords.observe(viewLifecycleOwner) { records ->
             answerRecords = records.orEmpty()
@@ -647,43 +648,29 @@ class QuizRunnerFragment : BaseQuizFragment() {
     }
 
     private fun setupAiControls() {
-        binding.aiTypeGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked) return@addOnButtonCheckedListener
-            selectedAiType = when (checkedId) {
-                R.id.ai_technique_button -> AiExplanationType.TECHNIQUE
-                R.id.ai_mnemonic_button -> AiExplanationType.MNEMONIC
-                else -> AiExplanationType.ANALYSIS
-            }
-            renderAiState()
+        binding.aiGenerateQuickButton.setOnClickListener {
+            requestAi(AiExplanationType.QUICK_REVIEW, forceRefresh = false)
         }
-        bindAiButton(binding.aiAnalysisButton, AiExplanationType.ANALYSIS)
-        bindAiButton(binding.aiTechniqueButton, AiExplanationType.TECHNIQUE)
-        bindAiButton(binding.aiMnemonicButton, AiExplanationType.MNEMONIC)
-        binding.aiRetryButton.setOnClickListener {
-            requestSelectedAi(forceRefresh = false)
-        }
-    }
-
-    private fun bindAiButton(button: View, type: AiExplanationType) {
-        button.setOnClickListener {
-            selectedAiType = type
-            requestSelectedAi(forceRefresh = false)
-        }
-        button.setOnLongClickListener {
-            selectedAiType = type
-            binding.aiTypeGroup.check(
-                when (type) {
-                    AiExplanationType.ANALYSIS -> R.id.ai_analysis_button
-                    AiExplanationType.TECHNIQUE -> R.id.ai_technique_button
-                    AiExplanationType.MNEMONIC -> R.id.ai_mnemonic_button
-                }
-            )
-            requestSelectedAi(forceRefresh = true)
+        binding.aiGenerateQuickButton.setOnLongClickListener {
+            requestAi(AiExplanationType.QUICK_REVIEW, forceRefresh = true)
             true
         }
+        binding.aiDetailedButton.setOnClickListener {
+            requestAi(AiExplanationType.DETAILED_ANALYSIS, forceRefresh = false)
+        }
+        binding.aiDetailedButton.setOnLongClickListener {
+            requestAi(AiExplanationType.DETAILED_ANALYSIS, forceRefresh = true)
+            true
+        }
+        binding.aiRetryButton.setOnClickListener {
+            requestAi(AiExplanationType.QUICK_REVIEW, forceRefresh = false)
+        }
+        binding.aiDetailedRetryButton.setOnClickListener {
+            requestAi(AiExplanationType.DETAILED_ANALYSIS, forceRefresh = false)
+        }
     }
 
-    private fun requestSelectedAi(forceRefresh: Boolean) {
+    private fun requestAi(type: AiExplanationType, forceRefresh: Boolean) {
         val quiz = quizzes.getOrNull(currentIndex) ?: return
         if (!binding.aiSection.isVisible) return
         val config = AiConfigStore(requireContext()).read()
@@ -693,7 +680,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         }
         viewModel.requestAiExplanation(
             quiz = quiz,
-            type = selectedAiType,
+            type = type,
             selectedAnswer = currentSelection.takeIf { it.isNotEmpty() },
             forceRefresh = forceRefresh
         )
@@ -701,19 +688,54 @@ class QuizRunnerFragment : BaseQuizFragment() {
 
     private fun renderAiSection() {
         val answerIsShown = answerVisible || reviewMode
-        val enabled = AiConfigStore(requireContext()).read().enabled
-        binding.aiSection.isVisible = answerIsShown && enabled
+        val config = AiConfigStore(requireContext()).read()
+        binding.aiSection.isVisible = answerIsShown && config.enabled
         if (binding.aiSection.isVisible) {
-            renderAiState()
+            renderAiState(config.isComplete())
+            maybeAutoRequestQuickReview(config)
         }
     }
 
-    private fun renderAiState() {
+    private fun maybeAutoRequestQuickReview(config: AiConfig) {
+        val quiz = quizzes.getOrNull(currentIndex) ?: return
+        val state = viewModel.aiStates.value.orEmpty()[
+            AiRequestKey(quiz.id, AiExplanationType.QUICK_REVIEW)
+        ] ?: AiExplanationUiState.Idle
+        if (state != AiExplanationUiState.Idle) return
+        val isCorrect = quiz.isCorrectAnswer(currentSelection)
+        val shouldGenerate = shouldAutoRequestQuickReview(
+            answerShown = answerVisible || reviewMode,
+            isCorrect = isCorrect,
+            isFavorite = quiz.id in favoriteIds
+        )
+        if (!shouldGenerate) return
+        if (!config.isComplete()) return
+        viewModel.requestAiExplanation(
+            quiz = quiz,
+            type = AiExplanationType.QUICK_REVIEW,
+            selectedAnswer = currentSelection.takeIf { it.isNotEmpty() }
+        )
+    }
+
+    private fun renderAiState(
+        configComplete: Boolean = AiConfigStore(requireContext()).read().isComplete()
+    ) {
         if (_binding == null || !binding.aiSection.isVisible) return
         val quiz = quizzes.getOrNull(currentIndex) ?: return
-        val state = viewModel.aiStates.value
-            .orEmpty()[AiRequestKey(quiz.id, selectedAiType)]
+        val states = viewModel.aiStates.value.orEmpty()
+        val quickState = states[AiRequestKey(quiz.id, AiExplanationType.QUICK_REVIEW)]
             ?: AiExplanationUiState.Idle
+        val detailedState = states[AiRequestKey(quiz.id, AiExplanationType.DETAILED_ANALYSIS)]
+            ?: AiExplanationUiState.Idle
+        renderQuickReviewState(quickState, configComplete)
+        renderDetailedAnalysisState(quickState, detailedState)
+    }
+
+    private fun renderQuickReviewState(
+        state: AiExplanationUiState,
+        configComplete: Boolean
+    ) {
+        val quiz = quizzes.getOrNull(currentIndex) ?: return
         binding.aiLoadingIndicator.isVisible =
             state is AiExplanationUiState.Loading || state is AiExplanationUiState.Streaming
         binding.aiRetryButton.isVisible = state is AiExplanationUiState.Error
@@ -723,16 +745,17 @@ class QuizRunnerFragment : BaseQuizFragment() {
             is AiExplanationUiState.Error -> state.partialContent.isNotBlank()
             else -> false
         }
-        val states = viewModel.aiStates.value.orEmpty()
-        binding.aiAnalysisButton.isEnabled =
-            !states[AiRequestKey(quiz.id, AiExplanationType.ANALYSIS)].isAiRequestInProgress()
-        binding.aiTechniqueButton.isEnabled =
-            !states[AiRequestKey(quiz.id, AiExplanationType.TECHNIQUE)].isAiRequestInProgress()
-        binding.aiMnemonicButton.isEnabled =
-            !states[AiRequestKey(quiz.id, AiExplanationType.MNEMONIC)].isAiRequestInProgress()
+        val autoEligible = shouldAutoRequestQuickReview(
+            answerShown = answerVisible || reviewMode,
+            isCorrect = quiz.isCorrectAnswer(currentSelection),
+            isFavorite = quiz.id in favoriteIds
+        )
+        binding.aiGenerateQuickButton.isVisible =
+            state == AiExplanationUiState.Idle && (!autoEligible || !configComplete)
+        binding.aiGenerateQuickButton.isEnabled = !state.isAiRequestInProgress()
         when (state) {
             AiExplanationUiState.Idle -> {
-                binding.aiStatusText.setText(R.string.ai_tap_to_generate)
+                binding.aiStatusText.setText(R.string.ai_quick_review_manual)
                 binding.aiContentText.text = ""
             }
             AiExplanationUiState.Loading -> {
@@ -748,9 +771,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 renderAiMarkdown(state.content)
             }
             is AiExplanationUiState.Success -> {
-                binding.aiStatusText.setText(
-                    if (state.fromCache) R.string.ai_cached else R.string.ai_generated
-                )
+                binding.aiStatusText.setText(R.string.ai_quick_review_ready)
                 renderAiMarkdown(state.content)
             }
             is AiExplanationUiState.Error -> {
@@ -764,9 +785,65 @@ class QuizRunnerFragment : BaseQuizFragment() {
         }
     }
 
+    private fun renderDetailedAnalysisState(
+        quickState: AiExplanationUiState,
+        state: AiExplanationUiState
+    ) {
+        binding.aiDetailedButton.isVisible = quickState is AiExplanationUiState.Success
+        binding.aiDetailedButton.isEnabled = !state.isAiRequestInProgress()
+        val showCard = state != AiExplanationUiState.Idle
+        binding.aiDetailedCard.isVisible = showCard
+        if (!showCard) {
+            binding.aiDetailedContentText.text = ""
+            return
+        }
+        binding.aiDetailedLoadingIndicator.isVisible =
+            state is AiExplanationUiState.Loading || state is AiExplanationUiState.Streaming
+        binding.aiDetailedRetryButton.isVisible = state is AiExplanationUiState.Error
+        binding.aiDetailedContentText.isVisible = when (state) {
+            is AiExplanationUiState.Streaming,
+            is AiExplanationUiState.Success -> true
+            is AiExplanationUiState.Error -> state.partialContent.isNotBlank()
+            else -> false
+        }
+        when (state) {
+            AiExplanationUiState.Idle -> Unit
+            AiExplanationUiState.Loading -> {
+                binding.aiDetailedStatusText.setText(R.string.ai_loading)
+                binding.aiDetailedContentText.text = ""
+            }
+            AiExplanationUiState.ConfigurationRequired -> {
+                binding.aiDetailedStatusText.setText(R.string.ai_not_configured_message)
+                binding.aiDetailedContentText.text = ""
+            }
+            is AiExplanationUiState.Streaming -> {
+                binding.aiDetailedStatusText.setText(R.string.ai_loading)
+                renderAiMarkdown(binding.aiDetailedContentText, state.content)
+            }
+            is AiExplanationUiState.Success -> {
+                binding.aiDetailedStatusText.setText(
+                    if (state.fromCache) R.string.ai_cached else R.string.ai_generated
+                )
+                renderAiMarkdown(binding.aiDetailedContentText, state.content)
+            }
+            is AiExplanationUiState.Error -> {
+                binding.aiDetailedStatusText.text = state.message
+                if (state.partialContent.isNotBlank()) {
+                    renderAiMarkdown(binding.aiDetailedContentText, state.partialContent)
+                } else {
+                    binding.aiDetailedContentText.text = ""
+                }
+            }
+        }
+    }
+
     private fun renderAiMarkdown(content: String) {
-        aiMarkdownRenderer?.render(binding.aiContentText, content)
-            ?: run { binding.aiContentText.text = content }
+        renderAiMarkdown(binding.aiContentText, content)
+    }
+
+    private fun renderAiMarkdown(target: TextView, content: String) {
+        aiMarkdownRenderer?.render(target, content)
+            ?: run { target.text = content }
     }
 
     private fun showAiConfigurationRequired() {
@@ -823,6 +900,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
             config.profileId,
             config.baseUrl,
             config.model,
+            config.quickReviewPrompt,
             config.analysisPrompt,
             config.techniquePrompt,
             config.mnemonicPrompt
@@ -1271,7 +1349,21 @@ class QuizRunnerFragment : BaseQuizFragment() {
 
     private fun toggleFavorite() {
         val quiz = quizzes.getOrNull(currentIndex) ?: return
-        viewModel.toggleFavorite(quiz, !favoriteIds.contains(quiz.id))
+        val becomingFavorite = quiz.id !in favoriteIds
+        viewModel.toggleFavorite(quiz, becomingFavorite)
+        if (becomingFavorite && (answerVisible || reviewMode)) {
+            val state = viewModel.aiStates.value.orEmpty()[
+                AiRequestKey(quiz.id, AiExplanationType.QUICK_REVIEW)
+            ] ?: AiExplanationUiState.Idle
+            val config = AiConfigStore(requireContext()).read()
+            if (state == AiExplanationUiState.Idle && config.isComplete()) {
+                viewModel.requestAiExplanation(
+                    quiz = quiz,
+                    type = AiExplanationType.QUICK_REVIEW,
+                    selectedAnswer = currentSelection.takeIf { it.isNotEmpty() }
+                )
+            }
+        }
     }
 
     private fun updateFavoriteButton() {
@@ -1478,6 +1570,10 @@ class QuizRunnerFragment : BaseQuizFragment() {
         binding.historySummaryText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.supportSp)
         binding.historyDetailText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.supportSp)
         binding.aiContentText.setTextSize(TypedValue.COMPLEX_UNIT_SP, runnerTextSize.supportSp)
+        binding.aiDetailedContentText.setTextSize(
+            TypedValue.COMPLEX_UNIT_SP,
+            runnerTextSize.supportSp
+        )
     }
 
     private fun renderExamSummaryIfNeeded() {

@@ -7,6 +7,8 @@ import java.security.MessageDigest
 import java.util.UUID
 
 enum class AiExplanationType(val value: String, val label: String) {
+    QUICK_REVIEW("quick_review", "快速复盘"),
+    DETAILED_ANALYSIS("detailed_analysis", "详细解析"),
     ANALYSIS("analysis", "解析"),
     TECHNIQUE("technique", "技巧"),
     MNEMONIC("mnemonic", "口诀")
@@ -17,6 +19,7 @@ data class AiConfig(
     val baseUrl: String,
     val apiKey: String,
     val model: String,
+    val quickReviewPrompt: String = AiPromptBuilder.DEFAULT_QUICK_REVIEW_PROMPT,
     val analysisPrompt: String,
     val techniquePrompt: String,
     val mnemonicPrompt: String,
@@ -24,6 +27,8 @@ data class AiConfig(
     val profileName: String = ""
 ) {
     fun promptFor(type: AiExplanationType): String = when (type) {
+        AiExplanationType.QUICK_REVIEW -> quickReviewPrompt
+        AiExplanationType.DETAILED_ANALYSIS -> analysisPrompt
         AiExplanationType.ANALYSIS -> analysisPrompt
         AiExplanationType.TECHNIQUE -> techniquePrompt
         AiExplanationType.MNEMONIC -> mnemonicPrompt
@@ -100,7 +105,7 @@ data class AiPrompt(
     }
 
     companion object {
-        internal const val FINGERPRINT_VERSION = "v2"
+        internal const val FINGERPRINT_VERSION = "v3"
     }
 }
 
@@ -122,6 +127,11 @@ object AiPromptBuilder {
             "结合该领域的概念、规则、原理、计算过程或实务场景，逐项说明各选项正确或错误的关键原因；" +
             "若用户答错，指出其判断偏差和容易混淆之处。信息不足时明确分析边界，不补造题目条件。" +
             "控制在 200–500 字。"
+
+    const val DEFAULT_QUICK_REVIEW_PROMPT =
+        "用最短时间帮助用户完成本题复盘。答错时直接指出用户答案与标准答案之间的关键判断差异和具体误区；" +
+            "答对时强调最容易混淆的边界条件。最后给出一个准确、可迁移的记忆点。" +
+            "不要逐项展开全部选项，不要重复题干，控制在 80–180 字。"
 
     const val DEFAULT_TECHNIQUE_PROMPT =
         "根据题目所属领域提炼关键词、限定条件和判断依据，给出 2–4 步可执行的分析、计算、排除或核验方法。" +
@@ -170,6 +180,16 @@ object AiPromptBuilder {
     }
 
     internal fun outputFormat(type: AiExplanationType): String = when (type) {
+        AiExplanationType.QUICK_REVIEW ->
+            """
+            ### 结论
+            用一两句话给出标准答案成立的核心理由。
+            ### 关键区分
+            指出用户判断与正确思路的关键差异；答对时说明最容易混淆的边界。
+            ### 记忆点
+            给出一条准确、简短且可迁移的记忆方法。
+            """.trimIndent()
+        AiExplanationType.DETAILED_ANALYSIS,
         AiExplanationType.ANALYSIS ->
             """
             ### 结论

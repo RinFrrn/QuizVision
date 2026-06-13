@@ -11,7 +11,7 @@
     <string name="accessibility_search_intro_message">%1$s 会读取 Android 无障碍系统暴露的屏幕文字，与当前题库匹配，并通过悬浮窗展示结果。使用前需要在系统设置中手动开启 %1$s 无障碍服务。</string>
     <string name="accessibility_search_prompt_message">无障碍服务未开启。开启后即可读取屏幕可访问文字，并与当前题库匹配。</string>
     <string name="accessibility_search_ready_message">悬浮窗权限为必需，通知权限可选。选择显示方式后开启无障碍搜题。</string>
-    <string name="accessibility_search_enable_cta">去开启权限</string>
+    <string name="accessibility_search_enable_cta">去开启无障碍权限</string>
     <string name="accessibility_search_start_cta">开启</string>
     <string name="accessibility_search_enable_notifications">开启通知（可选）</string>
     <string name="accessibility_search_notifications_enabled">已开启通知</string>
@@ -123,7 +123,7 @@
     <string name="search_settings_menu_title">搜题设置</string>
     <string name="ai_settings_title">AI 设置</string>
     <string name="ai_settings_enabled">启用 AI 辅助</string>
-    <string name="ai_settings_enabled_summary">答案显示后提供解析、技巧和口诀功能。</string>
+    <string name="ai_settings_enabled_summary">答案显示后，为错题和收藏题自动生成快速复盘。</string>
     <string name="ai_settings_connection">接口配置</string>
     <string name="ai_settings_base_url">API Base URL</string>
     <string name="ai_settings_api_key">API Key</string>
@@ -136,6 +136,8 @@
     <string name="ai_settings_analysis_prompt">解析提示词</string>
     <string name="ai_settings_technique_prompt">技巧提示词</string>
     <string name="ai_settings_mnemonic_prompt">口诀提示词</string>
+    <string name="ai_settings_quick_review_prompt">快速复盘提示词</string>
+    <string name="ai_settings_detailed_analysis_prompt">详细解析提示词</string>
     <string name="ai_settings_restore_default">恢复默认</string>
     <string name="ai_settings_test">测试连接</string>
     <string name="ai_settings_save_prompts">保存提示词</string>
@@ -166,6 +168,11 @@
     <string name="ai_analysis">解析</string>
     <string name="ai_technique">技巧</string>
     <string name="ai_mnemonic">口诀</string>
+    <string name="ai_quick_review">AI 快速复盘</string>
+    <string name="ai_generate_quick_review">生成</string>
+    <string name="ai_detailed_analysis">详细解析</string>
+    <string name="ai_quick_review_ready">快速复盘</string>
+    <string name="ai_quick_review_manual">可为本题生成快速复盘。</string>
     <string name="ai_tap_to_generate">点击上方功能生成内容，长按可重新生成。</string>
     <string name="ai_loading">正在生成…</string>
     <string name="ai_cached">已读取缓存 · 长按可重新生成</string>

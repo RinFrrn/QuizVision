@@ -58,6 +58,23 @@ class AiModelsTest {
 
     @Test
     fun eachExplanationTypeHasARequiredMarkdownStructure() {
+        val quickReview = AiPromptBuilder.outputFormat(AiExplanationType.QUICK_REVIEW)
+        assertHeadings(
+            quickReview,
+            "### 结论",
+            "### 关键区分",
+            "### 记忆点"
+        )
+
+        val detailed = AiPromptBuilder.outputFormat(AiExplanationType.DETAILED_ANALYSIS)
+        assertHeadings(
+            detailed,
+            "### 结论",
+            "### 核心依据",
+            "### 选项分析",
+            "### 作答复盘"
+        )
+
         val analysis = AiPromptBuilder.outputFormat(AiExplanationType.ANALYSIS)
         assertHeadings(
             analysis,
@@ -110,8 +127,24 @@ class AiModelsTest {
         val current = prompt.fingerprint(config, AiExplanationType.ANALYSIS)
         val legacy = legacyFingerprint(prompt, config, AiExplanationType.ANALYSIS)
 
-        assertEquals("v2", AiPrompt.FINGERPRINT_VERSION)
+        assertEquals("v3", AiPrompt.FINGERPRINT_VERSION)
         assertNotEquals(legacy, current)
+    }
+
+    @Test
+    fun quickReviewPromptIsShortAndFocused() {
+        val prompt = AiPromptBuilder.build(
+            quiz,
+            AiExplanationType.QUICK_REVIEW,
+            config.quickReviewPrompt,
+            setOf(0)
+        )
+
+        assertTrue(prompt.user.contains("任务：快速复盘"))
+        assertTrue(prompt.user.contains("### 关键区分"))
+        assertTrue(prompt.user.contains("### 记忆点"))
+        assertTrue(AiPromptBuilder.DEFAULT_QUICK_REVIEW_PROMPT.contains("80–180 字"))
+        assertTrue(AiPromptBuilder.DEFAULT_QUICK_REVIEW_PROMPT.contains("不要逐项展开全部选项"))
     }
 
     @Test

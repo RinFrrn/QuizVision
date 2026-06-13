@@ -20,4 +20,12 @@ class AiExplanationUiStateTest {
 
         assertEquals("partial markdown", error.partialContent)
     }
+
+    @Test
+    fun quickReviewAutoGenerationTargetsWrongAndFavoriteQuestions() {
+        assertTrue(shouldAutoRequestQuickReview(true, isCorrect = false, isFavorite = false))
+        assertTrue(shouldAutoRequestQuickReview(true, isCorrect = true, isFavorite = true))
+        assertFalse(shouldAutoRequestQuickReview(true, isCorrect = true, isFavorite = false))
+        assertFalse(shouldAutoRequestQuickReview(false, isCorrect = false, isFavorite = true))
+    }
 }

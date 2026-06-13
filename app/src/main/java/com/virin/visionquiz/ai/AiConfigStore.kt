@@ -28,6 +28,7 @@ class AiConfigStore(private val context: Context) {
             baseUrl = profile.baseUrl,
             apiKey = profile.apiKey,
             model = profile.model,
+            quickReviewPrompt = quickReviewPrompt(),
             analysisPrompt = analysisPrompt(),
             techniquePrompt = techniquePrompt(),
             mnemonicPrompt = mnemonicPrompt(),
@@ -139,11 +140,13 @@ class AiConfigStore(private val context: Context) {
     }
 
     fun savePrompts(
+        quickReviewPrompt: String,
         analysisPrompt: String,
         techniquePrompt: String,
         mnemonicPrompt: String
     ) {
         prefs.edit()
+            .putString(KEY_QUICK_REVIEW_PROMPT, quickReviewPrompt.trim())
             .putString(KEY_ANALYSIS_PROMPT, analysisPrompt.trim())
             .putString(KEY_TECHNIQUE_PROMPT, techniquePrompt.trim())
             .putString(KEY_MNEMONIC_PROMPT, mnemonicPrompt.trim())
@@ -151,6 +154,11 @@ class AiConfigStore(private val context: Context) {
     }
 
     fun isEnabled(): Boolean = prefs.getBoolean(KEY_ENABLED, false)
+
+    fun quickReviewPrompt(): String = prefs.getString(
+        KEY_QUICK_REVIEW_PROMPT,
+        AiPromptBuilder.DEFAULT_QUICK_REVIEW_PROMPT
+    ).orEmpty()
 
     fun analysisPrompt(): String = prefs.getString(
         KEY_ANALYSIS_PROMPT,
@@ -307,6 +315,7 @@ class AiConfigStore(private val context: Context) {
         private const val KEY_PROFILES_JSON = "profiles_json_v2"
         private const val KEY_DEFAULT_PROFILE_ID = "default_profile_id"
         private const val KEY_ENABLED = "enabled"
+        private const val KEY_QUICK_REVIEW_PROMPT = "quick_review_prompt"
         private const val KEY_ANALYSIS_PROMPT = "analysis_prompt"
         private const val KEY_TECHNIQUE_PROMPT = "technique_prompt"
         private const val KEY_MNEMONIC_PROMPT = "mnemonic_prompt"

@@ -47,9 +47,8 @@ class AiSettingsFragment : Fragment() {
     private lateinit var configStore: AiConfigStore
     private lateinit var enabledSwitch: MaterialSwitch
     private lateinit var profileContainer: LinearLayout
-    private lateinit var analysisInput: TextInputEditText
-    private lateinit var techniqueInput: TextInputEditText
-    private lateinit var mnemonicInput: TextInputEditText
+    private lateinit var quickReviewInput: TextInputEditText
+    private lateinit var detailedAnalysisInput: TextInputEditText
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
     override fun onCreateView(
@@ -105,9 +104,8 @@ class AiSettingsFragment : Fragment() {
         content.addView(sectionTitle(context, R.string.ai_settings_cache))
         content.addView(buildCacheCard(context))
 
-        analysisInput.setText(configStore.analysisPrompt())
-        techniqueInput.setText(configStore.techniquePrompt())
-        mnemonicInput.setText(configStore.mnemonicPrompt())
+        quickReviewInput.setText(configStore.quickReviewPrompt())
+        detailedAnalysisInput.setText(configStore.analysisPrompt())
         renderProfiles()
         return ScrollView(context).apply {
             setBackgroundColor(resolveColor(com.google.android.material.R.attr.colorSurface))
@@ -491,9 +489,10 @@ class AiSettingsFragment : Fragment() {
             baseUrl = profile.baseUrl,
             apiKey = profile.apiKey,
             model = profile.model,
-            analysisPrompt = analysisInput.text?.toString().orEmpty(),
-            techniquePrompt = techniqueInput.text?.toString().orEmpty(),
-            mnemonicPrompt = mnemonicInput.text?.toString().orEmpty(),
+            quickReviewPrompt = quickReviewInput.text?.toString().orEmpty(),
+            analysisPrompt = detailedAnalysisInput.text?.toString().orEmpty(),
+            techniquePrompt = configStore.techniquePrompt(),
+            mnemonicPrompt = configStore.mnemonicPrompt(),
             profileId = profile.id,
             profileName = profile.name
         )
@@ -534,15 +533,16 @@ class AiSettingsFragment : Fragment() {
     }
 
     private fun savePrompts(): Boolean {
-        val prompts = listOf(analysisInput, techniqueInput, mnemonicInput)
+        val prompts = listOf(quickReviewInput, detailedAnalysisInput)
         if (prompts.any { it.text?.toString().orEmpty().isBlank() }) {
             Toast.makeText(requireContext(), R.string.ai_settings_required, Toast.LENGTH_SHORT).show()
             return false
         }
         configStore.savePrompts(
-            analysisPrompt = analysisInput.text.toString(),
-            techniquePrompt = techniqueInput.text.toString(),
-            mnemonicPrompt = mnemonicInput.text.toString()
+            quickReviewPrompt = quickReviewInput.text.toString(),
+            analysisPrompt = detailedAnalysisInput.text.toString(),
+            techniquePrompt = configStore.techniquePrompt(),
+            mnemonicPrompt = configStore.mnemonicPrompt()
         )
         return true
     }
@@ -550,23 +550,17 @@ class AiSettingsFragment : Fragment() {
     private fun buildPromptCard(context: Context): View {
         return settingsCard(context).apply {
             val column = cardColumn(context)
-            analysisInput = addPromptEditor(
+            quickReviewInput = addPromptEditor(
                 column,
                 context,
-                R.string.ai_settings_analysis_prompt,
+                R.string.ai_settings_quick_review_prompt,
+                AiPromptBuilder.DEFAULT_QUICK_REVIEW_PROMPT
+            )
+            detailedAnalysisInput = addPromptEditor(
+                column,
+                context,
+                R.string.ai_settings_detailed_analysis_prompt,
                 AiPromptBuilder.DEFAULT_ANALYSIS_PROMPT
-            )
-            techniqueInput = addPromptEditor(
-                column,
-                context,
-                R.string.ai_settings_technique_prompt,
-                AiPromptBuilder.DEFAULT_TECHNIQUE_PROMPT
-            )
-            mnemonicInput = addPromptEditor(
-                column,
-                context,
-                R.string.ai_settings_mnemonic_prompt,
-                AiPromptBuilder.DEFAULT_MNEMONIC_PROMPT
             )
             column.addView(MaterialButton(context).apply {
                 setText(R.string.ai_settings_save_prompts)

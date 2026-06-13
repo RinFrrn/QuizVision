@@ -4,6 +4,8 @@ import android.content.Context
 import com.virin.visionquiz.dao.AiExplanationCache
 import com.virin.visionquiz.dao.AiExplanationCacheDao
 import com.virin.visionquiz.dao.QuizDatabase
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class AiExplanationResult(
     val content: String,
@@ -18,6 +20,8 @@ class AiExplanationRepository internal constructor(
         (String) -> Unit
     ) -> String
 ) {
+    private val generationMutex = Mutex()
+
     constructor(
         context: Context,
         client: OpenAiCompatibleClient = OpenAiCompatibleClient()
@@ -37,42 +41,55 @@ class AiExplanationRepository internal constructor(
     ): AiExplanationResult {
         val fingerprint = prompt.fingerprint(config, type)
         if (!forceRefresh) {
-            cacheDao.getCache(quizId, type.value)
-                ?.takeIf { it.fingerprint == fingerprint }
-                ?.let { return AiExplanationResult(it.content, fromCache = true) }
+            findMatchingCache(quizId, type, fingerprint)?.let { return it }
         }
-        val partialContent = StringBuilder()
-        var lastEmittedContent = ""
-        var lastEmissionNanos = 0L
-        val content = completeStreaming(config, prompt) { delta ->
-            partialContent.append(delta)
-            val now = System.nanoTime()
-            if (lastEmittedContent.isEmpty() ||
-                now - lastEmissionNanos >= PARTIAL_UPDATE_INTERVAL_NANOS
-            ) {
-                lastEmittedContent = partialContent.toString()
-                lastEmissionNanos = now
-                onPartialContent(lastEmittedContent)
+        return generationMutex.withLock {
+            if (!forceRefresh) {
+                findMatchingCache(quizId, type, fingerprint)?.let { return@withLock it }
             }
-        }.trim()
-        if (content != lastEmittedContent) {
-            onPartialContent(content)
-        }
-        val now = System.currentTimeMillis()
-        val existing = cacheDao.getCache(quizId, type.value)
-        cacheDao.upsertCache(
-            AiExplanationCache(
-                id = existing?.id ?: 0,
-                quizId = quizId,
-                libraryId = libraryId,
-                type = type.value,
-                fingerprint = fingerprint,
-                content = content,
-                createdAt = existing?.createdAt ?: now,
-                updatedAt = now
+            val partialContent = StringBuilder()
+            var lastEmittedContent = ""
+            var lastEmissionNanos = 0L
+            val content = completeStreaming(config, prompt) { delta ->
+                partialContent.append(delta)
+                val now = System.nanoTime()
+                if (lastEmittedContent.isEmpty() ||
+                    now - lastEmissionNanos >= PARTIAL_UPDATE_INTERVAL_NANOS
+                ) {
+                    lastEmittedContent = partialContent.toString()
+                    lastEmissionNanos = now
+                    onPartialContent(lastEmittedContent)
+                }
+            }.trim()
+            if (content != lastEmittedContent) {
+                onPartialContent(content)
+            }
+            val now = System.currentTimeMillis()
+            val existing = cacheDao.getCache(quizId, type.value)
+            cacheDao.upsertCache(
+                AiExplanationCache(
+                    id = existing?.id ?: 0,
+                    quizId = quizId,
+                    libraryId = libraryId,
+                    type = type.value,
+                    fingerprint = fingerprint,
+                    content = content,
+                    createdAt = existing?.createdAt ?: now,
+                    updatedAt = now
+                )
             )
-        )
-        return AiExplanationResult(content, fromCache = false)
+            AiExplanationResult(content, fromCache = false)
+        }
+    }
+
+    private suspend fun findMatchingCache(
+        quizId: Int,
+        type: AiExplanationType,
+        fingerprint: String
+    ): AiExplanationResult? {
+        return cacheDao.getCache(quizId, type.value)
+            ?.takeIf { it.fingerprint == fingerprint }
+            ?.let { AiExplanationResult(it.content, fromCache = true) }
     }
 
     suspend fun clearAll() = cacheDao.clearAll()

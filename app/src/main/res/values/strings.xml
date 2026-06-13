@@ -129,7 +129,7 @@
     <string name="search_settings_menu_title" translatable="true">Search settings</string>
     <string name="ai_settings_title">AI settings</string>
     <string name="ai_settings_enabled">Enable AI assistance</string>
-    <string name="ai_settings_enabled_summary">Show analysis, technique, and mnemonic tools after answers are visible.</string>
+    <string name="ai_settings_enabled_summary">Automatically generate a quick review for incorrect and bookmarked questions after answers are visible.</string>
     <string name="ai_settings_connection">Connection</string>
     <string name="ai_settings_base_url">API Base URL</string>
     <string name="ai_settings_api_key">API Key</string>
@@ -142,6 +142,8 @@
     <string name="ai_settings_analysis_prompt">Analysis prompt</string>
     <string name="ai_settings_technique_prompt">Technique prompt</string>
     <string name="ai_settings_mnemonic_prompt">Mnemonic prompt</string>
+    <string name="ai_settings_quick_review_prompt">Quick review prompt</string>
+    <string name="ai_settings_detailed_analysis_prompt">Detailed analysis prompt</string>
     <string name="ai_settings_restore_default">Restore default</string>
     <string name="ai_settings_test">Test connection</string>
     <string name="ai_settings_save_prompts">Save prompts</string>
@@ -172,6 +174,11 @@
     <string name="ai_analysis">Analysis</string>
     <string name="ai_technique">Technique</string>
     <string name="ai_mnemonic">Mnemonic</string>
+    <string name="ai_quick_review">AI quick review</string>
+    <string name="ai_generate_quick_review">Generate</string>
+    <string name="ai_detailed_analysis">Detailed analysis</string>
+    <string name="ai_quick_review_ready">Quick review</string>
+    <string name="ai_quick_review_manual">Generate a quick review for this question.</string>
     <string name="ai_tap_to_generate">Tap a tool to generate content. Long-press to refresh.</string>
     <string name="ai_loading">Generating…</string>
     <string name="ai_cached">Loaded from cache · Long-press to refresh</string>

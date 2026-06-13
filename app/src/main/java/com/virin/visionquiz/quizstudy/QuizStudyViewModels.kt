@@ -69,6 +69,14 @@ internal fun AiExplanationUiState?.isAiRequestInProgress(): Boolean {
     return this is AiExplanationUiState.Loading || this is AiExplanationUiState.Streaming
 }
 
+internal fun shouldAutoRequestQuickReview(
+    answerShown: Boolean,
+    isCorrect: Boolean,
+    isFavorite: Boolean
+): Boolean {
+    return answerShown && (!isCorrect || isFavorite)
+}
+
 internal fun buildActiveWrongQuizIds(records: List<QuizAnswerRecord>): Set<Int> {
     val states = linkedMapOf<Int, WrongQuizState>()
     records.sortedWith(compareBy<QuizAnswerRecord> { it.answeredAt }.thenBy { it.id })

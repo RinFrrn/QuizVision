@@ -15,8 +15,8 @@ android {
         targetSdkVersion 33
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        versionCode 263
-        versionName "2.6.3"
+        versionCode 264
+        versionName "2.6.4"
         vectorDrawables.useSupportLibrary = true
         setProperty("archivesBaseName", "vision-quiz")
 
