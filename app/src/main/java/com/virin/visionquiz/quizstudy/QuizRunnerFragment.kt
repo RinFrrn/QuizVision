@@ -713,16 +713,22 @@ class QuizRunnerFragment : BaseQuizFragment() {
         val state = viewModel.aiStates.value
             .orEmpty()[AiRequestKey(quiz.id, selectedAiType)]
             ?: AiExplanationUiState.Idle
-        binding.aiLoadingIndicator.isVisible = state is AiExplanationUiState.Loading
+        binding.aiLoadingIndicator.isVisible =
+            state is AiExplanationUiState.Loading || state is AiExplanationUiState.Streaming
         binding.aiRetryButton.isVisible = state is AiExplanationUiState.Error
-        binding.aiContentText.isVisible = state is AiExplanationUiState.Success
+        binding.aiContentText.isVisible = when (state) {
+            is AiExplanationUiState.Streaming,
+            is AiExplanationUiState.Success -> true
+            is AiExplanationUiState.Error -> state.partialContent.isNotBlank()
+            else -> false
+        }
         val states = viewModel.aiStates.value.orEmpty()
         binding.aiAnalysisButton.isEnabled =
-            states[AiRequestKey(quiz.id, AiExplanationType.ANALYSIS)] !is AiExplanationUiState.Loading
+            !states[AiRequestKey(quiz.id, AiExplanationType.ANALYSIS)].isAiRequestInProgress()
         binding.aiTechniqueButton.isEnabled =
-            states[AiRequestKey(quiz.id, AiExplanationType.TECHNIQUE)] !is AiExplanationUiState.Loading
+            !states[AiRequestKey(quiz.id, AiExplanationType.TECHNIQUE)].isAiRequestInProgress()
         binding.aiMnemonicButton.isEnabled =
-            states[AiRequestKey(quiz.id, AiExplanationType.MNEMONIC)] !is AiExplanationUiState.Loading
+            !states[AiRequestKey(quiz.id, AiExplanationType.MNEMONIC)].isAiRequestInProgress()
         when (state) {
             AiExplanationUiState.Idle -> {
                 binding.aiStatusText.setText(R.string.ai_tap_to_generate)
@@ -736,18 +742,30 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 binding.aiStatusText.setText(R.string.ai_not_configured_message)
                 binding.aiContentText.text = ""
             }
+            is AiExplanationUiState.Streaming -> {
+                binding.aiStatusText.setText(R.string.ai_loading)
+                renderAiMarkdown(state.content)
+            }
             is AiExplanationUiState.Success -> {
                 binding.aiStatusText.setText(
                     if (state.fromCache) R.string.ai_cached else R.string.ai_generated
                 )
-                aiMarkdownRenderer?.render(binding.aiContentText, state.content)
-                    ?: run { binding.aiContentText.text = state.content }
+                renderAiMarkdown(state.content)
             }
             is AiExplanationUiState.Error -> {
                 binding.aiStatusText.text = state.message
-                binding.aiContentText.text = ""
+                if (state.partialContent.isNotBlank()) {
+                    renderAiMarkdown(state.partialContent)
+                } else {
+                    binding.aiContentText.text = ""
+                }
             }
         }
+    }
+
+    private fun renderAiMarkdown(content: String) {
+        aiMarkdownRenderer?.render(binding.aiContentText, content)
+            ?: run { binding.aiContentText.text = content }
     }
 
     private fun showAiConfigurationRequired() {

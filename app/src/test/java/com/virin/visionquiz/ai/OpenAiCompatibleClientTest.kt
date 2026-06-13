@@ -1,6 +1,10 @@
 package com.virin.visionquiz.ai
 
 import java.io.IOException
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -70,6 +74,170 @@ class OpenAiCompatibleClientTest {
         }.exceptionOrNull()
         assertTrue(error is IOException)
         assertEquals("API 返回了空内容", error?.message)
+    }
+
+    @Test(timeout = 10_000)
+    fun streamsCompletionDeltasInOrder() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    : heartbeat
+
+                    data: {"choices":[{"delta":{"role":"assistant"}}]}
+
+                    data: {"choices":[{"delta":{"content":"### 结论\n"}}]}
+
+                    data: {"choices":[{"delta":{"content":"**正确**"}}]}
+
+                    data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+                    data: [DONE]
+
+                    """.trimIndent()
+                )
+        )
+        val deltas = mutableListOf<String>()
+
+        val result = OpenAiCompatibleClient().completeStreaming(
+            config,
+            AiPrompt("system", "user"),
+            deltas::add
+        )
+
+        assertEquals(listOf("### 结论\n", "**正确**"), deltas)
+        assertEquals("### 结论\n**正确**", result)
+        val request = server.takeRequest()
+        assertTrue(request.body.readUtf8().contains("\"stream\":true"))
+        assertEquals("text/event-stream", request.getHeader("Accept"))
+    }
+
+    @Test(timeout = 10_000)
+    fun acceptsStreamEndingAtEofAndIgnoresEmptyEvents() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream; charset=utf-8")
+                .setBody(
+                    """
+
+                    data: {"choices":[{"delta":{"content":"完成"}}]}
+                    """.trimIndent()
+                )
+        )
+
+        val result = OpenAiCompatibleClient().completeStreaming(
+            config,
+            AiPrompt("system", "user")
+        ) {}
+
+        assertEquals("完成", result)
+    }
+
+    @Test(timeout = 10_000)
+    fun fallsBackToNormalJsonWhenStreamingIsUnsupported() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"choices":[{"message":{"content":"完整结果"}}]}""")
+        )
+        val deltas = mutableListOf<String>()
+
+        val result = OpenAiCompatibleClient().completeStreaming(
+            config,
+            AiPrompt("system", "user"),
+            deltas::add
+        )
+
+        assertEquals("完整结果", result)
+        assertEquals(listOf("完整结果"), deltas)
+    }
+
+    @Test(timeout = 10_000)
+    fun rejectsMalformedOrEmptyStream() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: not-json\n\n")
+        )
+        val malformed = runCatching {
+            OpenAiCompatibleClient().completeStreaming(
+                config,
+                AiPrompt("system", "user")
+            ) {}
+        }.exceptionOrNull()
+
+        assertTrue(malformed is IOException)
+        assertEquals("API 返回的流式数据格式不正确", malformed?.message)
+
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: [DONE]\n\n")
+        )
+        val empty = runCatching {
+            OpenAiCompatibleClient().completeStreaming(
+                config,
+                AiPrompt("system", "user")
+            ) {}
+        }.exceptionOrNull()
+
+        assertTrue(empty is IOException)
+        assertEquals("API 返回了空内容", empty?.message)
+    }
+
+    @Test(timeout = 10_000)
+    fun exposesErrorInsideSuccessfulStreamResponse() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: {\"error\":{\"message\":\"stream failed\"}}\n\n")
+        )
+
+        val error = runCatching {
+            OpenAiCompatibleClient().completeStreaming(
+                config,
+                AiPrompt("system", "user")
+            ) {}
+        }.exceptionOrNull()
+
+        assertTrue(error is IOException)
+        assertEquals("stream failed", error?.message)
+    }
+
+    @Test(timeout = 10_000)
+    fun exposesStreamingApiErrorAndSupportsCancellation() = runBlocking {
+        server.enqueue(
+            MockResponse().setResponseCode(429).setBody(
+                """{"error":{"message":"rate limited"}}"""
+            )
+        )
+        val apiError = runCatching {
+            OpenAiCompatibleClient().completeStreaming(
+                config,
+                AiPrompt("system", "user")
+            ) {}
+        }.exceptionOrNull()
+        assertTrue(apiError is IOException)
+        assertEquals("rate limited", apiError?.message)
+        server.takeRequest()
+
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: {\"choices\":[{\"delta\":{\"content\":\"迟到\"}}]}\n\n")
+                .setBodyDelay(5, TimeUnit.SECONDS)
+        )
+        val job = launch(start = CoroutineStart.UNDISPATCHED) {
+            OpenAiCompatibleClient().completeStreaming(
+                config,
+                AiPrompt("system", "user")
+            ) {}
+        }
+        server.takeRequest()
+        job.cancelAndJoin()
+        assertTrue(job.isCancelled)
     }
 
     @Test(timeout = 10_000)

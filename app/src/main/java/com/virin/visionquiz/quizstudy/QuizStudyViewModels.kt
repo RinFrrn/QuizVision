@@ -54,11 +54,19 @@ sealed class AiExplanationUiState {
     data object Idle : AiExplanationUiState()
     data object Loading : AiExplanationUiState()
     data object ConfigurationRequired : AiExplanationUiState()
+    data class Streaming(val content: String) : AiExplanationUiState()
     data class Success(
         val content: String,
         val fromCache: Boolean
     ) : AiExplanationUiState()
-    data class Error(val message: String) : AiExplanationUiState()
+    data class Error(
+        val message: String,
+        val partialContent: String = ""
+    ) : AiExplanationUiState()
+}
+
+internal fun AiExplanationUiState?.isAiRequestInProgress(): Boolean {
+    return this is AiExplanationUiState.Loading || this is AiExplanationUiState.Streaming
 }
 
 internal fun buildActiveWrongQuizIds(records: List<QuizAnswerRecord>): Set<Int> {
@@ -230,6 +238,7 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
         aiJobs.remove(key)?.cancel()
         updateAiState(key, AiExplanationUiState.Loading)
         aiJobs[key] = viewModelScope.launch(Dispatchers.IO) {
+            var latestPartialContent = ""
             val prompt = AiPromptBuilder.build(
                 quiz = quiz,
                 type = type,
@@ -243,7 +252,11 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
                     type = type,
                     config = config,
                     prompt = prompt,
-                    forceRefresh = forceRefresh
+                    forceRefresh = forceRefresh,
+                    onPartialContent = { content ->
+                        latestPartialContent = content
+                        updateAiState(key, AiExplanationUiState.Streaming(content))
+                    }
                 )
             }
             result.onSuccess {
@@ -255,7 +268,10 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
                 if (it is kotlinx.coroutines.CancellationException) return@onFailure
                 updateAiState(
                     key,
-                    AiExplanationUiState.Error(it.message ?: "AI 请求失败")
+                    AiExplanationUiState.Error(
+                        message = it.message ?: "AI 请求失败",
+                        partialContent = latestPartialContent
+                    )
                 )
             }
             aiJobs.remove(key)
