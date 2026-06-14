@@ -38,7 +38,7 @@
     <fragment
         android:id="@+id/QuizListFragment"
         android:name="com.virin.visionquiz.quizlist.QuizListFragment"
-        android:label="题目列表"
+        android:label="浏览题目"
         tools:layout="@layout/activity_quiz_list">
 
         <action

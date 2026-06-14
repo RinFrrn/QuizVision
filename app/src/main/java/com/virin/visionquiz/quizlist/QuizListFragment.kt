@@ -82,7 +82,7 @@ class QuizListFragment : BaseQuizFragment() {
             Toast.makeText(requireContext(), "Library ID not found.", Toast.LENGTH_SHORT).show()
         }
         binding.viewModel = viewModel
-        configureQuizTopBar(binding.toolbar, viewModel.library.value?.name ?: "题目列表")
+        configureQuizTopBar(binding.toolbar, viewModel.library.value?.name ?: "浏览题目")
         binding.toolbar.menu.clear()
 
         fun updateSearchHighlight() {

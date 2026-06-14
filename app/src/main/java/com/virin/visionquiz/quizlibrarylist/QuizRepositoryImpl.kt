@@ -2,9 +2,12 @@ package com.virin.visionquiz.quizlibrarylist
 
 import android.content.Context
 import androidx.lifecycle.LiveData
+import androidx.lifecycle.map
 import androidx.room.withTransaction
 import com.virin.visionquiz.dao.*
+import com.virin.visionquiz.quizstudy.ReviewStats
 import com.virin.visionquiz.quizstudy.SpacedRepetitionScheduler
+import com.virin.visionquiz.quizstudy.buildReviewStats
 import com.virin.visionquiz.util.SimilarQuizStore
 
 class QuizRepositoryImpl(context: Context) : QuizRepository {
@@ -195,6 +198,16 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
 
     override fun getDueReviewCardCount(libraryId: Int): LiveData<Int> {
         return reviewCardDao.getDueCardCount(libraryId, System.currentTimeMillis())
+    }
+
+    override fun getReviewStatsByLibraryId(libraryId: Int): LiveData<ReviewStats> {
+        return reviewCardDao.getCardsByLibraryId(libraryId).map { cards: List<ReviewCard> ->
+            buildReviewStats(cards)
+        }
+    }
+
+    override fun getReviewQuizIdsByLibraryId(libraryId: Int): LiveData<List<Int>> {
+        return reviewCardDao.getReviewQuizIdsLiveData(libraryId)
     }
 
     override suspend fun getReviewCardByQuizId(quizId: Int): ReviewCard? {

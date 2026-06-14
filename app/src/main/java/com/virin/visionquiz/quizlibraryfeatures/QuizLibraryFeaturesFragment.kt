@@ -6,6 +6,7 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Bundle
 import android.util.TypedValue
@@ -23,10 +24,11 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
+import androidx.core.view.isVisible
 import androidx.core.view.setPadding
+import androidx.core.widget.ImageViewCompat
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
@@ -37,6 +39,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.CircularProgressIndicator
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.radiobutton.MaterialRadioButton
 import com.google.android.material.snackbar.Snackbar
 import com.virin.visionquiz.R
@@ -50,6 +53,8 @@ import com.virin.visionquiz.quizstudy.LibraryAnswerStats
 import com.virin.visionquiz.quizstudy.QuizFavoritesFragment
 import com.virin.visionquiz.quizstudy.QuizLibraryFeaturesViewModel
 import com.virin.visionquiz.quizstudy.QuizRunnerFragment
+import com.virin.visionquiz.quizstudy.ReviewEntryState
+import com.virin.visionquiz.quizstudy.ReviewStats
 import com.virin.visionquiz.screendetector.ScreenDetectorController
 import com.virin.visionquiz.util.BaseQuizFragment
 import com.virin.visionquiz.util.SimilarQuizStore
@@ -167,25 +172,18 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
             updateFeatureTitleTransition()
         }
 
-        val features = mutableListOf(
-            StudyFeature("间隔复习", "暂无待复习", R.drawable.icon_history_edu_24px, FeatureAction.REVIEW),
-            StudyFeature("顺序背题", "按题库顺序练习支持题型", R.drawable.icon_list_arrow_24px, FeatureAction.ORDERED_PRACTICE),
-            StudyFeature("随机背题", "随机顺序练习支持题型", R.drawable.icon_shuffle_24px, FeatureAction.RANDOM_PRACTICE),
-            StudyFeature("模拟考试", "按题型配置数量并随机组卷", R.drawable.icon_science_24px, FeatureAction.EXAM),
-            StudyFeature("我的收藏", "查看已收藏题目", R.drawable.icon_bookmarks_24px, FeatureAction.FAVORITES),
-            StudyFeature("错题库", "查看尚未巩固的错题", R.drawable.icon_error_24px, FeatureAction.WRONG),
-            StudyFeature("作答历史", "查看每次背题和考试记录", R.drawable.icon_history_edu_24px, FeatureAction.HISTORY),
-            StudyFeature("考试历史", "回顾每场考试成绩和逐题详情", R.drawable.icon_experiment_24px, FeatureAction.EXAM_HISTORY),
-            StudyFeature("相似题分析", "分析题库中的相似题目，辅助记忆", R.drawable.icon_document_search_24px, FeatureAction.SIMILAR_ANALYSIS),
-            StudyFeature("题目列表", "查看和搜索全部题型", R.drawable.round_more_horiz_24, FeatureAction.QUIZ_LIST)
-        )
-        val adapter = QuizLibFeaturesAdapter(features, LibraryAnswerStats()) { feature ->
+        val adapter = QuizLibFeaturesAdapter(
+            features = buildLibraryStudyFeatures(),
+            answerStats = LibraryAnswerStats(),
+            reviewEntryState = ReviewEntryState(),
+            reviewStats = ReviewStats()
+        ) { feature ->
             handleFeatureClick(feature)
         }
         binding.studyFeaturesRecyclerView.layoutManager = GridLayoutManager(requireContext(), FEATURE_GRID_SPAN_COUNT).apply {
             spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
                 override fun getSpanSize(position: Int): Int {
-                    return if (adapter.isFullSpan(position)) FEATURE_GRID_SPAN_COUNT else 1
+                    return adapter.getSpanSize(position, FEATURE_GRID_SPAN_COUNT)
                 }
             }
         }
@@ -216,11 +214,11 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         viewModel.answerStats.observe(viewLifecycleOwner) { stats ->
             adapter.updateAnswerStats(stats)
         }
-        viewModel.dueReviewCount.observe(viewLifecycleOwner) { count ->
-            adapter.updateFeatureDescription(
-                FeatureAction.REVIEW,
-                if (count > 0) "今日待复习 $count 题" else "暂无待复习"
-            )
+        viewModel.reviewStats.observe(viewLifecycleOwner) { stats ->
+            adapter.updateReviewStats(stats)
+        }
+        viewModel.reviewEntryState.observe(viewLifecycleOwner) { state ->
+            adapter.updateReviewEntryState(state)
         }
         viewModel.stats.observe(viewLifecycleOwner) { stats ->
             binding.libraryStatsText.text =
@@ -315,10 +313,6 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
 
     private fun onTopBarMenuItemSelected(menuItem: MenuItem): Boolean {
         return when (menuItem.itemId) {
-            R.id.share -> {
-                showExportDialog()
-                true
-            }
             R.id.rename -> {
                 showRenameDialog()
                 true
@@ -665,6 +659,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
             )
             FeatureAction.HISTORY -> findNavController().navigate(R.id.QuizHistoryFragment, bundle)
             FeatureAction.EXAM_HISTORY -> findNavController().navigate(R.id.ExamHistoryFragment, bundle)
+            FeatureAction.EXPORT -> showExportDialog()
             FeatureAction.SIMILAR_ANALYSIS -> computeSimilarAnalysis()
             FeatureAction.QUIZ_LIST -> findNavController().navigate(
                 R.id.QuizListFragment,
@@ -710,12 +705,13 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         WRONG,
         HISTORY,
         EXAM_HISTORY,
+        EXPORT,
         SIMILAR_ANALYSIS,
         QUIZ_LIST
     }
 
     companion object {
-        private const val FEATURE_GRID_SPAN_COUNT = 2
+        private const val FEATURE_GRID_SPAN_COUNT = 6
         private const val EXPANDED_TITLE_FADE_START = 0.30f
         private const val EXPANDED_TITLE_FADE_END = 0.72f
         private const val COLLAPSED_TITLE_FADE_START = 0.55f
@@ -724,17 +720,165 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
     }
 }
 
+internal sealed class QuizLibraryFeatureListItem {
+    data class SectionHeader(val title: String) : QuizLibraryFeatureListItem()
+    data class FeatureItem(
+        val feature: QuizLibraryFeaturesFragment.StudyFeature,
+        val fullSpan: Boolean = false,
+        val compact: Boolean = false
+    ) : QuizLibraryFeatureListItem()
+
+    data object Stats : QuizLibraryFeatureListItem()
+}
+
+internal fun buildLibraryStudyFeatures(): List<QuizLibraryFeaturesFragment.StudyFeature> {
+    return listOf(
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "开始学习",
+            "待复习 0 题 · 待学习 0 题",
+            R.drawable.icon_history_edu_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.REVIEW
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "顺序背题",
+            "按题库顺序练习支持题型",
+            R.drawable.icon_list_arrow_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.ORDERED_PRACTICE
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "随机背题",
+            "随机顺序练习支持题型",
+            R.drawable.icon_shuffle_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.RANDOM_PRACTICE
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "模拟考试",
+            "按题型配置数量并随机组卷",
+            R.drawable.icon_science_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.EXAM
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "我的收藏",
+            "查看已收藏题目",
+            R.drawable.icon_bookmarks_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.FAVORITES
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "错题库",
+            "查看尚未巩固的错题",
+            R.drawable.icon_error_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.WRONG
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "作答历史",
+            "查看每次背题和考试记录",
+            R.drawable.icon_history_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.HISTORY
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "考试历史",
+            "回顾每场考试成绩和逐题详情",
+            R.drawable.icon_experiment_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.EXAM_HISTORY
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "相似题分析",
+            "分析题库中的相似题目，辅助记忆",
+            R.drawable.icon_document_search_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "导出题库",
+            "保存为文档或分享到其他 App",
+            R.drawable.icon_file_export_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.EXPORT
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "浏览题目",
+            "查看和搜索全部题型",
+            R.drawable.icon_all_inclusive_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST
+        )
+    )
+}
+
+internal fun buildGroupedFeatureItems(
+    features: List<QuizLibraryFeaturesFragment.StudyFeature>
+): List<QuizLibraryFeatureListItem> {
+    val byAction = features.associateBy { it.action }
+    fun QuizLibraryFeaturesFragment.FeatureAction.featureItem(
+        fullSpan: Boolean = false,
+        compact: Boolean = false
+    ) = byAction[this]?.let { QuizLibraryFeatureListItem.FeatureItem(it, fullSpan, compact) }
+
+    return buildList {
+        add(QuizLibraryFeatureListItem.SectionHeader("Today"))
+        QuizLibraryFeaturesFragment.FeatureAction.REVIEW.featureItem(fullSpan = true)?.let(::add)
+
+        add(QuizLibraryFeatureListItem.SectionHeader("自主练习"))
+        QuizLibraryFeaturesFragment.FeatureAction.ORDERED_PRACTICE.featureItem(compact = true)?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.RANDOM_PRACTICE.featureItem(compact = true)?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.EXAM.featureItem(compact = true)?.let(::add)
+
+        add(QuizLibraryFeatureListItem.SectionHeader("题库概览"))
+        add(QuizLibraryFeatureListItem.Stats)
+        QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST.featureItem(fullSpan = true)?.let(::add)
+
+        add(QuizLibraryFeatureListItem.SectionHeader("复盘巩固"))
+        QuizLibraryFeaturesFragment.FeatureAction.FAVORITES.featureItem()?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.WRONG.featureItem()?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.HISTORY.featureItem()?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.EXAM_HISTORY.featureItem()?.let(::add)
+
+        add(QuizLibraryFeatureListItem.SectionHeader("题库工具"))
+        QuizLibraryFeaturesFragment.FeatureAction.EXPORT.featureItem()?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS.featureItem()?.let(::add)
+    }
+}
+
+internal fun isFullSpanFeatureItem(item: QuizLibraryFeatureListItem): Boolean {
+    return when (item) {
+        is QuizLibraryFeatureListItem.SectionHeader -> true
+        is QuizLibraryFeatureListItem.FeatureItem -> item.fullSpan
+        QuizLibraryFeatureListItem.Stats -> true
+    }
+}
+
+internal fun quizLibraryFeatureSpanSize(
+    item: QuizLibraryFeatureListItem,
+    spanCount: Int
+): Int {
+    return when {
+        isFullSpanFeatureItem(item) -> spanCount
+        item is QuizLibraryFeatureListItem.FeatureItem && item.compact -> (spanCount / 3).coerceAtLeast(1)
+        else -> (spanCount / 2).coerceAtLeast(1)
+    }
+}
+
 class QuizLibFeaturesAdapter(
-    private var features: MutableList<QuizLibraryFeaturesFragment.StudyFeature>,
+    features: List<QuizLibraryFeaturesFragment.StudyFeature>,
     private var answerStats: LibraryAnswerStats,
+    private var reviewEntryState: ReviewEntryState,
+    private var reviewStats: ReviewStats,
     private val onItemClick: (QuizLibraryFeaturesFragment.StudyFeature) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+    private var features: List<QuizLibraryFeaturesFragment.StudyFeature> = features
+    private var items: List<QuizLibraryFeatureListItem> = buildGroupedFeatureItems(features)
+
+    class SectionViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val titleText: TextView = itemView.findViewById(R.id.section_title)
+    }
 
     class FeatureViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val cardView: MaterialCardView = itemView.findViewById(R.id.feature_card)
         val titleText: TextView = itemView.findViewById(R.id.feature_title)
         val descriptionText: TextView = itemView.findViewById(R.id.feature_description)
         val iconView: ImageView = itemView.findViewById(R.id.feature_icon)
+        val accuracyGroup: View? = itemView.findViewById(R.id.feature_accuracy_group)
+        val accuracyValue: TextView? = itemView.findViewById(R.id.feature_accuracy_value)
+        val accuracyProgress: LinearProgressIndicator? =
+            itemView.findViewById(R.id.feature_accuracy_progress)
     }
 
     class StatsViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -742,43 +886,91 @@ class QuizLibFeaturesAdapter(
         val todayWrongValue: TextView = itemView.findViewById(R.id.today_wrong_value)
         val totalAnsweredValue: TextView = itemView.findViewById(R.id.total_answered_value)
         val totalWrongValue: TextView = itemView.findViewById(R.id.total_wrong_value)
-        val accuracyValue: TextView = itemView.findViewById(R.id.accuracy_value)
+        val reviewDueValue: TextView = itemView.findViewById(R.id.review_due_value)
+        val reviewTodayValue: TextView = itemView.findViewById(R.id.review_today_value)
+        val reviewTotalCardsValue: TextView = itemView.findViewById(R.id.review_total_cards_value)
+        val reviewLapsesValue: TextView = itemView.findViewById(R.id.review_lapses_value)
     }
 
     fun submitList(newFeatures: List<QuizLibraryFeaturesFragment.StudyFeature>) {
-        features = newFeatures.toMutableList()
+        features = newFeatures
+        items = buildGroupedFeatureItems(features)
         notifyDataSetChanged()
     }
 
     fun updateFeatureDescription(action: QuizLibraryFeaturesFragment.FeatureAction, description: String) {
         val index = features.indexOfFirst { it.action == action }
         if (index >= 0 && features[index].description != description) {
-            features[index] = features[index].copy(description = description)
-            notifyItemChanged(index)
+            features = features.toMutableList().apply {
+                this[index] = this[index].copy(description = description)
+            }
+            items = buildGroupedFeatureItems(features)
+            val itemIndex = items.indexOfFirst { item ->
+                item is QuizLibraryFeatureListItem.FeatureItem && item.feature.action == action
+            }
+            if (itemIndex >= 0) {
+                notifyItemChanged(itemIndex)
+            } else {
+                notifyDataSetChanged()
+            }
         }
     }
 
     fun updateAnswerStats(newStats: LibraryAnswerStats) {
         answerStats = newStats
-        notifyItemChanged(features.size)
+        notifyStatsChanged()
+        notifyFeatureChanged(QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST)
+    }
+
+    fun updateReviewEntryState(newState: ReviewEntryState) {
+        reviewEntryState = newState
+        updateFeature(
+            action = QuizLibraryFeaturesFragment.FeatureAction.REVIEW,
+            title = newState.title,
+            description = newState.description
+        )
+    }
+
+    fun updateReviewStats(newStats: ReviewStats) {
+        reviewStats = newStats
+        notifyStatsChanged()
     }
 
     fun isFullSpan(position: Int): Boolean {
-        return position == features.size ||
-            (features.size % 2 == 1 &&
-                position == features.lastIndex &&
-                features.getOrNull(position)?.action == QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST)
+        return items.getOrNull(position)?.let(::isFullSpanFeatureItem) ?: true
+    }
+
+    fun getSpanSize(position: Int, spanCount: Int): Int {
+        return items.getOrNull(position)?.let { quizLibraryFeatureSpanSize(it, spanCount) } ?: spanCount
     }
 
     override fun getItemViewType(position: Int): Int {
-        return if (position == features.size) VIEW_TYPE_STATS else VIEW_TYPE_FEATURE
+        return when (items[position]) {
+            is QuizLibraryFeatureListItem.SectionHeader -> VIEW_TYPE_SECTION
+            is QuizLibraryFeatureListItem.FeatureItem -> {
+                if ((items[position] as QuizLibraryFeatureListItem.FeatureItem).compact) {
+                    VIEW_TYPE_COMPACT_FEATURE
+                } else {
+                    VIEW_TYPE_FEATURE
+                }
+            }
+            QuizLibraryFeatureListItem.Stats -> VIEW_TYPE_STATS
+        }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return when (viewType) {
+            VIEW_TYPE_SECTION -> SectionViewHolder(
+                LayoutInflater.from(parent.context)
+                    .inflate(R.layout.item_quiz_library_feature_section, parent, false)
+            )
             VIEW_TYPE_STATS -> StatsViewHolder(
                 LayoutInflater.from(parent.context)
                     .inflate(R.layout.item_quiz_library_answer_stats, parent, false)
+            )
+            VIEW_TYPE_COMPACT_FEATURE -> FeatureViewHolder(
+                LayoutInflater.from(parent.context)
+                    .inflate(R.layout.item_quiz_library_feature_compact, parent, false)
             )
             else -> FeatureViewHolder(
                 LayoutInflater.from(parent.context)
@@ -788,28 +980,140 @@ class QuizLibFeaturesAdapter(
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        when (holder) {
-            is FeatureViewHolder -> {
-                val feature = features[position]
-                holder.titleText.text = feature.title
-                holder.descriptionText.text = feature.description
-                holder.iconView.setImageResource(feature.iconResId)
-                holder.cardView.setOnClickListener { onItemClick(feature) }
+        when (val item = items[position]) {
+            is QuizLibraryFeatureListItem.SectionHeader -> {
+                (holder as SectionViewHolder).titleText.text = item.title
             }
-            is StatsViewHolder -> {
+            is QuizLibraryFeatureListItem.FeatureItem -> {
+                bindFeature(holder as FeatureViewHolder, item.feature, item.fullSpan)
+            }
+            QuizLibraryFeatureListItem.Stats -> {
+                holder as StatsViewHolder
                 holder.todayAnsweredValue.text = answerStats.todayAnswered.toString()
                 holder.todayWrongValue.text = answerStats.todayWrong.toString()
                 holder.totalAnsweredValue.text = answerStats.totalAnswered.toString()
                 holder.totalWrongValue.text = answerStats.totalWrong.toString()
-                holder.accuracyValue.text = answerStats.accuracyPercent?.let { "$it%" } ?: "--"
+                holder.reviewDueValue.text = reviewStats.dueToday.toString()
+                holder.reviewTodayValue.text = reviewStats.reviewedToday.toString()
+                holder.reviewTotalCardsValue.text = reviewStats.totalCards.toString()
+                holder.reviewLapsesValue.text = reviewStats.totalLapses.toString()
             }
         }
     }
 
-    override fun getItemCount() = features.size + 1
+    override fun getItemCount() = items.size
+
+    private fun bindFeature(
+        holder: FeatureViewHolder,
+        feature: QuizLibraryFeaturesFragment.StudyFeature,
+        fullSpan: Boolean
+    ) {
+        holder.titleText.text = feature.title
+        holder.descriptionText.text = feature.description
+        holder.iconView.setImageResource(feature.iconResId)
+        holder.cardView.setOnClickListener { onItemClick(feature) }
+        bindFeatureAccuracy(holder, feature)
+        if (
+            fullSpan &&
+            feature.action == QuizLibraryFeaturesFragment.FeatureAction.REVIEW &&
+            reviewEntryState.hasPendingWork
+        ) {
+            applyPrimaryFeatureStyle(holder)
+        } else {
+            applyDefaultFeatureStyle(holder)
+        }
+    }
+
+    private fun bindFeatureAccuracy(
+        holder: FeatureViewHolder,
+        feature: QuizLibraryFeaturesFragment.StudyFeature
+    ) {
+        val showAccuracy = feature.action == QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST
+        holder.accuracyGroup?.isVisible = showAccuracy
+        if (!showAccuracy) return
+        val accuracyPercent = answerStats.accuracyPercent?.coerceIn(0, 100)
+        holder.accuracyValue?.text = accuracyPercent?.let { "$it%" } ?: "--"
+        holder.accuracyProgress?.setProgressCompat(accuracyPercent ?: 0, false)
+    }
+
+    private fun updateFeature(
+        action: QuizLibraryFeaturesFragment.FeatureAction,
+        title: String,
+        description: String
+    ) {
+        val index = features.indexOfFirst { it.action == action }
+        if (index >= 0 && (features[index].title != title || features[index].description != description)) {
+            features = features.toMutableList().apply {
+                this[index] = this[index].copy(title = title, description = description)
+            }
+            items = buildGroupedFeatureItems(features)
+            val itemIndex = items.indexOfFirst { item ->
+                item is QuizLibraryFeatureListItem.FeatureItem && item.feature.action == action
+            }
+            if (itemIndex >= 0) {
+                notifyItemChanged(itemIndex)
+            } else {
+                notifyDataSetChanged()
+            }
+        }
+    }
+
+    private fun applyPrimaryFeatureStyle(holder: FeatureViewHolder) {
+        val backgroundColor = MaterialColors.getColor(holder.itemView, R.attr.colorPrimaryContainer)
+        val contentColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnPrimaryContainer)
+        val strokeColor = MaterialColors.getColor(holder.itemView, R.attr.colorPrimary)
+        holder.cardView.setCardBackgroundColor(backgroundColor)
+        holder.cardView.strokeColor = strokeColor
+        holder.cardView.strokeWidth = holder.itemView.dp(1)
+        holder.cardView.cardElevation = holder.itemView.dp(1).toFloat()
+        holder.titleText.setTextColor(contentColor)
+        holder.descriptionText.setTextColor(contentColor)
+        ImageViewCompat.setImageTintList(holder.iconView, ColorStateList.valueOf(contentColor))
+    }
+
+    private fun applyDefaultFeatureStyle(holder: FeatureViewHolder) {
+        val backgroundColor = MaterialColors.getColor(holder.itemView, R.attr.colorSurfaceContainer)
+        val titleColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnSurface)
+        val descriptionColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnSurfaceVariant)
+        val iconColor = MaterialColors.getColor(holder.itemView, R.attr.colorPrimary)
+        val strokeColor = MaterialColors.getColor(holder.itemView, R.attr.colorOutlineVariant)
+        holder.cardView.setCardBackgroundColor(backgroundColor)
+        holder.cardView.strokeColor = strokeColor
+        holder.cardView.strokeWidth = holder.itemView.dp(1)
+        holder.cardView.cardElevation = 0f
+        holder.titleText.setTextColor(titleColor)
+        holder.descriptionText.setTextColor(descriptionColor)
+        ImageViewCompat.setImageTintList(holder.iconView, ColorStateList.valueOf(iconColor))
+    }
+
+    private fun notifyStatsChanged() {
+        val statsIndex = items.indexOfFirst { it is QuizLibraryFeatureListItem.Stats }
+        if (statsIndex >= 0) {
+            notifyItemChanged(statsIndex)
+        }
+    }
+
+    private fun notifyFeatureChanged(action: QuizLibraryFeaturesFragment.FeatureAction) {
+        val itemIndex = items.indexOfFirst { item ->
+            item is QuizLibraryFeatureListItem.FeatureItem && item.feature.action == action
+        }
+        if (itemIndex >= 0) {
+            notifyItemChanged(itemIndex)
+        }
+    }
+
+    private fun View.dp(value: Int): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            value.toFloat(),
+            resources.displayMetrics
+        ).toInt()
+    }
 
     companion object {
-        private const val VIEW_TYPE_FEATURE = 0
-        private const val VIEW_TYPE_STATS = 1
+        private const val VIEW_TYPE_SECTION = 0
+        private const val VIEW_TYPE_FEATURE = 1
+        private const val VIEW_TYPE_STATS = 2
+        private const val VIEW_TYPE_COMPACT_FEATURE = 3
     }
 }

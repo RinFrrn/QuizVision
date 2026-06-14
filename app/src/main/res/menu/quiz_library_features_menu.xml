@@ -2,12 +2,6 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
-        android:id="@+id/share"
-        android:icon="@drawable/icon_file_export_24px"
-        android:orderInCategory="90"
-        android:title="@string/export"
-        app:showAsAction="always" />
-    <item
         android:id="@+id/rename"
         android:icon="@drawable/round_edit_24"
         android:orderInCategory="100"

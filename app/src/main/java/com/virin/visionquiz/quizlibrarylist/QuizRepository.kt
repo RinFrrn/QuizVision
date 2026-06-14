@@ -9,6 +9,7 @@ import com.virin.visionquiz.dao.QuizFavorite
 import com.virin.visionquiz.dao.QuizLibrary
 import com.virin.visionquiz.dao.ReviewCard
 import com.virin.visionquiz.dao.ReviewRating
+import com.virin.visionquiz.quizstudy.ReviewStats
 
 data class ReviewScheduleResult(
     val baseline: ReviewCard,
@@ -82,6 +83,10 @@ interface QuizRepository {
     suspend fun getDueReviewCards(libraryId: Int): List<ReviewCard>
 
     fun getDueReviewCardCount(libraryId: Int): LiveData<Int>
+
+    fun getReviewStatsByLibraryId(libraryId: Int): LiveData<ReviewStats>
+
+    fun getReviewQuizIdsByLibraryId(libraryId: Int): LiveData<List<Int>>
 
     suspend fun getReviewCardByQuizId(quizId: Int): ReviewCard?
 

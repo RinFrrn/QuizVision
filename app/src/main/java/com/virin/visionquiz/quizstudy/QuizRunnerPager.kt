@@ -71,7 +71,7 @@ private val IosEaseIn = CubicBezierEasing(0.32f, 0f, 0.67f, 0f)
 
 internal data class QuizRunnerPagerState(
     val currentPage: Int = 0,
-    val quizzes: List<Quiz> = emptyList(),
+    val quizIds: List<Int> = emptyList(),
     val revision: Int = 0,
     val userScrollEnabled: Boolean = true,
     val colors: QuizRunnerComposeColors = QuizRunnerComposeColors(),
@@ -175,14 +175,14 @@ internal fun QuizRunnerPager(
         outlineVariant = state.colors.outlineVariant
     )
     MaterialTheme(colorScheme = scheme) {
-        if (state.quizzes.isEmpty()) return@MaterialTheme
+        if (state.quizIds.isEmpty()) return@MaterialTheme
         val pagerState = rememberPagerState(
-            initialPage = state.currentPage.coerceIn(state.quizzes.indices),
-            pageCount = { state.quizzes.size }
+            initialPage = state.currentPage.coerceIn(state.quizIds.indices),
+            pageCount = { state.quizIds.size }
         )
 
-        LaunchedEffect(state.currentPage, state.quizzes.size) {
-            val target = state.currentPage.coerceIn(state.quizzes.indices)
+        LaunchedEffect(state.currentPage, state.quizIds.size, state.revision) {
+            val target = state.currentPage.coerceIn(state.quizIds.indices)
             if (pagerState.settledPage != target) {
                 pagerState.animateScrollToPage(target)
             }
@@ -200,7 +200,7 @@ internal fun QuizRunnerPager(
 
         HorizontalPager(
             state = pagerState,
-            key = { state.quizzes[it].id },
+            key = { state.quizIds[it] },
             userScrollEnabled = state.userScrollEnabled,
             beyondViewportPageCount = 1,
             modifier = Modifier

@@ -47,6 +47,25 @@ data class LibraryAnswerStats(
     val accuracyPercent: Int? = null
 )
 
+data class ReviewStats(
+    val dueToday: Int = 0,
+    val reviewedToday: Int = 0,
+    val totalCards: Int = 0,
+    val totalLapses: Int = 0
+)
+
+data class ReviewEntryState(
+    val dueReviewCount: Int = 0,
+    val newLearningCount: Int = 0
+) {
+    val title: String
+        get() = "开始学习"
+    val description: String
+        get() = "待复习 $dueReviewCount 题 · 待学习 $newLearningCount 题"
+    val hasPendingWork: Boolean
+        get() = dueReviewCount + newLearningCount > 0
+}
+
 data class AiRequestKey(
     val quizId: Int,
     val type: AiExplanationType,
@@ -70,6 +89,69 @@ sealed class AiExplanationUiState {
 
 internal fun AiExplanationUiState?.isAiRequestInProgress(): Boolean {
     return this is AiExplanationUiState.Loading || this is AiExplanationUiState.Streaming
+}
+
+internal fun startOfDayMillis(now: Long = System.currentTimeMillis()): Long {
+    return Calendar.getInstance().apply {
+        timeInMillis = now
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+}
+
+internal fun buildAnswerStats(
+    records: List<QuizAnswerRecord>,
+    todayStart: Long = startOfDayMillis()
+): LibraryAnswerStats {
+    val todayRecords = records.filter { it.answeredAt >= todayStart }
+    val totalAnswered = records.size
+    val totalCorrect = records.count { it.isCorrect }
+    return LibraryAnswerStats(
+        todayAnswered = todayRecords.size,
+        totalAnswered = totalAnswered,
+        todayWrong = todayRecords.count { it.isCorrect.not() },
+        totalWrong = records.count { it.isCorrect.not() },
+        accuracyPercent = if (totalAnswered == 0) {
+            null
+        } else {
+            ((totalCorrect * 100.0) / totalAnswered).roundToInt()
+        }
+    )
+}
+
+internal fun buildReviewStats(
+    cards: List<ReviewCard>,
+    now: Long = System.currentTimeMillis(),
+    todayStart: Long = startOfDayMillis(now)
+): ReviewStats {
+    return ReviewStats(
+        dueToday = cards.count { it.dueAt <= now },
+        reviewedToday = cards.count { card -> card.lastReviewedAt?.let { it >= todayStart } == true },
+        totalCards = cards.size,
+        totalLapses = cards.sumOf { it.lapseCount }
+    )
+}
+
+internal fun buildReviewEntryState(
+    quizzes: List<Quiz>,
+    reviewQuizIds: List<Int>,
+    reviewStats: ReviewStats,
+    newCardLimit: Int
+): ReviewEntryState {
+    val existingReviewQuizIds = reviewQuizIds.toSet()
+    val availableNewLearningCount = if (newCardLimit <= 0) {
+        0
+    } else {
+        quizzes.count { quiz ->
+            quiz.isSupportedStudyType() && quiz.id !in existingReviewQuizIds
+        }.coerceAtMost(newCardLimit)
+    }
+    return ReviewEntryState(
+        dueReviewCount = reviewStats.dueToday,
+        newLearningCount = availableNewLearningCount
+    )
 }
 
 internal fun shouldAutoRequestQuickReview(
@@ -121,12 +203,18 @@ class QuizLibraryFeaturesViewModel(application: Application, private val library
     AndroidViewModel(application) {
 
     private val repository: QuizRepository = QuizRepositoryImpl(application)
+    private val newReviewCardLimit = QuizStudySettings.readNewReviewCardsPerSession(application)
+    private var latestQuizList: List<Quiz> = emptyList()
+    private var latestReviewQuizIds: List<Int> = emptyList()
+    private var latestReviewStats: ReviewStats = ReviewStats()
 
     val library: MutableLiveData<QuizLibrary?> = MutableLiveData()
     val quizList: LiveData<List<Quiz>> = repository.getQuizListByLibraryId(libraryId)
     val answerRecords: LiveData<List<QuizAnswerRecord>> =
         repository.getAnswerRecordsByLibraryId(libraryId)
     val dueReviewCount: LiveData<Int> = repository.getDueReviewCardCount(libraryId)
+    val reviewStats: LiveData<ReviewStats> = repository.getReviewStatsByLibraryId(libraryId)
+    val reviewQuizIds: LiveData<List<Int>> = repository.getReviewQuizIdsByLibraryId(libraryId)
     val stats: LiveData<SupportedQuizStats> = MediatorLiveData<SupportedQuizStats>().apply {
         addSource(quizList) { quizzes ->
             value = buildSupportedStats(quizzes.orEmpty())
@@ -135,6 +223,26 @@ class QuizLibraryFeaturesViewModel(application: Application, private val library
     val answerStats: LiveData<LibraryAnswerStats> = MediatorLiveData<LibraryAnswerStats>().apply {
         addSource(answerRecords) { records ->
             value = buildAnswerStats(records.orEmpty())
+        }
+    }
+    val reviewEntryState: LiveData<ReviewEntryState> = MediatorLiveData<ReviewEntryState>().apply {
+        value = buildReviewEntryState(
+            quizzes = latestQuizList,
+            reviewQuizIds = latestReviewQuizIds,
+            reviewStats = latestReviewStats,
+            newCardLimit = newReviewCardLimit
+        )
+        addSource(quizList) { quizzes ->
+            latestQuizList = quizzes.orEmpty()
+            value = buildCurrentReviewEntryState()
+        }
+        addSource(reviewQuizIds) { ids ->
+            latestReviewQuizIds = ids.orEmpty()
+            value = buildCurrentReviewEntryState()
+        }
+        addSource(reviewStats) { stats ->
+            latestReviewStats = stats ?: ReviewStats()
+            value = buildCurrentReviewEntryState()
         }
     }
 
@@ -162,6 +270,15 @@ class QuizLibraryFeaturesViewModel(application: Application, private val library
         return repository.buildReviewQuizList(libraryId, limit)
     }
 
+    private fun buildCurrentReviewEntryState(): ReviewEntryState {
+        return buildReviewEntryState(
+            quizzes = latestQuizList,
+            reviewQuizIds = latestReviewQuizIds,
+            reviewStats = latestReviewStats,
+            newCardLimit = newReviewCardLimit
+        )
+    }
+
     private fun buildSupportedStats(quizzes: List<Quiz>): SupportedQuizStats {
         var single = 0
         var multiple = 0
@@ -180,29 +297,6 @@ class QuizLibraryFeaturesViewModel(application: Application, private val library
             singleChoice = single,
             multipleChoice = multiple,
             judgement = judgement
-        )
-    }
-
-    private fun buildAnswerStats(records: List<QuizAnswerRecord>): LibraryAnswerStats {
-        val todayStart = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-        val todayRecords = records.filter { it.answeredAt >= todayStart }
-        val totalAnswered = records.size
-        val totalCorrect = records.count { it.isCorrect }
-        return LibraryAnswerStats(
-            todayAnswered = todayRecords.size,
-            totalAnswered = totalAnswered,
-            todayWrong = todayRecords.count { it.isCorrect.not() },
-            totalWrong = records.count { it.isCorrect.not() },
-            accuracyPercent = if (totalAnswered == 0) {
-                null
-            } else {
-                ((totalCorrect * 100.0) / totalAnswered).roundToInt()
-            }
         )
     }
 
@@ -543,6 +637,10 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
         viewModelScope.launch {
             onLoaded(repository.getPracticeSession(libraryId, mode.value))
         }
+    }
+
+    suspend fun getPracticeSession(mode: QuizStudyMode): PracticeSession? {
+        return repository.getPracticeSession(libraryId, mode.value)
     }
 
     fun savePracticeSession(session: PracticeSession) {

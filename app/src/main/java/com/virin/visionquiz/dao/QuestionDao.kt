@@ -204,6 +204,9 @@ interface ReviewCardDao {
     @Query("SELECT COUNT(*) FROM ReviewCard WHERE library_id = :libraryId AND due_at <= :now")
     fun getDueCardCount(libraryId: Int, now: Long): LiveData<Int>
 
+    @Query("SELECT * FROM ReviewCard WHERE library_id = :libraryId")
+    fun getCardsByLibraryId(libraryId: Int): LiveData<List<ReviewCard>>
+
     @Query(
         """
         SELECT id FROM Quiz
@@ -219,6 +222,9 @@ interface ReviewCardDao {
 
     @Query("SELECT quiz_id FROM ReviewCard WHERE library_id = :libraryId")
     suspend fun getReviewQuizIds(libraryId: Int): List<Int>
+
+    @Query("SELECT quiz_id FROM ReviewCard WHERE library_id = :libraryId")
+    fun getReviewQuizIdsLiveData(libraryId: Int): LiveData<List<Int>>
 
     @Query("DELETE FROM ReviewCard WHERE quiz_id = :quizId")
     suspend fun deleteCardByQuizId(quizId: Int)
