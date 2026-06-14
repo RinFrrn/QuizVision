@@ -7,6 +7,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraXConfig
 import androidx.multidex.MultiDexApplication
 import com.google.android.material.color.DynamicColors
+import com.virin.visionquiz.util.SimilarQuizStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -14,6 +15,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 open class MainApplication : MultiDexApplication(), CameraXConfig.Provider {
+
+    override fun onCreate() {
+        super.onCreate()
+        SimilarQuizStore.initialize(this)
+    }
 
     override fun getCameraXConfig(): CameraXConfig {
         return CameraXConfig.Builder.fromConfig(Camera2Config.defaultConfig())

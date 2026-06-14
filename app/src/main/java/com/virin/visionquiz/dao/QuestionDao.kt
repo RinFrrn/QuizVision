@@ -14,6 +14,9 @@ interface QuizLibraryDao {
     @Query("SELECT * FROM QuizLibrary WHERE id = :id")
     suspend fun getQuizLibraryById(id: Int): QuizLibrary
 
+    @Query("SELECT * FROM QuizLibrary WHERE id = :id")
+    suspend fun getQuizLibraryByIdOrNull(id: Int): QuizLibrary?
+
     @Query("SELECT * FROM QuizLibrary WHERE name = :name")
     suspend fun getQuizLibraryByName(name: String): QuizLibrary
 

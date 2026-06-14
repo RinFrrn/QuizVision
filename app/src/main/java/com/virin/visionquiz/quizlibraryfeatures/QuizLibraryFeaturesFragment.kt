@@ -1,9 +1,12 @@
 package com.virin.visionquiz.quizlibraryfeatures
 
 import RenameDialogFragment
+import android.Manifest
 import android.app.Activity
 import android.content.ClipData
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.LayoutInflater
@@ -19,6 +22,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
@@ -33,14 +37,12 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.CircularProgressIndicator
-import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.radiobutton.MaterialRadioButton
 import com.google.android.material.snackbar.Snackbar
 import com.virin.visionquiz.R
 import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizLibrary
 import com.virin.visionquiz.dao.QuizStudyMode
-import com.virin.visionquiz.dao.isSupportedStudyType
 import com.virin.visionquiz.databinding.FragmentQuizLibraryDetailBinding
 import com.virin.visionquiz.quizdetector.CameraXDetectorActivity
 import com.virin.visionquiz.quizlist.QuizListFragment
@@ -71,6 +73,15 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
     }
     private var pendingExportFile: QuizExportUtil.ExportFile? = null
     private var exportProgressDialog: AlertDialog? = null
+    private var enqueueSimilarAnalysisAfterPermission = false
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        if (enqueueSimilarAnalysisAfterPermission) {
+            enqueueSimilarAnalysisAfterPermission = false
+            enqueueSimilarAnalysis()
+        }
+    }
     private val exportDocumentLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -181,12 +192,19 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
 
         SimilarQuizStore.progress.observe(viewLifecycleOwner) { map ->
             val p = map[libraryId]
-            if (p != null && !p.done) {
-                adapter.updateFeatureDescription(FeatureAction.SIMILAR_ANALYSIS, p.text)
-            } else {
-                val baseText = if (SimilarQuizStore.hasAnalysis(requireContext(), libraryId)) "已完成，点击重新分析" else "分析题库中的相似题目，辅助记忆"
-                adapter.updateFeatureDescription(FeatureAction.SIMILAR_ANALYSIS, baseText)
+            val description = when (p?.status) {
+                SimilarQuizStore.Status.QUEUED,
+                SimilarQuizStore.Status.RUNNING,
+                SimilarQuizStore.Status.FAILED -> p.text
+                SimilarQuizStore.Status.CANCELLED,
+                SimilarQuizStore.Status.COMPLETED,
+                null -> if (SimilarQuizStore.hasAnalysis(requireContext(), libraryId)) {
+                    "已完成，点击重新分析"
+                } else {
+                    "分析题库中的相似题目，辅助记忆"
+                }
             }
+            adapter.updateFeatureDescription(FeatureAction.SIMILAR_ANALYSIS, description)
         }
 
         viewModel.library.observe(viewLifecycleOwner) { library ->
@@ -312,61 +330,54 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
             Toast.makeText(requireContext(), "题库为空", Toast.LENGTH_SHORT).show()
             return
         }
+        val activeProgress = SimilarQuizStore.progress.value?.get(libraryId)
+        if (activeProgress?.status == SimilarQuizStore.Status.QUEUED ||
+            activeProgress?.status == SimilarQuizStore.Status.RUNNING
+        ) {
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle("相似题分析")
+                .setMessage(activeProgress.text)
+                .setPositiveButton("取消任务") { _, _ ->
+                    SimilarQuizStore.cancelAnalysis(requireContext(), libraryId)
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+            return
+        }
         if (SimilarQuizStore.hasAnalysis(requireContext(), libraryId)) {
             MaterialAlertDialogBuilder(requireContext())
                 .setTitle("重新分析？")
                 .setMessage("已有分析结果，是否重新计算？")
-                .setPositiveButton("重新分析") { _, _ -> runSimilarAnalysis(quizzes) }
+                .setPositiveButton("重新分析") { _, _ -> requestNotificationThenEnqueue() }
                 .setNegativeButton(R.string.cancel, null)
                 .show()
         } else {
-            runSimilarAnalysis(quizzes)
+            requestNotificationThenEnqueue()
         }
     }
 
-    private fun runSimilarAnalysis(quizzes: List<Quiz>) {
-        val total = quizzes.count { it.isSupportedStudyType() }
-        val contentView = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24.dp(), 20.dp(), 24.dp(), 8.dp())
+    private fun requestNotificationThenEnqueue() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                requireContext(),
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            enqueueSimilarAnalysisAfterPermission = true
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            enqueueSimilarAnalysis()
         }
-        val progressText = TextView(requireContext()).apply {
-            text = "正在分析相似题目... 0 / $total"
-            setTextColor(MaterialColors.getColor(binding.root, R.attr.colorOnSurface))
-            textSize = 14f
+    }
+
+    private fun enqueueSimilarAnalysis() {
+        val added = SimilarQuizStore.enqueueAnalysis(requireContext(), libraryId)
+        val message = if (added) {
+            "已加入后台分析队列"
+        } else {
+            "该题库已在分析队列中"
         }
-        val progressBar = LinearProgressIndicator(requireContext()).apply {
-            max = total
-            progress = 0
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 12.dp() }
-            trackCornerRadius = 4.dp()
-        }
-        contentView.addView(progressText)
-        contentView.addView(progressBar)
-        val dialog = MaterialAlertDialogBuilder(requireContext())
-            .setView(contentView)
-            .setNeutralButton("隐藏", null)
-            .create()
-        dialog.setCanceledOnTouchOutside(false)
-        dialog.show()
-        dialog.getButton(android.content.DialogInterface.BUTTON_NEUTRAL).setOnClickListener {
-            dialog.dismiss()
-        }
-        SimilarQuizStore.startAnalysis(requireContext(), libraryId, quizzes)
-        SimilarQuizStore.progress.observe(viewLifecycleOwner) { map ->
-            val p = map[libraryId] ?: return@observe
-            progressBar.progress = p.current
-            progressText.text = "正在分析相似题目... ${p.current} / ${p.total}"
-            if (p.done) {
-                dialog.dismiss()
-                _binding?.root?.let { root ->
-                    Snackbar.make(root, "相似题分析完成", Snackbar.LENGTH_SHORT).show()
-                }
-            }
-        }
+        Snackbar.make(binding.root, message, Snackbar.LENGTH_SHORT).show()
     }
 
     private fun showRenameDialog() {

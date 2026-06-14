@@ -21,6 +21,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -58,6 +59,8 @@ import com.virin.visionquiz.dao.QuizUiType
 import com.virin.visionquiz.dao.answerString
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.dao.typeString
+import com.virin.visionquiz.util.MAX_SIMILAR_QUIZ_RESULTS
+import com.virin.visionquiz.util.QuizSimilarityIndex
 import com.virin.visionquiz.util.SimilarQuizStore
 import com.virin.visionquiz.util.convertNumToChar
 import kotlinx.coroutines.Job
@@ -132,10 +135,22 @@ private fun QuizContentCard(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     var snackbarJob by remember { mutableStateOf<Job?>(null) }
+    var similarKeywordQuery by remember(quiz.id) { mutableStateOf("") }
     val allQuizzesById = remember(allQuizzes) { allQuizzes.associateBy(Quiz::id) }
-    val similarQuizzes = SimilarQuizStore
-        .getSimilarQuizIds(context, quiz.libraryId, quiz.id)
-        .mapNotNull(allQuizzesById::get)
+    val similarityIndex = remember(allQuizzes) { QuizSimilarityIndex(allQuizzes) }
+    val similarQuizzes = remember(quiz.id, similarKeywordQuery, allQuizzes) {
+        if (similarKeywordQuery.isBlank()) {
+            SimilarQuizStore
+                .getSimilarQuizIds(context, quiz.libraryId, quiz.id)
+                .mapNotNull(allQuizzesById::get)
+        } else {
+            similarityIndex.findSimilar(
+                currentQuiz = quiz,
+                requiredKeywords = similarKeywordQuery,
+                maxResults = MAX_SIMILAR_QUIZ_RESULTS
+            ).map { it.quiz }
+        }
+    }
 
     LaunchedEffect(quiz.id) {
         scrollState.scrollTo(0)
@@ -260,6 +275,8 @@ private fun QuizContentCard(
                 SimilarQuizSection(
                     quizzes = similarQuizzes,
                     hasAnalysis = SimilarQuizStore.hasAnalysis(context, quiz.libraryId),
+                    keywordQuery = similarKeywordQuery,
+                    onKeywordQueryChange = { similarKeywordQuery = it },
                     onQuizClick = ::openSimilarQuiz
                 )
             }
@@ -360,15 +377,31 @@ private fun SectionLabel(text: String) {
 private fun SimilarQuizSection(
     quizzes: List<Quiz>,
     hasAnalysis: Boolean,
+    keywordQuery: String,
+    onKeywordQueryChange: (String) -> Unit,
     onQuizClick: (Quiz) -> Unit
 ) {
     Spacer(Modifier.height(20.dp))
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     SectionLabel("相似题目")
 
+    OutlinedTextField(
+        value = keywordQuery,
+        onValueChange = onKeywordQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        label = { Text("必须包含的关键词") },
+        placeholder = { Text("如：SF6 电流互感器") },
+        supportingText = { Text("多个关键词以空格分隔，需同时包含") },
+        singleLine = true
+    )
+
     if (quizzes.isEmpty()) {
         Text(
-            text = if (hasAnalysis) {
+            text = if (keywordQuery.isNotBlank()) {
+                "没有同时包含这些关键词的题目"
+            } else if (hasAnalysis) {
                 "暂无相似题目"
             } else {
                 "尚未分析，可在题库功能中使用相似题分析"

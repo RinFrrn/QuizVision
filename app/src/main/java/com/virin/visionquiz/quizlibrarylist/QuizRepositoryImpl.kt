@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.lifecycle.LiveData
 import androidx.room.withTransaction
 import com.virin.visionquiz.dao.*
+import com.virin.visionquiz.util.SimilarQuizStore
 
 class QuizRepositoryImpl(context: Context) : QuizRepository {
 
+    private val appContext = context.applicationContext
     private val database: QuizDatabase
     private val quizLibDao: QuizLibraryDao
     private val quizDao: QuizDao
@@ -48,6 +50,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
     }
 
     override suspend fun deleteQuizLibrary(quizLibrary: QuizLibrary) {
+        SimilarQuizStore.cancelAnalysis(appContext, quizLibrary.id)
         database.withTransaction {
             favoriteDao.deleteFavoritesByLibraryId(quizLibrary.id)
             answerRecordDao.deleteAnswerRecordsByLibraryId(quizLibrary.id)
@@ -57,6 +60,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
             quizDao.deleteQuizzesByCategoryId(quizLibrary.id)
             quizLibDao.deleteCategoryById(quizLibrary.id)
         }
+        SimilarQuizStore.clear(appContext, quizLibrary.id)
     }
 
     override fun getQuizListByLibraryId(libraryId: Int): LiveData<List<Quiz>> {
@@ -83,14 +87,19 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
 
     override suspend fun insertQuiz(quiz: Quiz) {
         quizDao.insertQuiz(quiz)
+        SimilarQuizStore.clear(appContext, quiz.libraryId)
     }
 
     override suspend fun insertQuizzes(quizzes: List<Quiz>) {
         quizDao.insertQuizzes(quizzes)
+        quizzes.map { it.libraryId }.distinct().forEach {
+            SimilarQuizStore.clear(appContext, it)
+        }
     }
 
     override suspend fun updateQuiz(quiz: Quiz) {
         quizDao.updateQuiz(quiz)
+        SimilarQuizStore.clear(appContext, quiz.libraryId)
     }
 
     override suspend fun deleteQuiz(quiz: Quiz) {
@@ -99,6 +108,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
             aiExplanationCacheDao.deleteByQuizId(quiz.id)
             quizDao.deleteQuiz(quiz)
         }
+        SimilarQuizStore.clear(appContext, quiz.libraryId)
     }
 
     override fun getFavoriteQuizIdsByLibraryId(libraryId: Int): LiveData<List<Int>> {

@@ -24,9 +24,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -62,6 +66,8 @@ import com.virin.visionquiz.databinding.FragmentQuizRunnerBinding
 import com.virin.visionquiz.preference.SettingsActivity
 import com.virin.visionquiz.quizlibraryfeatures.QuizLibraryFeaturesFragment
 import com.virin.visionquiz.util.BaseQuizFragment
+import com.virin.visionquiz.util.MAX_SIMILAR_QUIZ_RESULTS
+import com.virin.visionquiz.util.QuizSimilarityIndex
 import com.virin.visionquiz.util.SimilarQuizStore
 import com.virin.visionquiz.util.NavigationBackAnimationSource
 import com.virin.visionquiz.util.configureQuizTopBar
@@ -1436,7 +1442,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         val originIndex = currentIndex
         val similarIds = SimilarQuizStore.getSimilarQuizIds(requireContext(), libraryId, quiz.id)
         val quizIndexById = quizzes.withIndex().associate { it.value.id to it.index }
-        val similarQuizzes = similarIds.mapNotNull { quizId ->
+        val storedSimilarQuizzes = similarIds.mapNotNull { quizId ->
             val quizIndex = quizIndexById[quizId] ?: return@mapNotNull null
             quizzes[quizIndex] to quizIndex
         }
@@ -1468,6 +1474,22 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 outlineVariant = composeColors.outlineVariant
             )
             MaterialTheme(colorScheme = scheme) {
+                var keywordQuery by remember(quiz.id) { mutableStateOf("") }
+                val similarityIndex = remember(quizzes) { QuizSimilarityIndex(quizzes) }
+                val similarQuizzes = remember(keywordQuery, quiz.id, quizzes) {
+                    if (keywordQuery.isBlank()) {
+                        storedSimilarQuizzes
+                    } else {
+                        similarityIndex.findSimilar(
+                            currentQuiz = quiz,
+                            requiredKeywords = keywordQuery,
+                            maxResults = MAX_SIMILAR_QUIZ_RESULTS
+                        ).mapNotNull { result ->
+                            val quizIndex = quizIndexById[result.quiz.id] ?: return@mapNotNull null
+                            result.quiz to quizIndex
+                        }
+                    }
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1479,9 +1501,24 @@ class QuizRunnerFragment : BaseQuizFragment() {
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
+                    OutlinedTextField(
+                        value = keywordQuery,
+                        onValueChange = { keywordQuery = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        label = { Text("必须包含的关键词") },
+                        placeholder = { Text("如：SF6 电流互感器") },
+                        supportingText = { Text("多个关键词以空格分隔，需同时包含") },
+                        singleLine = true
+                    )
                     if (similarQuizzes.isEmpty()) {
                         Text(
-                            text = "暂无相似题目，可先在题库功能中使用相似题分析",
+                            text = if (keywordQuery.isNotBlank()) {
+                                "没有同时包含这些关键词的题目"
+                            } else {
+                                "暂无相似题目，可先在题库功能中使用相似题分析"
+                            },
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium
                         )
