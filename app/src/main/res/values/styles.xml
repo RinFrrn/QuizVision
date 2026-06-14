@@ -22,6 +22,11 @@
 <!--        <item name="colorAccent">@color/colorAccent</item> &lt;!&ndash; 对话框按钮等的颜色 &ndash;&gt;-->
     </style>
 
+    <style name="QuizContentDialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/quiz_content_dialog_enter</item>
+        <item name="android:windowExitAnimation">@anim/quiz_content_dialog_exit</item>
+    </style>
+
 <!--        <item name="background">@drawable/shape_oval</item>-->
     <style name="CameraButtonToggleGroupButton" parent="Widget.Material3.Button.OutlinedButton">
         <item name="android:insetTop">0dp</item>

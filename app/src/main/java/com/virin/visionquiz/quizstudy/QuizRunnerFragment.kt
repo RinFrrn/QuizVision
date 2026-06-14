@@ -45,6 +45,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import com.virin.visionquiz.R
 import com.virin.visionquiz.ai.AiConfig
 import com.virin.visionquiz.ai.AiConfigStore
@@ -113,6 +114,8 @@ class QuizRunnerFragment : BaseQuizFragment() {
     private val timerHandler = Handler(Looper.getMainLooper())
     private var timerStartedAt: Long = 0L
     private var timerPausedAt: Long = 0L
+    private var similarQuizSnackbar: Snackbar? = null
+    private var similarQuizOriginIndex: Int? = null
     private var examDurationMillis: Long = 0L
     private var examAutoSubmitted = false
     private var pagerRevision = 0
@@ -167,7 +170,13 @@ class QuizRunnerFragment : BaseQuizFragment() {
         binding.previousButton.setOnClickListener { goToQuestion(currentIndex - 1) }
         binding.nextButton.setOnClickListener { goToQuestion(currentIndex + 1) }
         binding.showAnswerButton.setOnClickListener {
-            showAnswer()
+            val quiz = quizzes.getOrNull(currentIndex) ?: return@setOnClickListener
+            val isSubmitted = mode != QuizStudyMode.EXAM && recordedPracticeQuizIds.contains(quiz.id)
+            if (isSubmitted) {
+                showSimilarQuizPanel()
+            } else {
+                showAnswer()
+            }
         }
         binding.favoriteButton.setOnClickListener { toggleFavorite() }
         binding.answerCardButton.setOnClickListener { showAnswerCard() }
@@ -280,6 +289,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
     }
 
     override fun onDestroyView() {
+        clearSimilarQuizReturn()
         stopTimer()
         correctAnswerToneGenerator?.release()
         wrongAnswerToneGenerator?.release()
@@ -558,10 +568,15 @@ class QuizRunnerFragment : BaseQuizFragment() {
         val isPracticeSubmitted = mode != QuizStudyMode.EXAM && recordedPracticeQuizIds.contains(quiz.id)
         val showAnswerSection = mode != QuizStudyMode.EXAM || reviewMode
         binding.showAnswerButton.isVisible = showAnswerSection
-        binding.showAnswerButton.text = "看答案"
-        binding.showAnswerButton.setIconResource(R.drawable.icon_person_raised_hand_24px)
-        binding.showAnswerButton.isEnabled = showAnswerSection && !isPracticeSubmitted
-        applyTypeStyle(type)
+        if (isPracticeSubmitted) {
+            binding.showAnswerButton.text = "相似题目"
+            binding.showAnswerButton.setIconResource(R.drawable.icon_familiar_face_and_zone_24px)
+            binding.showAnswerButton.isEnabled = true
+        } else {
+            binding.showAnswerButton.text = "看答案"
+            binding.showAnswerButton.setIconResource(R.drawable.icon_person_raised_hand_24px)
+            binding.showAnswerButton.isEnabled = showAnswerSection
+        }
         updateFavoriteButton()
         refreshPagerState()
         binding.root.post { maybeAutoRequestQuickReview(readCachedAiConfig()) }
@@ -749,6 +764,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
 
     private fun onPagerPageSettled(page: Int) {
         if (page !in quizzes.indices || page == currentIndex) return
+        clearSimilarQuizReturn()
         saveCurrentQuestionSelection(persist = false)
         currentIndex = page
         loadSelectionForCurrentQuestion()
@@ -797,6 +813,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
     private fun moveToPagerPage(page: Int): Boolean {
         if (page !in quizzes.indices) return false
         if (page != currentIndex) {
+            clearSimilarQuizReturn()
             saveCurrentQuestionSelection(persist = false)
             currentIndex = page
             loadSelectionForCurrentQuestion()
@@ -895,13 +912,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
         AiExplanationType.DETAILED_ANALYSIS,
         AiExplanationType.CONTEXTUAL_SUGGESTIONS
     )
-
-    private fun navigateToQuizByQuizId(quizId: Int) {
-        val targetIndex = quizzes.indexOfFirst { it.id == quizId }
-        if (targetIndex >= 0) {
-            goToQuestion(targetIndex)
-        }
-    }
 
     private fun maybeAutoRequestContextualSuggestions() {
         val quiz = quizzes.getOrNull(currentIndex) ?: return
@@ -1342,13 +1352,55 @@ class QuizRunnerFragment : BaseQuizFragment() {
         )
     }
 
-    private fun goToQuestion(targetIndex: Int) {
+    private fun goToQuestion(
+        targetIndex: Int,
+        clearSimilarReturn: Boolean = true
+    ) {
         if (targetIndex !in quizzes.indices || targetIndex == currentIndex) return
+        if (clearSimilarReturn) {
+            clearSimilarQuizReturn()
+        }
         saveCurrentQuestionSelection(persist = false)
         currentIndex = targetIndex
         loadSelectionForCurrentQuestion()
         render()
         persistPracticeSession()
+    }
+
+    private fun navigateToSimilarQuiz(targetIndex: Int, originIndex: Int) {
+        if (targetIndex !in quizzes.indices || targetIndex == currentIndex) return
+        clearSimilarQuizReturn()
+        goToQuestion(targetIndex, clearSimilarReturn = false)
+        similarQuizOriginIndex = originIndex
+
+        val snackbar = Snackbar.make(
+            binding.root,
+            "已跳转到相似题目",
+            Snackbar.LENGTH_INDEFINITE
+        ).setAction("返回原题") {
+            val returnIndex = similarQuizOriginIndex
+            clearSimilarQuizReturn()
+            if (returnIndex != null) {
+                goToQuestion(returnIndex, clearSimilarReturn = false)
+            }
+        }
+        snackbar.addCallback(object : Snackbar.Callback() {
+            override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
+                if (similarQuizSnackbar === transientBottomBar) {
+                    similarQuizSnackbar = null
+                    similarQuizOriginIndex = null
+                }
+            }
+        })
+        similarQuizSnackbar = snackbar
+        snackbar.show()
+    }
+
+    private fun clearSimilarQuizReturn() {
+        val snackbar = similarQuizSnackbar
+        similarQuizSnackbar = null
+        similarQuizOriginIndex = null
+        snackbar?.dismiss()
     }
 
     private fun showAnswerCard() {
@@ -1378,6 +1430,99 @@ class QuizRunnerFragment : BaseQuizFragment() {
     }
 
 
+
+    private fun showSimilarQuizPanel() {
+        val quiz = quizzes.getOrNull(currentIndex) ?: return
+        val originIndex = currentIndex
+        val similarIds = SimilarQuizStore.getSimilarQuizIds(requireContext(), libraryId, quiz.id)
+        val quizIndexById = quizzes.withIndex().associate { it.value.id to it.index }
+        val similarQuizzes = similarIds.mapNotNull { quizId ->
+            val quizIndex = quizIndexById[quizId] ?: return@mapNotNull null
+            quizzes[quizIndex] to quizIndex
+        }
+
+        val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(requireContext())
+        val composeView = androidx.compose.ui.platform.ComposeView(requireContext())
+        composeView.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnDetachedFromWindow
+        )
+        composeView.setContent {
+            val composeColors = resolveCachedComposeColors()
+            val scheme = lightColorScheme(
+                primary = composeColors.primary,
+                onPrimary = composeColors.onPrimary,
+                primaryContainer = composeColors.primaryContainer,
+                onPrimaryContainer = composeColors.onPrimaryContainer,
+                secondaryContainer = composeColors.secondaryContainer,
+                onSecondaryContainer = composeColors.onSecondaryContainer,
+                tertiaryContainer = composeColors.tertiaryContainer,
+                onTertiaryContainer = composeColors.onTertiaryContainer,
+                error = composeColors.error,
+                errorContainer = composeColors.errorContainer,
+                onErrorContainer = composeColors.onErrorContainer,
+                surface = composeColors.surface,
+                onSurface = composeColors.onSurface,
+                surfaceContainerHigh = composeColors.surfaceContainerHigh,
+                onSurfaceVariant = composeColors.onSurfaceVariant,
+                outline = composeColors.outline,
+                outlineVariant = composeColors.outlineVariant
+            )
+            MaterialTheme(colorScheme = scheme) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                ) {
+                    Text(
+                        text = "相似题目",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    if (similarQuizzes.isEmpty()) {
+                        Text(
+                            text = "暂无相似题目，可先在题库功能中使用相似题分析",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    } else {
+                        androidx.compose.foundation.lazy.LazyColumn {
+                            items(similarQuizzes.size) { index ->
+                                val (sq, quizIndex) = similarQuizzes[index]
+                                val label = buildString {
+                                    append(quizIndex + 1)
+                                    append(". ")
+                                    append(sq.prompt.take(60))
+                                    if (sq.prompt.length > 60) append("...")
+                                }
+                                Card(
+                                    onClick = {
+                                        dialog.dismiss()
+                                        navigateToSimilarQuiz(quizIndex, originIndex)
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                                    )
+                                ) {
+                                    Text(
+                                        text = label,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
+        }
+        dialog.setContentView(composeView)
+        dialog.show()
+    }
     private fun configureAnswerCardGrid(recyclerView: RecyclerView) {
         val layoutManager = GridLayoutManager(
             requireContext(),

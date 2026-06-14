@@ -108,7 +108,7 @@ class ExamDetailFragment : BaseQuizFragment() {
         super.onViewCreated(view, savedInstanceState)
         configureQuizTopBar(binding.toolbar, "考试详情")
         adapter = ExamDetailAdapter { quiz ->
-            showQuizContentDialog(requireContext(), quiz)
+            showQuizContentDialog(requireContext(), quiz, quizzes)
         }
         binding.recyclerView.adapter = adapter
         binding.filterGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->

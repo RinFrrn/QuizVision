@@ -69,7 +69,7 @@ class QuizHistoryFragment : BaseQuizFragment() {
         setupMenu()
 
         adapter = QuizHistoryAdapter { quiz ->
-            showQuizContentDialog(requireContext(), quiz)
+            showQuizContentDialog(requireContext(), quiz, quizzes)
         }
         binding.recyclerView.adapter = adapter
 

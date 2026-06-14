@@ -53,7 +53,7 @@ class QuizFavoritesFragment : BaseQuizFragment() {
             override fun onQuizClicked(quiz: Quiz) {
                 val list = currentCollectionQuizzes()
                 val index = list.indexOfFirst { it.id == quiz.id }.coerceAtLeast(0)
-                showQuizContentDialog(requireContext(), list, index)
+                showQuizContentDialog(requireContext(), list, index, quizzes)
             }
         })
         binding.recyclerView.adapter = adapter

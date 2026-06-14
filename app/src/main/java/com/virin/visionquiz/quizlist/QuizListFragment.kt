@@ -261,10 +261,11 @@ class QuizListFragment : BaseQuizFragment() {
                 viewModel.displayQuizList.value ?: emptyList()
             }
             val quizIndex = visibleList.indexOfFirst { it.id == quiz.id }
+            val allQuizzes = viewModel.quizList.value.orEmpty()
             if (quizIndex >= 0) {
-                showQuizContentDialog(requireContext(), visibleList, quizIndex)
+                showQuizContentDialog(requireContext(), visibleList, quizIndex, allQuizzes)
             } else {
-                showQuizContentDialog(requireContext(), quiz)
+                showQuizContentDialog(requireContext(), quiz, allQuizzes)
             }
         }
     }

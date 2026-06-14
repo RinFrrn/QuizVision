@@ -33,9 +33,17 @@ class QuizLibraryListAdapter constructor(
 
     private var similarProgress: Map<Int, SimilarQuizStore.Progress> = emptyMap()
     private val selectedItemIds = HashSet<Int>()
+
     fun updateSimilarProgress(progress: Map<Int, SimilarQuizStore.Progress>) {
+        if (similarProgress == progress) return
+
+        val previousProgress = similarProgress
         similarProgress = progress
-        notifyDataSetChanged()
+        currentList.forEachIndexed { index, library ->
+            if (previousProgress[library.id] != progress[library.id]) {
+                notifyItemChanged(index, PAYLOAD_SIMILAR_PROGRESS)
+            }
+        }
     }
 
     var isSelectionMode = false
@@ -57,16 +65,26 @@ class QuizLibraryListAdapter constructor(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val quizLibrary = getItem(position)
         holder.bind(quizLibrary, buttonClickListener)
-        val p = similarProgress[quizLibrary.id]
-        if (p != null && !p.done) {
-            holder.binding.quizCount.text = p.text
-        }
+        holder.bindSimilarProgress(quizLibrary, similarProgress[quizLibrary.id])
 
         holder.binding.cardView.isChecked = selectedItemIds.contains(quizLibrary.id)
 
         holder.binding.cameraBtn.isEnabled = isSelectionMode.not()
         holder.binding.screenRecordBtn.isEnabled = isSelectionMode.not()
         holder.binding.moreBtn.isEnabled = isSelectionMode.not()
+    }
+
+    override fun onBindViewHolder(
+        holder: ViewHolder,
+        position: Int,
+        payloads: MutableList<Any>
+    ) {
+        if (payloads.contains(PAYLOAD_SIMILAR_PROGRESS)) {
+            val quizLibrary = getItem(position)
+            holder.bindSimilarProgress(quizLibrary, similarProgress[quizLibrary.id])
+            return
+        }
+        super.onBindViewHolder(holder, position, payloads)
     }
 
     inner class ViewHolder(
@@ -99,8 +117,20 @@ class QuizLibraryListAdapter constructor(
             }
 
             binding.quizLibrary = quizLibrary
+            binding.executePendingBindings()
 //            binding.name.text = quizLibrary.name
 //            binding.quizCount.text = binding.root.context.getString(R.string.quiz_count, quizLibrary.quizCount)
+        }
+
+        fun bindSimilarProgress(
+            quizLibrary: QuizLibrary,
+            progress: SimilarQuizStore.Progress?
+        ) {
+            binding.quizCount.text = if (progress != null && !progress.done) {
+                progress.text
+            } else {
+                context.getString(R.string.quiz_count, quizLibrary.quizCount)
+            }
         }
 
         private fun showListPopupWindow(
@@ -334,6 +364,8 @@ class QuizLibraryListAdapter constructor(
     }
 
     companion object {
+        private const val PAYLOAD_SIMILAR_PROGRESS = "similar_progress"
+
         const val ROOT_VIEW = 0
         const val CAMERA_BUTTON = 1
         const val SCREEN_RECORD_BUTTON = 2
