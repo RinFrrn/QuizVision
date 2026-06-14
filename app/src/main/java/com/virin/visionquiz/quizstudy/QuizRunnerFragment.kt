@@ -318,6 +318,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         viewModel.examSessionId.value?.let { outState.putInt(STATE_EXAM_SESSION_ID, it) }
         viewModel.examStartedAt?.let { outState.putLong(STATE_EXAM_STARTED_AT, it) }
         outState.putLong(STATE_TIMER_STARTED_AT, timerStartedAt)
+        outState.putLong(STATE_TIMER_PAUSED_AT, timerPausedAt)
         outState.putLong(STATE_EXAM_DURATION_MILLIS, examDurationMillis)
         outState.putBoolean(STATE_EXAM_AUTO_SUBMITTED, examAutoSubmitted)
     }
@@ -377,6 +378,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         reviewMode = savedInstanceState.getBoolean(STATE_REVIEW_MODE, false)
         restoredQuizOrderIds = savedInstanceState.getIntArray(STATE_QUIZ_ORDER_IDS)
         timerStartedAt = savedInstanceState.getLong(STATE_TIMER_STARTED_AT, 0L)
+        timerPausedAt = savedInstanceState.getLong(STATE_TIMER_PAUSED_AT, 0L)
         examDurationMillis = savedInstanceState.getLong(
             STATE_EXAM_DURATION_MILLIS,
             readExamDurationMillisFromArgs()
@@ -551,14 +553,21 @@ class QuizRunnerFragment : BaseQuizFragment() {
         if (mode != QuizStudyMode.EXAM && timerStartedAt > 0L && timerPausedAt <= 0L) {
             timerPausedAt = System.currentTimeMillis()
             if (isPracticeSessionMode()) {
-                persistPracticeSession()
+                flushPracticePersist()
             }
         }
     }
 
     private fun resumeTimerForLifecycle() {
-        if (_binding == null || quizzes.isEmpty()) return
-        if (mode != QuizStudyMode.EXAM && timerPausedAt > 0L) {
+        if (_binding == null) return
+        applyPausedTimerCompensation()
+        if (quizzes.isNotEmpty()) {
+            startTimerIfNeeded()
+        }
+    }
+
+    private fun applyPausedTimerCompensation() {
+        if (mode != QuizStudyMode.EXAM && timerStartedAt > 0L && timerPausedAt > 0L) {
             val pausedDuration = (System.currentTimeMillis() - timerPausedAt).coerceAtLeast(0L)
             timerStartedAt += pausedDuration
             practiceSessionStartedAt = timerStartedAt
@@ -567,12 +576,11 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 persistPracticeSession()
             }
         }
-        startTimerIfNeeded()
     }
 
     private fun updateTimerText() {
         if (_binding == null || timerStartedAt <= 0L) return
-        val elapsed = (System.currentTimeMillis() - timerStartedAt).coerceAtLeast(0L)
+        val elapsed = currentTimerElapsedMillis()
         if (mode == QuizStudyMode.EXAM) {
             val remaining = (examDurationMillis - elapsed).coerceAtLeast(0L)
             binding.timerText.text = "剩余 ${formatClock(remaining)}"
@@ -583,6 +591,16 @@ class QuizRunnerFragment : BaseQuizFragment() {
         } else {
             binding.timerText.text = "用时 ${formatClock(elapsed)}"
         }
+    }
+
+    private fun currentTimerElapsedMillis(now: Long = System.currentTimeMillis()): Long {
+        if (timerStartedAt <= 0L) return 0L
+        val effectiveNow = if (mode != QuizStudyMode.EXAM && timerPausedAt > 0L) {
+            timerPausedAt
+        } else {
+            now
+        }
+        return (effectiveNow - timerStartedAt).coerceAtLeast(0L)
     }
 
     private fun autoSubmitExam() {
@@ -1869,10 +1887,11 @@ class QuizRunnerFragment : BaseQuizFragment() {
     }
 
     private fun flushPracticePersist() {
+        timerHandler.removeCallbacks(practicePersistRunnable)
         if (!isPracticeSessionMode() || quizzes.isEmpty()) return
         val now = System.currentTimeMillis()
         val startedAt = when {
-            timerStartedAt > 0L -> timerStartedAt
+            timerStartedAt > 0L -> now - currentTimerElapsedMillis(now)
             practiceSessionStartedAt > 0L -> practiceSessionStartedAt
             else -> now
         }
@@ -1930,6 +1949,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         private const val STATE_EXAM_SESSION_ID = "state_exam_session_id"
         private const val STATE_EXAM_STARTED_AT = "state_exam_started_at"
         private const val STATE_TIMER_STARTED_AT = "state_timer_started_at"
+        private const val STATE_TIMER_PAUSED_AT = "state_timer_paused_at"
         private const val STATE_EXAM_DURATION_MILLIS = "state_exam_duration_millis"
         private const val STATE_EXAM_AUTO_SUBMITTED = "state_exam_auto_submitted"
 
