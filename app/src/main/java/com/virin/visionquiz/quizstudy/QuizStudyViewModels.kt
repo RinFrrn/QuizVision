@@ -19,6 +19,8 @@ import com.virin.visionquiz.dao.QuizAnswerRecord
 import com.virin.visionquiz.dao.QuizLibrary
 import com.virin.visionquiz.dao.QuizStudyMode
 import com.virin.visionquiz.dao.QuizUiType
+import com.virin.visionquiz.dao.ReviewCard
+import com.virin.visionquiz.dao.ReviewRating
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.dao.isSupportedStudyType
 import com.virin.visionquiz.quizlibrarylist.QuizRepository
@@ -124,6 +126,7 @@ class QuizLibraryFeaturesViewModel(application: Application, private val library
     val quizList: LiveData<List<Quiz>> = repository.getQuizListByLibraryId(libraryId)
     val answerRecords: LiveData<List<QuizAnswerRecord>> =
         repository.getAnswerRecordsByLibraryId(libraryId)
+    val dueReviewCount: LiveData<Int> = repository.getDueReviewCardCount(libraryId)
     val stats: LiveData<SupportedQuizStats> = MediatorLiveData<SupportedQuizStats>().apply {
         addSource(quizList) { quizzes ->
             value = buildSupportedStats(quizzes.orEmpty())
@@ -152,6 +155,11 @@ class QuizLibraryFeaturesViewModel(application: Application, private val library
         viewModelScope.launch {
             repository.deleteQuizLibrary(quizLibrary)
         }
+    }
+
+    suspend fun buildReviewQuizList(): List<Int> {
+        val limit = QuizStudySettings.readNewReviewCardsPerSession(getApplication())
+        return repository.buildReviewQuizList(libraryId, limit)
     }
 
     private fun buildSupportedStats(quizzes: List<Quiz>): SupportedQuizStats {
@@ -223,8 +231,14 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
     private val aiJobs = ConcurrentHashMap<AiRequestKey, Job>()
     private val aiStateLock = Any()
     private val aiStateMap = mutableMapOf<AiRequestKey, AiExplanationUiState>()
+    private val practiceReviewBaselines = ConcurrentHashMap<Int, ReviewCard>()
+    private val practiceReviewSchedulingQuizIds = ConcurrentHashMap.newKeySet<Int>()
+    private val pendingPracticeReviewRatings = ConcurrentHashMap<Int, ReviewRating>()
+    private val practiceReviewRatingMap = ConcurrentHashMap<Int, ReviewRating>()
     private val _aiStates =
         MutableLiveData<Map<AiRequestKey, AiExplanationUiState>>(emptyMap())
+    private val _practiceReviewRatings =
+        MutableLiveData<Map<Int, ReviewRating>>(emptyMap())
     private val similarQuizCache = ConcurrentHashMap<Int, List<Quiz>>()
 
     val quizList: LiveData<List<Quiz>> = repository.getQuizListByLibraryId(libraryId)
@@ -232,6 +246,7 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
     val answerRecords: LiveData<List<QuizAnswerRecord>> = repository.getAnswerRecordsByLibraryId(libraryId)
     val examSessionId: MutableLiveData<Int?> = MutableLiveData(null)
     val aiStates: LiveData<Map<AiRequestKey, AiExplanationUiState>> = _aiStates
+    val practiceReviewRatings: LiveData<Map<Int, ReviewRating>> = _practiceReviewRatings
     var examStartedAt: Long? = null
         private set
 
@@ -427,6 +442,48 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
                 )
             )
         }
+    }
+
+    fun scheduleReview(
+        quizId: Int,
+        rating: ReviewRating,
+        onScheduled: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            repository.scheduleReview(quizId, libraryId, rating)
+            onScheduled()
+        }
+    }
+
+    fun schedulePracticeReviewRating(quizId: Int, rating: ReviewRating) {
+        updatePracticeReviewRating(quizId, rating)
+        val baseline = practiceReviewBaselines[quizId]
+        if (baseline == null && quizId in practiceReviewSchedulingQuizIds) {
+            pendingPracticeReviewRatings[quizId] = rating
+            return
+        }
+        practiceReviewSchedulingQuizIds.add(quizId)
+        viewModelScope.launch {
+            val result = repository.scheduleReviewFromBaseline(
+                quizId = quizId,
+                libraryId = libraryId,
+                rating = rating,
+                baseline = baseline
+            )
+            practiceReviewBaselines.putIfAbsent(quizId, result.baseline)
+            practiceReviewSchedulingQuizIds.remove(quizId)
+            val pending = pendingPracticeReviewRatings.remove(quizId)
+            if (pending != null && pending != rating) {
+                schedulePracticeReviewRating(quizId, pending)
+            } else {
+                updatePracticeReviewRating(quizId, rating)
+            }
+        }
+    }
+
+    private fun updatePracticeReviewRating(quizId: Int, rating: ReviewRating) {
+        practiceReviewRatingMap[quizId] = rating
+        _practiceReviewRatings.value = practiceReviewRatingMap.toMap()
     }
 
     fun ensureExamSession(totalCount: Int) {

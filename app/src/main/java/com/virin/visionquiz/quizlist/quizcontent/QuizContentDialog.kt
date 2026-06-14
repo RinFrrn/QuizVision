@@ -1,25 +1,32 @@
 package com.virin.visionquiz.quizlist.quizcontent
 
-import android.app.Dialog
+import android.app.Activity
 import android.content.Context
 import android.graphics.Color as AndroidColor
-import android.graphics.drawable.ColorDrawable
-import android.view.WindowManager
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarDuration
@@ -30,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,8 +71,14 @@ import com.virin.visionquiz.util.MAX_SIMILAR_QUIZ_RESULTS
 import com.virin.visionquiz.util.QuizSimilarityIndex
 import com.virin.visionquiz.util.SimilarQuizStore
 import com.virin.visionquiz.util.convertNumToChar
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+// ---------------------------------------------------------------------------
+// Public entry points (API unchanged)
+// ---------------------------------------------------------------------------
 
 fun showQuizContentDialog(
     context: Context,
@@ -82,38 +96,99 @@ fun showQuizContentDialog(
 ) {
     if (quizzes.isEmpty()) return
 
-    val dialog = Dialog(context)
+    val activity = context as? Activity ?: return
+    val decorView = activity.window.decorView as? ViewGroup ?: return
+
+    val overlay = FrameLayout(context).apply {
+        layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
+    }
+
     val composeView = ComposeView(context).apply {
-        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         (context as? LifecycleOwner)?.let(::setViewTreeLifecycleOwner)
         (context as? ViewModelStoreOwner)?.let(::setViewTreeViewModelStoreOwner)
         (context as? SavedStateRegistryOwner)?.let(::setViewTreeSavedStateRegistryOwner)
         setContent {
             QuizContentTheme(context) {
-                QuizContentCard(
+                QuizContentBottomSheet(
                     context = context,
                     quizzes = quizzes,
                     allQuizzes = allQuizzes,
                     initialIndex = initialIndex,
-                    onDismiss = dialog::dismiss
+                    onDismiss = { (overlay.parent as? ViewGroup)?.removeView(overlay) }
                 )
             }
         }
     }
 
-    dialog.setContentView(composeView)
-    dialog.window?.apply {
-        setBackgroundDrawable(ColorDrawable(AndroidColor.TRANSPARENT))
-        addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        attributes = attributes.apply {
-            width = WindowManager.LayoutParams.MATCH_PARENT
-            height = WindowManager.LayoutParams.WRAP_CONTENT
-            dimAmount = 0.32f
-        }
-        setWindowAnimations(R.style.QuizContentDialogAnimation)
-    }
-    dialog.show()
+    overlay.addView(composeView)
+    decorView.addView(overlay)
 }
+
+// ---------------------------------------------------------------------------
+// Bottom sheet shell
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuizContentBottomSheet(
+    context: Context,
+    quizzes: List<Quiz>,
+    allQuizzes: List<Quiz>,
+    initialIndex: Int,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var visible by remember { mutableStateOf(true) }
+
+    if (visible) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                visible = false
+                onDismiss()
+            },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            tonalElevation = 6.dp,
+            dragHandle = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Spacer(Modifier.height(12.dp))
+                    Surface(
+                        modifier = Modifier.height(4.dp),
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    ) {
+                        Box(Modifier.fillMaxWidth(0.1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            },
+            contentWindowInsets = { WindowInsets(0) }
+        ) {
+            QuizContentCard(
+                context = context,
+                quizzes = quizzes,
+                allQuizzes = allQuizzes,
+                initialIndex = initialIndex,
+                onDismiss = {
+                    visible = false
+                    onDismiss()
+                }
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Main content card (shared by bottom sheet)
+// ---------------------------------------------------------------------------
 
 @Composable
 private fun QuizContentCard(
@@ -135,20 +210,36 @@ private fun QuizContentCard(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     var snackbarJob by remember { mutableStateOf<Job?>(null) }
+
+    // Similar-quiz keyword search
     var similarKeywordQuery by remember(quiz.id) { mutableStateOf("") }
     val allQuizzesById = remember(allQuizzes) { allQuizzes.associateBy(Quiz::id) }
-    val similarityIndex = remember(allQuizzes) { QuizSimilarityIndex(allQuizzes) }
-    val similarQuizzes = remember(quiz.id, similarKeywordQuery, allQuizzes) {
-        if (similarKeywordQuery.isBlank()) {
-            SimilarQuizStore
+
+    // Defer heavy index: only built when user actually types a keyword
+    var similarityIndex by remember { mutableStateOf<QuizSimilarityIndex?>(null) }
+    var similarQuizzes by remember(quiz.id) { mutableStateOf<List<Quiz>>(emptyList()) }
+    var hasAnalysis by remember(quiz.id) {
+        mutableStateOf(SimilarQuizStore.hasAnalysis(context, quiz.libraryId))
+    }
+
+    LaunchedEffect(quiz.id, similarKeywordQuery) {
+        val query = similarKeywordQuery
+        if (query.isBlank()) {
+            similarQuizzes = SimilarQuizStore
                 .getSimilarQuizIds(context, quiz.libraryId, quiz.id)
                 .mapNotNull(allQuizzesById::get)
         } else {
-            similarityIndex.findSimilar(
-                currentQuiz = quiz,
-                requiredKeywords = similarKeywordQuery,
-                maxResults = MAX_SIMILAR_QUIZ_RESULTS
-            ).map { it.quiz }
+            // Build index on background thread (only once), then search
+            val index = similarityIndex ?: withContext(Dispatchers.Default) {
+                QuizSimilarityIndex(allQuizzes)
+            }.also { similarityIndex = it }
+            similarQuizzes = withContext(Dispatchers.Default) {
+                index.findSimilar(
+                    currentQuiz = quiz,
+                    requiredKeywords = query,
+                    maxResults = MAX_SIMILAR_QUIZ_RESULTS
+                ).map { it.quiz }
+            }
         }
     }
 
@@ -181,145 +272,143 @@ private fun QuizContentCard(
         }
     }
 
-    Surface(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 24.dp)
-            .heightIn(max = 720.dp),
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp,
-        shadowElevation = 8.dp
+            .heightIn(max = 720.dp)
+            .windowInsetsPadding(WindowInsets.navigationBars)
     ) {
-        Column {
-            Column(
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 24.dp, vertical = 20.dp)
-            ) {
-                QuizHeader(
-                    quiz = quiz,
-                    positionText = if (selectedSimilarQuiz == null) {
-                        "第 ${currentIndex + 1} / ${quizzes.size} 题"
-                    } else {
-                        "相似题目"
-                    }
-                )
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    text = quiz.prompt,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 20.sp,
-                    lineHeight = 29.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(18.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Column(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .verticalScroll(scrollState)
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+        ) {
+            QuizHeader(
+                quiz = quiz,
+                positionText = if (selectedSimilarQuiz == null) {
+                    "第 ${currentIndex + 1} / ${quizzes.size} 题"
+                } else {
+                    "相似题目"
+                }
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = quiz.prompt,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 20.sp,
+                lineHeight = 29.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(18.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-                val visibleOptions = quiz.options.withIndex().filter { it.value.isNotBlank() }
-                if (visibleOptions.isNotEmpty()) {
-                    SectionLabel("选项")
-                    visibleOptions.forEach { (index, option) ->
-                        val isAnswer = index in quiz.answer
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isAnswer) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceContainer
-                                }
-                            )
-                        ) {
-                            Text(
-                                text = "${convertNumToChar(index)}. $option",
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                                color = if (isAnswer) {
-                                    MaterialTheme.colorScheme.onPrimaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface
-                                },
-                                fontSize = 16.sp,
-                                lineHeight = 23.sp,
-                                fontWeight = if (isAnswer) FontWeight.SemiBold else FontWeight.Normal
-                            )
-                        }
+            val visibleOptions = quiz.options.withIndex().filter { it.value.isNotBlank() }
+            if (visibleOptions.isNotEmpty()) {
+                SectionLabel("选项")
+                visibleOptions.forEach { (index, option) ->
+                    val isAnswer = index in quiz.answer
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isAnswer) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainer
+                            }
+                        )
+                    ) {
+                        Text(
+                            text = "${convertNumToChar(index)}. $option",
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            color = if (isAnswer) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            fontSize = 16.sp,
+                            lineHeight = 23.sp,
+                            fontWeight = if (isAnswer) FontWeight.SemiBold else FontWeight.Normal
+                        )
                     }
                 }
-
-                SectionLabel(
-                    if (quiz.inferredUiType() == QuizUiType.SUBJECTIVE) "参考答案" else "答案"
-                )
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Text(
-                        text = "答案：${quiz.answerString()}",
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Text(
-                    text = "题型：${quiz.typeString()} · 题库 ID：${quiz.libraryId}",
-                    modifier = Modifier.padding(top = 14.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall
-                )
-
-                SimilarQuizSection(
-                    quizzes = similarQuizzes,
-                    hasAnalysis = SimilarQuizStore.hasAnalysis(context, quiz.libraryId),
-                    keywordQuery = similarKeywordQuery,
-                    onKeywordQueryChange = { similarKeywordQuery = it },
-                    onQuizClick = ::openSimilarQuiz
-                )
             }
 
-            SnackbarHost(
-                hostState = snackbarHostState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            SectionLabel(
+                if (quiz.inferredUiType() == QuizUiType.SUBJECTIVE) "参考答案" else "答案"
             )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
             ) {
-                OutlinedButton(
-                    enabled = selectedSimilarQuiz == null && currentIndex > 0,
-                    onClick = {
-                        clearSimilarNavigation()
-                        currentIndex--
-                    }
-                ) {
-                    Text("上一题")
+                Text(
+                    text = "答案：${quiz.answerString()}",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Text(
+                text = "题型：${quiz.typeString()} · 题库 ID：${quiz.libraryId}",
+                modifier = Modifier.padding(top = 14.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            SimilarQuizSection(
+                quizzes = similarQuizzes,
+                hasAnalysis = hasAnalysis,
+                keywordQuery = similarKeywordQuery,
+                onKeywordQueryChange = { similarKeywordQuery = it },
+                onQuizClick = ::openSimilarQuiz
+            )
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                enabled = selectedSimilarQuiz == null && currentIndex > 0,
+                onClick = {
+                    clearSimilarNavigation()
+                    currentIndex--
                 }
-                OutlinedButton(
-                    enabled = selectedSimilarQuiz == null && currentIndex < quizzes.lastIndex,
-                    onClick = {
-                        clearSimilarNavigation()
-                        currentIndex++
-                    }
-                ) {
-                    Text("下一题")
+            ) {
+                Text("上一题")
+            }
+            OutlinedButton(
+                enabled = selectedSimilarQuiz == null && currentIndex < quizzes.lastIndex,
+                onClick = {
+                    clearSimilarNavigation()
+                    currentIndex++
                 }
-                TextButton(onClick = onDismiss) {
-                    Text("关闭")
-                }
+            ) {
+                Text("下一题")
+            }
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
             }
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Sub-composables
+// ---------------------------------------------------------------------------
 
 @Composable
 private fun QuizHeader(quiz: Quiz, positionText: String) {
@@ -450,6 +539,10 @@ private fun SimilarQuizSection(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 private fun Quiz.correctOptionsText(): String {
     val optionsText = answer.sorted().joinToString("；") { index ->
         val option = options.getOrNull(index).orEmpty()
@@ -475,16 +568,16 @@ private fun QuizContentTheme(context: Context, content: @Composable () -> Unit) 
             primaryContainer = color(R.attr.colorPrimaryContainer, AndroidColor.rgb(183, 243, 151)),
             onPrimaryContainer = color(R.attr.colorOnPrimaryContainer, AndroidColor.rgb(8, 33, 0)),
             secondaryContainer = color(R.attr.colorSecondaryContainer, AndroidColor.LTGRAY),
-            onSecondaryContainer = color(R.attr.colorOnSecondaryContainer, AndroidColor.DKGRAY),
+            onSecondaryContainer = color(R.attr.colorSecondaryContainer, AndroidColor.DKGRAY),
             tertiaryContainer = color(R.attr.colorTertiaryContainer, AndroidColor.CYAN),
             onTertiaryContainer = color(R.attr.colorOnTertiaryContainer, AndroidColor.DKGRAY),
             errorContainer = color(R.attr.colorErrorContainer, AndroidColor.rgb(255, 218, 214)),
             onErrorContainer = color(R.attr.colorOnErrorContainer, AndroidColor.rgb(65, 0, 2)),
             surface = color(R.attr.colorSurface, AndroidColor.WHITE),
             onSurface = color(R.attr.colorOnSurface, AndroidColor.BLACK),
-            surfaceContainer = color(R.attr.colorSurfaceContainer, AndroidColor.LTGRAY),
-            surfaceContainerHigh = color(R.attr.colorSurfaceContainerHigh, AndroidColor.LTGRAY),
-            surfaceContainerHighest = color(R.attr.colorSurfaceContainerHighest, AndroidColor.LTGRAY),
+            surfaceContainer = Color(0xFFEAEEE8),
+            surfaceContainerHigh = Color(0xFFE0E6DE),
+            surfaceContainerHighest = Color(0xFFD6DCD4),
             onSurfaceVariant = color(R.attr.colorOnSurfaceVariant, AndroidColor.DKGRAY),
             outline = color(R.attr.colorOutline, AndroidColor.GRAY),
             outlineVariant = color(R.attr.colorOutlineVariant, AndroidColor.LTGRAY)

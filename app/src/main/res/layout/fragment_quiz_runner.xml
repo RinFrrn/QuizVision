@@ -106,10 +106,12 @@
             android:layout_weight="1" />
 
         <com.google.android.material.divider.MaterialDivider
+            android:id="@+id/bottom_controls_divider"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
         <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/bottom_controls_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="56dp"

@@ -7,6 +7,13 @@ import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizAnswerRecord
 import com.virin.visionquiz.dao.QuizFavorite
 import com.virin.visionquiz.dao.QuizLibrary
+import com.virin.visionquiz.dao.ReviewCard
+import com.virin.visionquiz.dao.ReviewRating
+
+data class ReviewScheduleResult(
+    val baseline: ReviewCard,
+    val scheduled: ReviewCard
+)
 
 interface QuizRepository {
 
@@ -71,5 +78,26 @@ interface QuizRepository {
     suspend fun deletePracticeSession(libraryId: Int, mode: String)
 
     suspend fun deleteHistoryByRange(libraryId: Int, startTime: Long, endTime: Long)
+
+    suspend fun getDueReviewCards(libraryId: Int): List<ReviewCard>
+
+    fun getDueReviewCardCount(libraryId: Int): LiveData<Int>
+
+    suspend fun getReviewCardByQuizId(quizId: Int): ReviewCard?
+
+    suspend fun upsertReviewCard(card: ReviewCard)
+
+    suspend fun scheduleReview(quizId: Int, libraryId: Int, rating: ReviewRating): ReviewCard
+
+    suspend fun scheduleReviewFromBaseline(
+        quizId: Int,
+        libraryId: Int,
+        rating: ReviewRating,
+        baseline: ReviewCard?
+    ): ReviewScheduleResult
+
+    suspend fun getNewReviewQuizIds(libraryId: Int, limit: Int): List<Int>
+
+    suspend fun buildReviewQuizList(libraryId: Int, newCardLimit: Int): List<Int>
 
 }

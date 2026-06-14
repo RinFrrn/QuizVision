@@ -30,7 +30,9 @@ object QuizStudySettings {
     private const val KEY_EXAM_MULTIPLE_COUNT = "exam_multiple_choice_count"
     private const val KEY_EXAM_JUDGEMENT_COUNT = "exam_judgement_count"
     private const val KEY_RUNNER_TEXT_SIZE_LEVEL = "quiz_runner_text_size"
+    private const val KEY_NEW_REVIEW_CARDS_PER_SESSION = "new_review_cards_per_session"
     private const val DEFAULT_EXAM_QUESTION_COUNT = 10
+    private const val DEFAULT_NEW_REVIEW_CARDS_PER_SESSION = 20
 
     fun readOptionShuffleEnabled(
         context: Context,
@@ -119,6 +121,22 @@ object QuizStudySettings {
             .putInt(KEY_EXAM_SINGLE_COUNT, counts.singleChoice.coerceAtLeast(0))
             .putInt(KEY_EXAM_MULTIPLE_COUNT, counts.multipleChoice.coerceAtLeast(0))
             .putInt(KEY_EXAM_JUDGEMENT_COUNT, counts.judgement.coerceAtLeast(0))
+            .apply()
+    }
+
+    fun readNewReviewCardsPerSession(context: Context): Int {
+        return context.getSharedPreferences(PREFS_NAME, 0)
+            .getInt(
+                KEY_NEW_REVIEW_CARDS_PER_SESSION,
+                DEFAULT_NEW_REVIEW_CARDS_PER_SESSION
+            )
+            .coerceAtLeast(0)
+    }
+
+    fun saveNewReviewCardsPerSession(context: Context, count: Int) {
+        context.getSharedPreferences(PREFS_NAME, 0)
+            .edit()
+            .putInt(KEY_NEW_REVIEW_CARDS_PER_SESSION, count.coerceAtLeast(0))
             .apply()
     }
 

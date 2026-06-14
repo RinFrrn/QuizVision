@@ -16,9 +16,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ExamSession::class,
         QuizAnswerRecord::class,
         PracticeSession::class,
-        AiExplanationCache::class
+        AiExplanationCache::class,
+        ReviewCard::class
     ],
-    version = 6
+    version = 7
 )
 @TypeConverters(Converters::class)
 abstract class QuizDatabase : RoomDatabase() {
@@ -29,6 +30,7 @@ abstract class QuizDatabase : RoomDatabase() {
     abstract fun answerRecordDao(): QuizAnswerRecordDao
     abstract fun practiceSessionDao(): PracticeSessionDao
     abstract fun aiExplanationCacheDao(): AiExplanationCacheDao
+    abstract fun reviewCardDao(): ReviewCardDao
 
     companion object {
         private const val DB_NAME = "quizzes_database.db"
@@ -140,6 +142,29 @@ abstract class QuizDatabase : RoomDatabase() {
                 )
             }
         }
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS ReviewCard (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        quiz_id INTEGER NOT NULL,
+                        library_id INTEGER NOT NULL,
+                        due_at INTEGER NOT NULL,
+                        interval_days REAL NOT NULL,
+                        ease_factor REAL NOT NULL,
+                        review_count INTEGER NOT NULL,
+                        lapse_count INTEGER NOT NULL,
+                        last_reviewed_at INTEGER,
+                        created_at INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_ReviewCard_quiz_id ON ReviewCard(quiz_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ReviewCard_library_id ON ReviewCard(library_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ReviewCard_due_at ON ReviewCard(due_at)")
+            }
+        }
 
         @Volatile
         private var instance: QuizDatabase? = null
@@ -157,7 +182,8 @@ abstract class QuizDatabase : RoomDatabase() {
                     MIGRATION_2_3,
                     MIGRATION_3_4,
                     MIGRATION_4_5,
-                    MIGRATION_5_6
+                    MIGRATION_5_6,
+                    MIGRATION_6_7
                 )
                 .build()
         }

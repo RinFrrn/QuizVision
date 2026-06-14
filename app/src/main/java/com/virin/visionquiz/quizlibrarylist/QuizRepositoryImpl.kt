@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.LiveData
 import androidx.room.withTransaction
 import com.virin.visionquiz.dao.*
+import com.virin.visionquiz.quizstudy.SpacedRepetitionScheduler
 import com.virin.visionquiz.util.SimilarQuizStore
 
 class QuizRepositoryImpl(context: Context) : QuizRepository {
@@ -17,6 +18,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
     private val answerRecordDao: QuizAnswerRecordDao
     private val practiceSessionDao: PracticeSessionDao
     private val aiExplanationCacheDao: AiExplanationCacheDao
+    private val reviewCardDao: ReviewCardDao
 
     init {
         database = QuizDatabase.getInstance(context)
@@ -27,6 +29,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
         answerRecordDao = database.answerRecordDao()
         practiceSessionDao = database.practiceSessionDao()
         aiExplanationCacheDao = database.aiExplanationCacheDao()
+        reviewCardDao = database.reviewCardDao()
     }
 
     override suspend fun getQuizLibraryById(id: Int): QuizLibrary {
@@ -57,6 +60,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
             examSessionDao.deleteExamSessionsByLibraryId(quizLibrary.id)
             practiceSessionDao.deletePracticeSessionsByLibraryId(quizLibrary.id)
             aiExplanationCacheDao.deleteByLibraryId(quizLibrary.id)
+            reviewCardDao.deleteCardsByLibraryId(quizLibrary.id)
             quizDao.deleteQuizzesByCategoryId(quizLibrary.id)
             quizLibDao.deleteCategoryById(quizLibrary.id)
         }
@@ -106,6 +110,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
         database.withTransaction {
             favoriteDao.deleteFavoriteByQuizId(quiz.id)
             aiExplanationCacheDao.deleteByQuizId(quiz.id)
+            reviewCardDao.deleteCardByQuizId(quiz.id)
             quizDao.deleteQuiz(quiz)
         }
         SimilarQuizStore.clear(appContext, quiz.libraryId)
@@ -182,5 +187,82 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
             answerRecordDao.deleteAnswerRecordsByAnsweredRange(libraryId, startTime, endTime)
             examSessionDao.deleteExamSessionsByEndedRange(libraryId, startTime, endTime)
         }
+    }
+
+    override suspend fun getDueReviewCards(libraryId: Int): List<ReviewCard> {
+        return reviewCardDao.getDueCards(libraryId, System.currentTimeMillis())
+    }
+
+    override fun getDueReviewCardCount(libraryId: Int): LiveData<Int> {
+        return reviewCardDao.getDueCardCount(libraryId, System.currentTimeMillis())
+    }
+
+    override suspend fun getReviewCardByQuizId(quizId: Int): ReviewCard? {
+        return reviewCardDao.getCardByQuizId(quizId)
+    }
+
+    override suspend fun upsertReviewCard(card: ReviewCard) {
+        reviewCardDao.upsertCard(card)
+    }
+
+    override suspend fun scheduleReview(
+        quizId: Int,
+        libraryId: Int,
+        rating: ReviewRating
+    ): ReviewCard {
+        return scheduleReviewFromBaseline(
+            quizId = quizId,
+            libraryId = libraryId,
+            rating = rating,
+            baseline = null
+        ).scheduled
+    }
+
+    override suspend fun scheduleReviewFromBaseline(
+        quizId: Int,
+        libraryId: Int,
+        rating: ReviewRating,
+        baseline: ReviewCard?
+    ): ReviewScheduleResult {
+        return database.withTransaction {
+            val now = System.currentTimeMillis()
+            val card = baseline?.copy(quizId = quizId, libraryId = libraryId)
+                ?: reviewCardDao.getCardByQuizId(quizId)
+                ?: ReviewCard(
+                    quizId = quizId,
+                    libraryId = libraryId,
+                    dueAt = now,
+                    createdAt = now
+                )
+            val scheduled = SpacedRepetitionScheduler.schedule(card, rating, now)
+            reviewCardDao.upsertCard(scheduled)
+            ReviewScheduleResult(
+                baseline = card,
+                scheduled = scheduled
+            )
+        }
+    }
+
+    override suspend fun getNewReviewQuizIds(libraryId: Int, limit: Int): List<Int> {
+        if (limit <= 0) return emptyList()
+        val allSupportedQuizIds = quizDao.getQuizsByCategoryOnce(libraryId)
+            .filter { it.isSupportedStudyType() }
+            .map { it.id }
+        val existingCardQuizIds = reviewCardDao.getReviewQuizIds(libraryId)
+        return SpacedRepetitionScheduler.pickNewCards(
+            allQuizIds = allSupportedQuizIds,
+            existingCardQuizIds = existingCardQuizIds,
+            limit = limit
+        )
+    }
+
+    override suspend fun buildReviewQuizList(libraryId: Int, newCardLimit: Int): List<Int> {
+        val dueCards = getDueReviewCards(libraryId)
+        val newQuizIds = getNewReviewQuizIds(libraryId, newCardLimit)
+        return SpacedRepetitionScheduler.buildReviewSession(
+            dueCards = dueCards,
+            newQuizIds = newQuizIds,
+            newCardLimit = newCardLimit
+        )
     }
 }

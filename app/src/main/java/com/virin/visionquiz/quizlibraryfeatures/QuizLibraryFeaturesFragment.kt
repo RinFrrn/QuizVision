@@ -168,6 +168,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         }
 
         val features = mutableListOf(
+            StudyFeature("间隔复习", "暂无待复习", R.drawable.icon_history_edu_24px, FeatureAction.REVIEW),
             StudyFeature("顺序背题", "按题库顺序练习支持题型", R.drawable.icon_list_arrow_24px, FeatureAction.ORDERED_PRACTICE),
             StudyFeature("随机背题", "随机顺序练习支持题型", R.drawable.icon_shuffle_24px, FeatureAction.RANDOM_PRACTICE),
             StudyFeature("模拟考试", "按题型配置数量并随机组卷", R.drawable.icon_science_24px, FeatureAction.EXAM),
@@ -214,6 +215,12 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         }
         viewModel.answerStats.observe(viewLifecycleOwner) { stats ->
             adapter.updateAnswerStats(stats)
+        }
+        viewModel.dueReviewCount.observe(viewLifecycleOwner) { count ->
+            adapter.updateFeatureDescription(
+                FeatureAction.REVIEW,
+                if (count > 0) "今日待复习 $count 题" else "暂无待复习"
+            )
         }
         viewModel.stats.observe(viewLifecycleOwner) { stats ->
             binding.libraryStatsText.text =
@@ -626,6 +633,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
     private fun handleFeatureClick(feature: StudyFeature) {
         val bundle = bundleOf(LIBRARY_ID to libraryId)
         when (feature.action) {
+            FeatureAction.REVIEW -> openReviewSession()
             FeatureAction.ORDERED_PRACTICE -> findNavController().navigate(
                 R.id.QuizRunnerFragment,
                 bundleOf(
@@ -665,6 +673,27 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         }
     }
 
+    private fun openReviewSession() {
+        runIO {
+            val quizIds = viewModel.buildReviewQuizList()
+            runMain {
+                if (_binding == null) return@runMain
+                if (quizIds.isEmpty()) {
+                    Toast.makeText(requireContext(), "暂无待复习题目", Toast.LENGTH_SHORT).show()
+                } else {
+                    findNavController().navigate(
+                        R.id.QuizRunnerFragment,
+                        QuizRunnerFragment.arguments(
+                            libraryId = libraryId,
+                            mode = QuizStudyMode.REVIEW,
+                            quizIds = quizIds.toIntArray()
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     data class StudyFeature(
         val title: String,
         val description: String,
@@ -673,6 +702,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
     )
 
     enum class FeatureAction {
+        REVIEW,
         ORDERED_PRACTICE,
         RANDOM_PRACTICE,
         EXAM,

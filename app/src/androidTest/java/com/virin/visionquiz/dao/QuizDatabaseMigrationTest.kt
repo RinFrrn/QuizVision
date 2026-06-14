@@ -49,6 +49,29 @@ class QuizDatabaseMigrationTest {
         migrated.close()
     }
 
+    @Test
+    fun migrate6To7CreatesReviewCardTableAndIndexes() {
+        openDatabase(version = 6).close()
+        val migrated = openDatabase(version = 7)
+        migrated.writableDatabase.query(
+            "SELECT COUNT(*) FROM sqlite_master " +
+                "WHERE type = 'table' AND name = 'ReviewCard'"
+        ).use { cursor ->
+            cursor.moveToFirst()
+            assertEquals(1, cursor.getInt(0))
+        }
+        migrated.writableDatabase.query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN (" +
+                "'index_ReviewCard_quiz_id'," +
+                "'index_ReviewCard_library_id'," +
+                "'index_ReviewCard_due_at')"
+        ).use { cursor ->
+            cursor.moveToFirst()
+            assertEquals(3, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
     private fun openDatabase(version: Int): SupportSQLiteOpenHelper {
         val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -62,6 +85,9 @@ class QuizDatabaseMigrationTest {
             ) {
                 if (oldVersion == 5 && newVersion == 6) {
                     QuizDatabase.MIGRATION_5_6.migrate(db)
+                }
+                if (oldVersion == 6 && newVersion == 7) {
+                    QuizDatabase.MIGRATION_6_7.migrate(db)
                 }
             }
         }

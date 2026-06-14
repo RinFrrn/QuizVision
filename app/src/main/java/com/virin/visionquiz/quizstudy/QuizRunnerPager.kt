@@ -4,17 +4,29 @@ import android.graphics.Typeface
 import android.text.method.LinkMovementMethod
 import android.util.TypedValue
 import android.widget.TextView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
@@ -33,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,15 +60,20 @@ import com.virin.visionquiz.ai.AiExplanationType
 import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizStudyMode
 import com.virin.visionquiz.dao.QuizUiType
+import com.virin.visionquiz.dao.ReviewRating
 import com.virin.visionquiz.dao.answerString
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.util.convertNumToChar
 import kotlinx.coroutines.flow.distinctUntilChanged
 
+private val IosEaseOut = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+private val IosEaseIn = CubicBezierEasing(0.32f, 0f, 0.67f, 0f)
+
 internal data class QuizRunnerPagerState(
     val currentPage: Int = 0,
     val quizzes: List<Quiz> = emptyList(),
     val revision: Int = 0,
+    val userScrollEnabled: Boolean = true,
     val colors: QuizRunnerComposeColors = QuizRunnerComposeColors(),
     val textSize: QuizRunnerComposeTextSize = QuizRunnerComposeTextSize()
 )
@@ -71,6 +89,8 @@ internal data class QuizRunnerPageState(
     val examSummary: String?,
     val historySummary: String?,
     val historyDetail: String?,
+    val showReviewRating: Boolean = false,
+    val practiceReviewRating: ReviewRating? = null,
     val aiEnabled: Boolean,
     val aiConfigComplete: Boolean,
     val quickAiState: AiExplanationUiState,
@@ -118,6 +138,7 @@ internal data class QuizRunnerPagerCallbacks(
     val onPageSettled: (Int) -> Unit,
     val onOptionClick: (page: Int, optionIndex: Int) -> Unit,
     val onSubmit: (Int) -> Unit,
+    val onReviewRating: (page: Int, rating: ReviewRating) -> Unit,
     val onGenerateAi: (page: Int, type: AiExplanationType, forceRefresh: Boolean) -> Unit,
     val onOpenAiSettings: () -> Unit,
     val onRequestContextualSuggestions: (page: Int) -> Unit,
@@ -180,6 +201,7 @@ internal fun QuizRunnerPager(
         HorizontalPager(
             state = pagerState,
             key = { state.quizzes[it].id },
+            userScrollEnabled = state.userScrollEnabled,
             beyondViewportPageCount = 1,
             modifier = Modifier
                 .fillMaxSize()
@@ -205,124 +227,271 @@ private fun QuizRunnerPage(
     textSize: QuizRunnerComposeTextSize,
     callbacks: QuizRunnerPagerCallbacks
 ) {
-    Column(
+    val animationSpec = tween<androidx.compose.ui.unit.Dp>(
+        durationMillis = if (state.showReviewRating) 260 else 190,
+        easing = if (state.showReviewRating) IosEaseOut else IosEaseIn
+    )
+    val bottomContentPadding by animateDpAsState(
+        targetValue = if (state.showReviewRating) 174.dp else 12.dp,
+        animationSpec = animationSpec,
+        label = "review_rating_bottom_padding"
+    )
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        state.examSummary?.let {
-            InfoCard(
-                text = it,
-                background = MaterialTheme.colorScheme.primaryContainer,
-                foreground = MaterialTheme.colorScheme.onPrimaryContainer,
-                textSizeSp = textSize.resultSp
-            )
-            Spacer(Modifier.height(12.dp))
-        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = 16.dp,
+                    top = 12.dp,
+                    end = 16.dp,
+                    bottom = bottomContentPadding
+                )
+        ) {
+            state.examSummary?.let {
+                InfoCard(
+                    text = it,
+                    background = MaterialTheme.colorScheme.primaryContainer,
+                    foreground = MaterialTheme.colorScheme.onPrimaryContainer,
+                    textSizeSp = textSize.resultSp
+                )
+                Spacer(Modifier.height(12.dp))
+            }
 
-        Text(
-            text = state.quiz.prompt,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = textSize.promptSp.sp,
-            fontWeight = FontWeight.Bold,
-            lineHeight = (textSize.promptSp + 5f).sp,
-            modifier = Modifier.padding(top = 12.dp)
-        )
-        HorizontalDivider(Modifier.padding(top = 16.dp))
-        Spacer(Modifier.height(18.dp))
-
-        state.optionOrder.forEachIndexed { displayIndex, optionIndex ->
-            QuizOption(
-                label = "${convertNumToChar(displayIndex)}. ${state.quiz.options[optionIndex]}",
-                selected = optionIndex in state.selection,
-                correct = optionIndex in state.quiz.answer,
-                revealAnswer = state.answerVisible || state.reviewMode,
-                enabled = !state.reviewMode &&
-                    !(state.mode != QuizStudyMode.EXAM && state.answerVisible),
-                type = state.quiz.inferredUiType(),
-                textSizeSp = textSize.optionSp,
-                onClick = { callbacks.onOptionClick(page, optionIndex) }
-            )
-            Spacer(Modifier.height(10.dp))
-        }
-
-        if (state.answerVisible || state.reviewMode) {
-            Spacer(Modifier.height(6.dp))
             Text(
-                text = state.resultText,
-                fontSize = textSize.resultSp.sp,
+                text = state.quiz.prompt,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = textSize.promptSp.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (state.quiz.isCorrectAnswer(state.selection)) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.error
-                }
+                lineHeight = (textSize.promptSp + 5f).sp,
+                modifier = Modifier.padding(top = 12.dp)
             )
-            Spacer(Modifier.height(10.dp))
-            InfoCard(
-                text = "答案：${state.quiz.answerString()}",
-                background = MaterialTheme.colorScheme.secondaryContainer,
-                foreground = MaterialTheme.colorScheme.onSecondaryContainer,
-                textSizeSp = textSize.resultSp
-            )
-        }
+            HorizontalDivider(Modifier.padding(top = 16.dp))
+            Spacer(Modifier.height(18.dp))
 
-        if (state.aiEnabled) {
-            Spacer(Modifier.height(14.dp))
-            AiSection(state, page, textSize, callbacks)
-        }
+            state.optionOrder.forEachIndexed { displayIndex, optionIndex ->
+                QuizOption(
+                    label = "${convertNumToChar(displayIndex)}. ${state.quiz.options[optionIndex]}",
+                    selected = optionIndex in state.selection,
+                    correct = optionIndex in state.quiz.answer,
+                    revealAnswer = state.answerVisible || state.reviewMode,
+                    enabled = !state.reviewMode &&
+                        !(state.mode != QuizStudyMode.EXAM && state.answerVisible),
+                    type = state.quiz.inferredUiType(),
+                    textSizeSp = textSize.optionSp,
+                    onClick = { callbacks.onOptionClick(page, optionIndex) }
+                )
+                Spacer(Modifier.height(10.dp))
+            }
 
-        state.historySummary?.let { summary ->
-            Spacer(Modifier.height(12.dp))
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer
-                ),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant,
-                        RoundedCornerShape(12.dp)
-                    )
-            ) {
-                Column(Modifier.padding(14.dp)) {
+            if (state.answerVisible || state.reviewMode) {
+                Spacer(Modifier.height(6.dp))
+                if (!state.showReviewRating) {
                     Text(
-                        summary,
+                        text = state.resultText,
+                        fontSize = textSize.resultSp.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (state.quiz.isCorrectAnswer(state.selection)) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+                InfoCard(
+                    text = "答案：${state.quiz.answerString()}",
+                    background = MaterialTheme.colorScheme.secondaryContainer,
+                    foreground = MaterialTheme.colorScheme.onSecondaryContainer,
+                    textSizeSp = textSize.resultSp
+                )
+                state.practiceReviewRating?.let { rating ->
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "本题复习评分",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = textSize.supportSp.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    state.historyDetail?.let {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            it,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = textSize.supportSp.sp,
-                            lineHeight = (textSize.supportSp + 4f).sp
+                    Spacer(Modifier.height(8.dp))
+                    ReviewRatingBar(
+                        page = page,
+                        callbacks = callbacks,
+                        selectedRating = rating
+                    )
+                }
+            }
+
+            if (state.aiEnabled) {
+                Spacer(Modifier.height(14.dp))
+                AiSection(state, page, textSize, callbacks)
+            }
+
+            state.historySummary?.let { summary ->
+                Spacer(Modifier.height(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant,
+                            RoundedCornerShape(12.dp)
                         )
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(
+                            summary,
+                            fontSize = textSize.supportSp.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        state.historyDetail?.let {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                it,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = textSize.supportSp.sp,
+                                lineHeight = (textSize.supportSp + 4f).sp
+                            )
+                        }
                     }
                 }
             }
+
+            if (state.submitVisible) {
+                Spacer(Modifier.height(18.dp))
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Button(
+                        onClick = { callbacks.onSubmit(page) },
+                        enabled = state.submitEnabled,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    ) {
+                        Text(state.submitLabel)
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
         }
 
-        if (state.submitVisible) {
-            Spacer(Modifier.height(18.dp))
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Button(
-                    onClick = { callbacks.onSubmit(page) },
-                    enabled = state.submitEnabled,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                ) {
-                    Text(state.submitLabel)
+        AnimatedVisibility(
+            visible = state.showReviewRating,
+            enter = fadeIn(
+                animationSpec = tween(durationMillis = 220, easing = IosEaseOut)
+            ) +
+                slideInVertically(
+                    animationSpec = tween(durationMillis = 260, easing = IosEaseOut),
+                    initialOffsetY = { it / 2 }
+                ),
+            exit = fadeOut(
+                animationSpec = tween(durationMillis = 150, easing = IosEaseIn)
+            ) +
+                slideOutVertically(
+                    animationSpec = tween(durationMillis = 190, easing = IosEaseIn),
+                    targetOffsetY = { it / 2 }
+                ),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            ReviewRatingDock(
+                page = page,
+                callbacks = callbacks
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReviewRatingDock(
+    page: Int,
+    callbacks: QuizRunnerPagerCallbacks,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 12.dp)
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text(
+                text = "给本题记忆打分",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "评分后自动进入下一题",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+            Spacer(Modifier.height(10.dp))
+            ReviewRatingBar(
+                page = page,
+                callbacks = callbacks
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReviewRatingBar(
+    page: Int,
+    callbacks: QuizRunnerPagerCallbacks,
+    selectedRating: ReviewRating? = null
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        ReviewRating.values().forEach { rating ->
+            val (container, content) = when (rating) {
+                ReviewRating.FORGOT ->
+                    MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+                ReviewRating.HARD ->
+                    Color(0xFFFFDDB3) to Color(0xFF2B1700)
+                ReviewRating.GOOD ->
+                    MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+                ReviewRating.EASY ->
+                    MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
+            }
+            Button(
+                onClick = { callbacks.onReviewRating(page, rating) },
+                shape = RoundedCornerShape(12.dp),
+                border = if (selectedRating == rating) {
+                    BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                } else {
+                    null
+                },
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = container,
+                    contentColor = content
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(68.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(rating.emoji, fontSize = 24.sp, lineHeight = 26.sp)
+                    Spacer(Modifier.height(2.dp))
+                    Text(rating.label, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
     }
 }
 

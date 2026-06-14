@@ -183,3 +183,46 @@ interface AiExplanationCacheDao {
     @Query("DELETE FROM AiExplanationCache")
     suspend fun clearAll()
 }
+
+@Dao
+interface ReviewCardDao {
+    @Query(
+        """
+        SELECT * FROM ReviewCard
+        WHERE library_id = :libraryId AND due_at <= :now
+        ORDER BY due_at ASC, id ASC
+        """
+    )
+    suspend fun getDueCards(libraryId: Int, now: Long): List<ReviewCard>
+
+    @Query("SELECT * FROM ReviewCard WHERE quiz_id = :quizId LIMIT 1")
+    suspend fun getCardByQuizId(quizId: Int): ReviewCard?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCard(card: ReviewCard)
+
+    @Query("SELECT COUNT(*) FROM ReviewCard WHERE library_id = :libraryId AND due_at <= :now")
+    fun getDueCardCount(libraryId: Int, now: Long): LiveData<Int>
+
+    @Query(
+        """
+        SELECT id FROM Quiz
+        WHERE library_id = :libraryId
+          AND id NOT IN (
+              SELECT quiz_id FROM ReviewCard WHERE library_id = :libraryId
+          )
+        ORDER BY id ASC
+        LIMIT :limit
+        """
+    )
+    suspend fun getNewQuizIdsNotInReview(libraryId: Int, limit: Int): List<Int>
+
+    @Query("SELECT quiz_id FROM ReviewCard WHERE library_id = :libraryId")
+    suspend fun getReviewQuizIds(libraryId: Int): List<Int>
+
+    @Query("DELETE FROM ReviewCard WHERE quiz_id = :quizId")
+    suspend fun deleteCardByQuizId(quizId: Int)
+
+    @Query("DELETE FROM ReviewCard WHERE library_id = :libraryId")
+    suspend fun deleteCardsByLibraryId(libraryId: Int)
+}

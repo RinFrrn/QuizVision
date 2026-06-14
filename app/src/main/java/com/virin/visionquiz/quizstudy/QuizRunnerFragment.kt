@@ -60,6 +60,7 @@ import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizAnswerRecord
 import com.virin.visionquiz.dao.QuizStudyMode
 import com.virin.visionquiz.dao.QuizUiType
+import com.virin.visionquiz.dao.ReviewRating
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.dao.isSupportedStudyType
 import com.virin.visionquiz.databinding.FragmentQuizRunnerBinding
@@ -101,6 +102,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
     private val practiceAnswers = linkedMapOf<Int, Set<Int>>()
     private val practiceAnswerResults = linkedMapOf<Int, Boolean>()
     private val recordedPracticeQuizIds = mutableSetOf<Int>()
+    private val reviewRatedQuizIds = mutableSetOf<Int>()
     private var favoriteIds: Set<Int> = emptySet()
     private var hasPreparedQuizList = false
     private var practiceSessionId = 0
@@ -177,7 +179,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         binding.nextButton.setOnClickListener { goToQuestion(currentIndex + 1) }
         binding.showAnswerButton.setOnClickListener {
             val quiz = quizzes.getOrNull(currentIndex) ?: return@setOnClickListener
-            val isSubmitted = mode != QuizStudyMode.EXAM && recordedPracticeQuizIds.contains(quiz.id)
+            val isSubmitted = isPracticeSessionMode() && recordedPracticeQuizIds.contains(quiz.id)
             if (isSubmitted) {
                 showSimilarQuizPanel()
             } else {
@@ -215,6 +217,12 @@ class QuizRunnerFragment : BaseQuizFragment() {
             maybeAutoRequestContextualSuggestions()
             aiTrigger.value++
         }
+        viewModel.practiceReviewRatings.observe(viewLifecycleOwner) { ratings ->
+            val currentQuizId = quizzes.getOrNull(currentIndex)?.id ?: return@observe
+            if (ratings.orEmpty().containsKey(currentQuizId)) {
+                refreshPagerState()
+            }
+        }
     }
 
     private fun applyBottomInsets() {
@@ -225,7 +233,11 @@ class QuizRunnerFragment : BaseQuizFragment() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             val navigationBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
             val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-            val bottomInset = if (imeBottom > 0) imeBottom else navigationBottom
+            val bottomInset = when {
+                imeBottom > 0 -> imeBottom
+                mode == QuizStudyMode.REVIEW -> 0
+                else -> navigationBottom
+            }
             binding.contentGroup.setPadding(
                 basePaddingLeft,
                 basePaddingTop,
@@ -249,6 +261,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
                     onPageSettled = ::onPagerPageSettled,
                     onOptionClick = ::onPagerOptionClick,
                     onSubmit = ::onPagerSubmit,
+                    onReviewRating = ::onPagerReviewRating,
                     onGenerateAi = ::onPagerGenerateAi,
                     onOpenAiSettings = ::openAiSettings,
                     onRequestContextualSuggestions = ::onPagerContextualSuggestionsRequest,
@@ -273,6 +286,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         outState.putBoolean(STATE_REVIEW_MODE, reviewMode)
         outState.putIntArray(STATE_QUIZ_ORDER_IDS, quizzes.map { it.id }.toIntArray())
         outState.putIntArray(STATE_RECORDED_PRACTICE_IDS, recordedPracticeQuizIds.toIntArray())
+        outState.putIntArray(STATE_REVIEW_RATED_IDS, reviewRatedQuizIds.toIntArray())
         outState.putIntArray(
             STATE_PRACTICE_ANSWER_RESULTS,
             practiceAnswerResults.flatMap { (quizId, isCorrect) ->
@@ -346,6 +360,8 @@ class QuizRunnerFragment : BaseQuizFragment() {
         examAutoSubmitted = savedInstanceState.getBoolean(STATE_EXAM_AUTO_SUBMITTED, false)
         recordedPracticeQuizIds +=
             savedInstanceState.getIntArray(STATE_RECORDED_PRACTICE_IDS)?.toList().orEmpty()
+        reviewRatedQuizIds +=
+            savedInstanceState.getIntArray(STATE_REVIEW_RATED_IDS)?.toList().orEmpty()
         restorePracticeAnswerResults(savedInstanceState)
         practiceAnswers.putAll(decodeAnswerMap(savedInstanceState, STATE_PRACTICE_ANSWER_SELECTIONS))
         examAnswers.putAll(decodeAnswerMap(savedInstanceState, STATE_EXAM_ANSWER_SELECTIONS))
@@ -391,7 +407,14 @@ class QuizRunnerFragment : BaseQuizFragment() {
         supportedQuizSource = supported
         val selectedIds = requireArguments().getIntArray(QUIZ_IDS)?.toList().orEmpty()
         val restoredOrder = restoredQuizOrderIds?.toList().orEmpty()
-        if (mode != QuizStudyMode.EXAM) {
+        if (mode == QuizStudyMode.REVIEW) {
+            val orderIds = restoredOrder.takeIf { it.isNotEmpty() } ?: selectedIds
+            val byId = supported.associateBy { it.id }
+            quizzes = orderIds.mapNotNull { byId[it] }
+            renderPreparedQuizList()
+            return
+        }
+        if (isPracticeSessionMode()) {
             if (restoredOrder.isNotEmpty()) {
                 val byId = supported.associateBy { it.id }
                 quizzes = restoredOrder.mapNotNull { byId[it] }
@@ -429,6 +452,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         practiceAnswers.clear()
         practiceAnswerResults.clear()
         recordedPracticeQuizIds.clear()
+        reviewRatedQuizIds.clear()
         session?.let {
             practiceAnswers.putAll(it.practiceAnswers.decodeAnswerMapText())
             practiceAnswerResults.putAll(it.practiceResults.decodeResultMapText())
@@ -499,7 +523,9 @@ class QuizRunnerFragment : BaseQuizFragment() {
         stopTimer()
         if (mode != QuizStudyMode.EXAM && timerStartedAt > 0L && timerPausedAt <= 0L) {
             timerPausedAt = System.currentTimeMillis()
-            persistPracticeSession()
+            if (isPracticeSessionMode()) {
+                persistPracticeSession()
+            }
         }
     }
 
@@ -510,7 +536,9 @@ class QuizRunnerFragment : BaseQuizFragment() {
             timerStartedAt += pausedDuration
             practiceSessionStartedAt = timerStartedAt
             timerPausedAt = 0L
-            persistPracticeSession()
+            if (isPracticeSessionMode()) {
+                persistPracticeSession()
+            }
         }
         startTimerIfNeeded()
     }
@@ -569,9 +597,18 @@ class QuizRunnerFragment : BaseQuizFragment() {
         val type = quiz.inferredUiType()
         binding.progressText.text = "第 ${currentIndex + 1} / ${quizzes.size} 题"
         binding.typeText.text = type.label
+        applyTypeStyle(type)
+        binding.bottomControlsContainer.isVisible = mode != QuizStudyMode.REVIEW
+        binding.bottomControlsDivider.isVisible = mode != QuizStudyMode.REVIEW
+        binding.previousButton.isVisible = mode != QuizStudyMode.REVIEW
+        binding.nextButton.isVisible = mode != QuizStudyMode.REVIEW
+        binding.answerCardButton.isVisible = mode != QuizStudyMode.REVIEW
         binding.previousButton.isEnabled = currentIndex > 0
         binding.nextButton.isEnabled = currentIndex < quizzes.lastIndex
-        val isPracticeSubmitted = mode != QuizStudyMode.EXAM && recordedPracticeQuizIds.contains(quiz.id)
+        val isPracticeSubmitted =
+            isPracticeSessionMode() && recordedPracticeQuizIds.contains(quiz.id)
+        val isReviewSubmitted =
+            mode == QuizStudyMode.REVIEW && recordedPracticeQuizIds.contains(quiz.id)
         val showAnswerSection = mode != QuizStudyMode.EXAM || reviewMode
         binding.showAnswerButton.isVisible = showAnswerSection
         if (isPracticeSubmitted) {
@@ -579,9 +616,9 @@ class QuizRunnerFragment : BaseQuizFragment() {
             binding.showAnswerButton.setIconResource(R.drawable.icon_familiar_face_and_zone_24px)
             binding.showAnswerButton.isEnabled = true
         } else {
-            binding.showAnswerButton.text = "看答案"
+            binding.showAnswerButton.text = if (isReviewSubmitted) "已看答案" else "看答案"
             binding.showAnswerButton.setIconResource(R.drawable.icon_person_raised_hand_24px)
-            binding.showAnswerButton.isEnabled = showAnswerSection
+            binding.showAnswerButton.isEnabled = showAnswerSection && !isReviewSubmitted
         }
         updateFavoriteButton()
         refreshPagerState()
@@ -595,6 +632,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
             currentPage = currentIndex.coerceIn(0, quizzes.lastIndex.coerceAtLeast(0)),
             quizzes = quizzes,
             revision = pagerRevision,
+            userScrollEnabled = mode != QuizStudyMode.REVIEW,
             colors = resolveCachedComposeColors(),
             textSize = QuizRunnerComposeTextSize(
                 promptSp = runnerTextSize.promptSp,
@@ -635,8 +673,12 @@ class QuizRunnerFragment : BaseQuizFragment() {
             quizId = quiz.id,
             submittedPracticeQuizIds = recordedPracticeQuizIds
         )
-        val isPracticeSubmitted =
-            mode != QuizStudyMode.EXAM && quiz.id in recordedPracticeQuizIds
+        val isSubmitted = mode != QuizStudyMode.EXAM && quiz.id in recordedPracticeQuizIds
+        val isPracticeSubmitted = isPracticeSessionMode() && quiz.id in recordedPracticeQuizIds
+        val showReviewRating =
+            mode == QuizStudyMode.REVIEW && isSubmitted && quiz.id !in reviewRatedQuizIds
+        val practiceReviewRating = viewModel.practiceReviewRatings.value.orEmpty()[quiz.id]
+            .takeIf { isPracticeSessionMode() && pageAnswerVisible }
         val isLastQuestion = index == quizzes.lastIndex
         val history = buildPracticeHistoryText(quiz, pageAnswerVisible)
         return QuizRunnerPageState(
@@ -652,6 +694,8 @@ class QuizRunnerFragment : BaseQuizFragment() {
             },
             historySummary = history?.first,
             historyDetail = history?.second,
+            showReviewRating = showReviewRating,
+            practiceReviewRating = practiceReviewRating,
             aiEnabled = pageAnswerVisible && config.enabled,
             aiConfigComplete = config.isComplete(),
             quickAiState = aiStates[
@@ -680,17 +724,20 @@ class QuizRunnerFragment : BaseQuizFragment() {
             currentQuizId = quiz.id,
             submitVisible = when {
                 reviewMode -> false
+                mode == QuizStudyMode.REVIEW -> !isSubmitted
                 mode == QuizStudyMode.EXAM -> isLastQuestion
                 isPracticeSubmitted -> isLastQuestion
                 else -> true
             },
             submitEnabled = when {
                 reviewMode -> false
+                mode == QuizStudyMode.REVIEW -> !isSubmitted
                 mode == QuizStudyMode.EXAM -> true
                 isPracticeSubmitted -> isLastQuestion
                 else -> true
             },
             submitLabel = when {
+                mode == QuizStudyMode.REVIEW -> "提交"
                 mode == QuizStudyMode.EXAM -> "交卷"
                 isPracticeSubmitted && isLastQuestion -> "交卷"
                 else -> "提交"
@@ -806,6 +853,35 @@ class QuizRunnerFragment : BaseQuizFragment() {
         }
     }
 
+    private fun onPagerReviewRating(page: Int, rating: ReviewRating) {
+        if (!moveToPagerPage(page)) return
+        if (isPracticeSessionMode()) {
+            val quiz = quizzes.getOrNull(currentIndex) ?: return
+            if (quiz.id in recordedPracticeQuizIds) {
+                viewModel.schedulePracticeReviewRating(quiz.id, rating)
+            }
+            return
+        }
+        if (mode != QuizStudyMode.REVIEW) return
+        val quiz = quizzes.getOrNull(currentIndex) ?: return
+        if (quiz.id !in recordedPracticeQuizIds || !reviewRatedQuizIds.add(quiz.id)) return
+        render()
+        viewModel.scheduleReview(quiz.id, rating) {
+            timerHandler.postDelayed(
+                {
+                    if (_binding == null || mode != QuizStudyMode.REVIEW) return@postDelayed
+                    if (currentIndex < quizzes.lastIndex) {
+                        goToQuestion(currentIndex + 1)
+                    } else {
+                        Toast.makeText(requireContext(), "本次复习完成", Toast.LENGTH_SHORT).show()
+                        findNavController().popBackStack()
+                    }
+                },
+                REVIEW_ADVANCE_DELAY_MS
+            )
+        }
+    }
+
     private fun onPagerGenerateAi(
         page: Int,
         type: AiExplanationType,
@@ -852,9 +928,11 @@ class QuizRunnerFragment : BaseQuizFragment() {
                     isChecked = practiceAnswerSoundEnabled
                     setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
                 }
-            binding.toolbar.menu.add(Menu.NONE, MENU_RESET_PRACTICE, Menu.NONE, "重置本次背题")
-                .setIcon(R.drawable.round_delete_24)
-                .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+            if (isPracticeSessionMode()) {
+                binding.toolbar.menu.add(Menu.NONE, MENU_RESET_PRACTICE, Menu.NONE, "重置本次背题")
+                    .setIcon(R.drawable.round_delete_24)
+                    .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+            }
         }
         binding.toolbar.menu.add(Menu.NONE, MENU_AI_SETTINGS, Menu.NONE, getString(R.string.ai_settings_title))
             .setIcon(R.drawable.icon_science_24px)
@@ -1140,12 +1218,18 @@ class QuizRunnerFragment : BaseQuizFragment() {
         practiceAnswers.clear()
         practiceAnswerResults.clear()
         recordedPracticeQuizIds.clear()
+        reviewRatedQuizIds.clear()
         quizzes = buildFreshPracticeOrder(supportedQuizSource)
         renderPreparedQuizList()
         persistPracticeSession()
         toastMessage?.let {
             Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun isPracticeSessionMode(): Boolean {
+        return mode == QuizStudyMode.ORDERED_PRACTICE ||
+            mode == QuizStudyMode.RANDOM_PRACTICE
     }
 
     private fun shouldAutoSubmitPractice(type: QuizUiType): Boolean {
@@ -1156,7 +1240,10 @@ class QuizRunnerFragment : BaseQuizFragment() {
 
     private fun handleSubmit() {
         val quiz = quizzes.getOrNull(currentIndex) ?: return
-        if (mode != QuizStudyMode.EXAM && recordedPracticeQuizIds.contains(quiz.id)) {
+        if (mode == QuizStudyMode.REVIEW && recordedPracticeQuizIds.contains(quiz.id)) {
+            return
+        }
+        if (isPracticeSessionMode() && recordedPracticeQuizIds.contains(quiz.id)) {
             if (currentIndex == quizzes.lastIndex) {
                 confirmFinishPracticeSession()
             }
@@ -1189,9 +1276,18 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 isCorrect = isCorrect,
                 mode = mode
             )
+            scheduleDefaultPracticeReviewRating(quiz.id, isCorrect)
         }
         render()
         persistPracticeSession()
+    }
+
+    private fun scheduleDefaultPracticeReviewRating(quizId: Int, isCorrect: Boolean) {
+        if (!isPracticeSessionMode()) return
+        viewModel.schedulePracticeReviewRating(
+            quizId = quizId,
+            rating = PracticeReviewRatingPolicy.defaultRatingForPracticeAnswer(isCorrect)
+        )
     }
 
     private fun playPracticeAnswerTone(isCorrect: Boolean) {
@@ -1282,6 +1378,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 isCorrect = isCorrect,
                 mode = mode
             )
+            scheduleDefaultPracticeReviewRating(quiz.id, isCorrect)
         }
         render()
         persistPracticeSession()
@@ -1701,13 +1798,13 @@ class QuizRunnerFragment : BaseQuizFragment() {
     }
 
     private fun persistPracticeSession() {
-        if (mode == QuizStudyMode.EXAM || quizzes.isEmpty()) return
+        if (!isPracticeSessionMode() || quizzes.isEmpty()) return
         timerHandler.removeCallbacks(practicePersistRunnable)
         timerHandler.postDelayed(practicePersistRunnable, PRACTICE_PERSIST_DEBOUNCE_MS)
     }
 
     private fun flushPracticePersist() {
-        if (mode == QuizStudyMode.EXAM || quizzes.isEmpty()) return
+        if (!isPracticeSessionMode() || quizzes.isEmpty()) return
         val now = System.currentTimeMillis()
         val startedAt = when {
             timerStartedAt > 0L -> timerStartedAt
@@ -1749,6 +1846,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         private const val PRACTICE_CORRECT_SOUND_DURATION_MS = 150
         private const val PRACTICE_WRONG_SOUND_DURATION_MS = 220
         private const val TIMER_TICK_INTERVAL_MS = 1_000L
+        private const val REVIEW_ADVANCE_DELAY_MS = 500L
         private const val ANSWER_CARD_DEFAULT_SPAN_COUNT = 5
         private const val PRACTICE_PERSIST_DEBOUNCE_MS = 250L
         private const val ANSWER_CARD_MIN_CELL_WIDTH_DP = 48f
@@ -1760,6 +1858,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         private const val STATE_REVIEW_MODE = "state_review_mode"
         private const val STATE_QUIZ_ORDER_IDS = "state_quiz_order_ids"
         private const val STATE_RECORDED_PRACTICE_IDS = "state_recorded_practice_ids"
+        private const val STATE_REVIEW_RATED_IDS = "state_review_rated_ids"
         private const val STATE_PRACTICE_ANSWER_RESULTS = "state_practice_answer_results"
         private const val STATE_PRACTICE_ANSWER_SELECTIONS = "state_practice_answer_selections"
         private const val STATE_EXAM_ANSWER_SELECTIONS = "state_exam_answer_selections"

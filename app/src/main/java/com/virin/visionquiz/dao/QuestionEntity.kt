@@ -129,6 +129,7 @@ data class AiExplanationCache(
 enum class QuizStudyMode(val value: String, val label: String) {
     ORDERED_PRACTICE("ordered_practice", "顺序背题"),
     RANDOM_PRACTICE("random_practice", "随机背题"),
+    REVIEW("review", "间隔复习"),
     EXAM("exam", "模拟考试")
 }
 
