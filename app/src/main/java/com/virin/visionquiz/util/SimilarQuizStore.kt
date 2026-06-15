@@ -97,6 +97,19 @@ object SimilarQuizStore {
     )
 
     private val gson = Gson()
+    private val intListType = TypeToken.getParameterized(
+        List::class.java,
+        Int::class.javaObjectType
+    ).type
+    private val persistedProgressListType = TypeToken.getParameterized(
+        List::class.java,
+        PersistedProgress::class.java
+    ).type
+    private val resultMapType = TypeToken.getParameterized(
+        Map::class.java,
+        Int::class.javaObjectType,
+        intListType
+    ).type
     private val lock = Any()
     private val _progress = MutableLiveData<Map<Int, Progress>>(emptyMap())
     val progress: LiveData<Map<Int, Progress>> = _progress
@@ -353,8 +366,7 @@ object SimilarQuizStore {
     private fun readProgress(context: Context): Map<Int, Progress> {
         val json = prefs(context).getString(KEY_PROGRESS, null) ?: return emptyMap()
         return runCatching {
-            val type = object : TypeToken<List<PersistedProgress>>() {}.type
-            gson.fromJson<List<PersistedProgress>>(json, type).associate { item ->
+            gson.fromJson<List<PersistedProgress>>(json, persistedProgressListType).associate { item ->
                 val status = runCatching { Status.valueOf(item.status) }.getOrDefault(Status.FAILED)
                 item.libraryId to Progress(
                     libraryId = item.libraryId,
@@ -425,8 +437,7 @@ object SimilarQuizStore {
     private fun readQueue(context: Context): List<Int> {
         val json = prefs(context).getString(KEY_QUEUE, null) ?: return emptyList()
         return runCatching {
-            val type = object : TypeToken<List<Int>>() {}.type
-            gson.fromJson<List<Int>>(json, type)
+            gson.fromJson<List<Int>>(json, intListType)
         }.getOrDefault(emptyList())
     }
 
@@ -448,8 +459,7 @@ object SimilarQuizStore {
     private fun readResultMap(context: Context, libraryId: Int): Map<Int, List<Int>> {
         val json = prefs(context).getString(resultKey(libraryId), null) ?: return emptyMap()
         return runCatching {
-            val type = object : TypeToken<Map<Int, List<Int>>>() {}.type
-            gson.fromJson<Map<Int, List<Int>>>(json, type)
+            gson.fromJson<Map<Int, List<Int>>>(json, resultMapType)
         }.getOrDefault(emptyMap())
     }
 

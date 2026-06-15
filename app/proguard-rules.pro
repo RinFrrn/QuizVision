@@ -83,6 +83,23 @@
 -keep class android.view.IRotationWatcher { *; }
 -keep class android.view.IRotationWatcher$* { *; }
 
+# Gson builds enum adapters by looking up the original enum constant field
+# names. R8 can rename those fields in release builds, which makes Gson crash
+# with NoSuchFieldException while reading persisted JSON.
+-keepclassmembers enum com.virin.visionquiz.** {
+    *;
+}
+
+# SharedPreferences JSON payloads must keep field names stable across minified
+# releases because Gson persists these model property names directly.
+-keepattributes Signature,RuntimeVisibleAnnotations,AnnotationDefault
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken { *; }
+-keepclassmembers class com.virin.visionquiz.ai.AiTestResult { <fields>; }
+-keepclassmembers class com.virin.visionquiz.ai.AiProfile { <fields>; }
+-keepclassmembers class com.virin.visionquiz.ai.AiConfigStore$StoredProfile { <fields>; }
+-keepclassmembers class com.virin.visionquiz.util.SimilarQuizStore$PersistedProgress { <fields>; }
+
 # Apache POI/XMLBeans use generated schema classes, service providers, and factory
 # lambdas while opening OOXML files. R8 obfuscation/optimization can break the
 # class-to-resource mapping or merge POI factory lambdas, causing release-only

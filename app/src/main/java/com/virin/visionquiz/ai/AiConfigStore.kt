@@ -243,7 +243,7 @@ class AiConfigStore(private val context: Context) {
     private fun readStoredProfiles(): List<StoredProfile> {
         val json = prefs.getString(KEY_PROFILES_JSON, null).orEmpty()
         if (json.isBlank()) return emptyList()
-        val type = object : TypeToken<List<StoredProfile>>() {}.type
+        val type = TypeToken.getParameterized(List::class.java, StoredProfile::class.java).type
         return runCatching { gson.fromJson<List<StoredProfile>>(json, type) }
             .getOrDefault(emptyList())
     }
