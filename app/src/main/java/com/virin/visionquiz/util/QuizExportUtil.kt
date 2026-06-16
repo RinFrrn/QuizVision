@@ -240,18 +240,11 @@ object QuizExportUtil {
 
     private fun createAnkiTSVBytes(quizzes: List<Quiz>): ByteArray {
         val sb = StringBuilder()
-        quizzes.forEachIndexed { index, quiz ->
-            val front = buildString {
-                append("<b>${index + 1}. ${quiz.prompt}</b>")
-                quiz.options.forEachIndexed { optIndex, option ->
-                    if (option.isNotEmpty()) {
-                        append("<br>${convertNumToChar(optIndex)}. $option")
-                    }
-                }
-            }
-            val answerLabel = quiz.answer.sorted().joinToString(", ") { convertNumToChar(it).toString() }
-            val back = "<b>答案：$answerLabel</b>"
-            sb.appendLine("$front	$back")
+        quizzes.forEachIndexed { _, quiz ->
+            val question = quiz.prompt
+            val options = quiz.options.filter { it.isNotEmpty() }.joinToString("<br>")
+            val answer = quiz.answer.sorted().joinToString(",") { convertNumToChar(it).toString() }
+            sb.appendLine("$question	$options	$answer")
         }
         return sb.toString().toByteArray(Charsets.UTF_8)
     }

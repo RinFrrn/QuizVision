@@ -61,7 +61,6 @@ import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizStudyMode
 import com.virin.visionquiz.dao.QuizUiType
 import com.virin.visionquiz.dao.ReviewRating
-import com.virin.visionquiz.dao.answerString
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.util.convertNumToChar
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -303,7 +302,7 @@ private fun QuizRunnerPage(
                     Spacer(Modifier.height(10.dp))
                 }
                 InfoCard(
-                    text = "答案：${state.quiz.answerString()}",
+                    text = "答案：${shuffledAnswerString(state.quiz.answer, state.optionOrder)}",
                     background = MaterialTheme.colorScheme.secondaryContainer,
                     foreground = MaterialTheme.colorScheme.onSecondaryContainer,
                     textSizeSp = textSize.resultSp
@@ -495,6 +494,14 @@ private fun ReviewRatingBar(
     }
 }
 
+
+private fun shuffledAnswerString(answer: Set<Int>, optionOrder: List<Int>): String {
+    if (optionOrder.isEmpty()) return ""
+    return answer
+        .map { originalIndex -> optionOrder.indexOf(originalIndex) }
+        .sorted()
+        .joinToString("") { convertNumToChar(it).toString() }
+}
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun QuizOption(
