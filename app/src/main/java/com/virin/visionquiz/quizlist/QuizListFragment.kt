@@ -908,7 +908,7 @@ class QuizListFragment : BaseQuizFragment() {
         val dao = db.aiExplanationCacheDao()
         val map = mutableMapOf<Int, String>()
         for (quiz in quizzes) {
-            val cache = dao.getCache(quiz.id, AiExplanationType.ANALYSIS.value)
+            val cache = dao.getCache(quiz.id, AiExplanationType.QUICK_REVIEW.value)
             if (cache != null) {
                 map[quiz.id] = cache.content
             }

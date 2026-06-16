@@ -1,4 +1,5 @@
 package com.virin.visionquiz.quizlibraryfeatures
+import android.content.Context
 
 import RenameDialogFragment
 import android.Manifest
@@ -369,7 +370,12 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
                 .setNegativeButton(R.string.cancel, null)
                 .show()
         } else {
-            requestNotificationThenEnqueue()
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle("相似题分析")
+                .setMessage("将对题库中的 ${quizzes?.size ?: 0} 道题进行相似度计算，题库较大时可能需要较长时间。确认开始？")
+                .setPositiveButton("确认") { _, _ -> requestNotificationThenEnqueue() }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
         }
     }
 
@@ -408,6 +414,27 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
             Toast.makeText(requireContext(), "题库为空", Toast.LENGTH_SHORT).show()
             return
         }
+        val progress = viewModel.aiExplanationProgress.value
+        val cachedCount = progress?.cached ?: 0
+        val totalCount = progress?.total ?: quizzes.size
+        if (cachedCount >= totalCount && totalCount > 0) {
+            Toast.makeText(requireContext(), "AI 解析缓存已满", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val remain = totalCount - cachedCount
+        val msg = if (cachedCount > 0)
+            "已缓存 $cachedCount/$totalCount，剩余 $remain 道需要生成，会消耗 API 额度。确认开始？"
+        else
+            "将为题库中 ${quizzes.size} 道题生成 AI 解析，会消耗 API 额度。确认开始？"
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("生成 AI 解析")
+            .setMessage(msg)
+            .setPositiveButton("确认") { _, _ -> proceedBatchAiExplanation() }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun proceedBatchAiExplanation() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 requireContext(),
@@ -789,7 +816,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         val dao = db.aiExplanationCacheDao()
         val map = mutableMapOf<Int, String>()
         for (quiz in quizzes) {
-            val cache = dao.getCache(quiz.id, AiExplanationType.ANALYSIS.value)
+            val cache = dao.getCache(quiz.id, AiExplanationType.QUICK_REVIEW.value)
             if (cache != null) {
                 map[quiz.id] = cache.content
             }
