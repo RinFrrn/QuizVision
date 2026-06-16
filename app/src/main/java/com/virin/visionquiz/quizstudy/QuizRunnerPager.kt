@@ -46,6 +46,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,7 @@ import com.virin.visionquiz.ai.AiExplanationType
 import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizStudyMode
 import com.virin.visionquiz.dao.QuizUiType
+import com.virin.visionquiz.dao.ReviewCard
 import com.virin.visionquiz.dao.ReviewRating
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.util.convertNumToChar
@@ -89,6 +91,7 @@ internal data class QuizRunnerPageState(
     val historySummary: String?,
     val historyDetail: String?,
     val showReviewRating: Boolean = false,
+    val currentReviewCard: ReviewCard? = null,
     val practiceReviewRating: ReviewRating? = null,
     val aiEnabled: Boolean,
     val aiConfigComplete: Boolean,
@@ -231,7 +234,7 @@ private fun QuizRunnerPage(
         easing = if (state.showReviewRating) IosEaseOut else IosEaseIn
     )
     val bottomContentPadding by animateDpAsState(
-        targetValue = if (state.showReviewRating) 174.dp else 12.dp,
+        targetValue = if (state.showReviewRating) 190.dp else 12.dp,
         animationSpec = animationSpec,
         label = "review_rating_bottom_padding"
     )
@@ -401,6 +404,7 @@ private fun QuizRunnerPage(
         ) {
             ReviewRatingDock(
                 page = page,
+                reviewCard = state.currentReviewCard,
                 callbacks = callbacks
             )
         }
@@ -410,6 +414,7 @@ private fun QuizRunnerPage(
 @Composable
 private fun ReviewRatingDock(
     page: Int,
+    reviewCard: ReviewCard?,
     callbacks: QuizRunnerPagerCallbacks,
     modifier: Modifier = Modifier
 ) {
@@ -440,6 +445,7 @@ private fun ReviewRatingDock(
             Spacer(Modifier.height(10.dp))
             ReviewRatingBar(
                 page = page,
+                reviewCard = reviewCard,
                 callbacks = callbacks
             )
         }
@@ -450,8 +456,16 @@ private fun ReviewRatingDock(
 private fun ReviewRatingBar(
     page: Int,
     callbacks: QuizRunnerPagerCallbacks,
+    reviewCard: ReviewCard? = null,
     selectedRating: ReviewRating? = null
 ) {
+    val previewIntervals = remember(reviewCard) {
+        val card = reviewCard ?: ReviewCard(
+            id = 0, quizId = 0, libraryId = 0,
+            dueAt = 0, intervalDays = 0.0, easeFactor = 2.5
+        )
+        SpacedRepetitionScheduler.previewNextIntervals(card)
+    }
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
@@ -482,12 +496,20 @@ private fun ReviewRatingBar(
                 ),
                 modifier = Modifier
                     .weight(1f)
-                    .height(68.dp)
+                    .height(82.dp)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(rating.emoji, fontSize = 24.sp, lineHeight = 26.sp)
                     Spacer(Modifier.height(2.dp))
                     Text(rating.label, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    val intervalDays = previewIntervals[rating] ?: 0.0
+                    val intervalText = SpacedRepetitionScheduler.formatReviewInterval(intervalDays)
+                    Text(
+                        intervalText,
+                        fontSize = 10.sp,
+                        color = content.copy(alpha = 0.7f),
+                        lineHeight = 12.sp
+                    )
                 }
             }
         }

@@ -87,4 +87,58 @@ object SpacedRepetitionScheduler {
             .roundToLong()
             .coerceAtLeast(60_000L)
     }
+
+    /**
+     * Preview the next interval days for each rating, given a card's current state.
+     * Returns a map of ReviewRating -> interval in days.
+     */
+    fun previewNextIntervals(card: ReviewCard): Map<ReviewRating, Double> {
+        val currentInterval = card.intervalDays
+        val currentEase = card.easeFactor.takeIf { it > 0.0 } ?: DEFAULT_EASE_FACTOR
+        return mapOf(
+            ReviewRating.FORGOT to ONE_MINUTE_IN_DAYS,
+            ReviewRating.HARD to if (currentInterval == 0.0) SIX_MINUTES_IN_DAYS
+                else max(1.0, currentInterval * 1.2),
+            ReviewRating.GOOD to when {
+                currentInterval == 0.0 -> 1.0
+                currentInterval < 1.0 -> 1.0
+                else -> currentInterval * currentEase
+            },
+            ReviewRating.EASY to if (currentInterval == 0.0) 4.0
+                else currentInterval * currentEase * 1.3
+        )
+    }
+
+    /**
+     * Format an interval in days into a concise human-readable Chinese string.
+     * Examples: "1分钟", "6分钟", "1小时", "3小时", "1天", "4天", "2周", "3个月", "1年"
+     */
+    fun formatReviewInterval(intervalDays: Double): String {
+        val minutes = intervalDays * 24 * 60
+        return when {
+            minutes < 1.0 -> "<1分钟"
+            minutes < 60.0 -> "${minutes.toInt()}分钟"
+            minutes < 1_440.0 -> {
+                val hours = minutes / 60
+                if (hours < 2) "1小时" else "${hours.toInt()}小时"
+            }
+            intervalDays < 7.0 -> {
+                val days = intervalDays.toInt()
+                if (days < 1) "1天" else "${days}天"
+            }
+            intervalDays < 30.0 -> {
+                val weeks = (intervalDays / 7).toInt()
+                if (weeks < 1) "1周" else "${weeks}周"
+            }
+            intervalDays < 365.0 -> {
+                val months = (intervalDays / 30).toInt()
+                if (months < 1) "1个月" else "${months}个月"
+            }
+            else -> {
+                val years = (intervalDays / 365).toInt()
+                if (years < 1) "1年" else "${years}年"
+            }
+        }
+    }
+
 }

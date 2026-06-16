@@ -438,6 +438,9 @@ class QuizRunnerFragment : BaseQuizFragment() {
             val targetQuizzes = withContext(Dispatchers.IO) {
                 viewModel.getQuizListByIds(orderIds)
             }
+            withContext(Dispatchers.IO) {
+                viewModel.loadReviewCardsForQuizIds(orderIds)
+            }
             val prepared = withContext(Dispatchers.Default) {
                 prepareQuizRunnerSession(
                     source = targetQuizzes,
@@ -735,6 +738,9 @@ class QuizRunnerFragment : BaseQuizFragment() {
         val isPracticeSubmitted = isPracticeSessionMode() && quiz.id in recordedPracticeQuizIds
         val showReviewRating =
             mode == QuizStudyMode.REVIEW && isSubmitted && quiz.id !in reviewRatedQuizIds
+        val currentReviewCard = if (mode == QuizStudyMode.REVIEW) {
+            viewModel.getReviewCardForQuiz(quiz.id)
+        } else null
         val practiceReviewRating = viewModel.practiceReviewRatings.value.orEmpty()[quiz.id]
             .takeIf { isPracticeSessionMode() && pageAnswerVisible }
         val isLastQuestion = index == quizzes.lastIndex
@@ -753,6 +759,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
             historySummary = history?.first,
             historyDetail = history?.second,
             showReviewRating = showReviewRating,
+            currentReviewCard = currentReviewCard,
             practiceReviewRating = practiceReviewRating,
             aiEnabled = shouldPrepareAiSection && config?.enabled == true,
             aiConfigComplete = config?.isComplete() == true,

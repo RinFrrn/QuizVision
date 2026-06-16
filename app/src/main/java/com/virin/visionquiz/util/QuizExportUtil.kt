@@ -79,7 +79,7 @@ object QuizExportUtil {
             FileType.XLSX_MTB -> createExcel4MTBBytes(quizzes)
             FileType.XLSX_ANGUI_FOR_IOS -> createExcel4AnGuiBytes(true, quizzes)
             FileType.XLS_ANGUI_FOR_ANDROID -> createExcel4AnGuiBytes(false, quizzes)
-            FileType.TSV_ANKI -> createAnkiTSVBytes(quizzes)
+            FileType.TSV_ANKI -> createAnkiTSVBytes(library.name, quizzes)
         }
         return ExportFile(
             fileName = "${sanitizeFileName(library.name)}.${fileType.extension}",
@@ -238,13 +238,13 @@ object QuizExportUtil {
         return workbookToBytes(workbook)
     }
 
-    private fun createAnkiTSVBytes(quizzes: List<Quiz>): ByteArray {
+    private fun createAnkiTSVBytes(libraryName: String, quizzes: List<Quiz>): ByteArray {
         val sb = StringBuilder()
         quizzes.forEachIndexed { _, quiz ->
             val question = quiz.prompt
             val options = quiz.options.filter { it.isNotEmpty() }.joinToString("<br>")
             val answer = quiz.answer.sorted().joinToString(",") { convertNumToChar(it).toString() }
-            sb.appendLine("$question	$options	$answer")
+            sb.appendLine("$question	$options	$answer	$libraryName")
         }
         return sb.toString().toByteArray(Charsets.UTF_8)
     }

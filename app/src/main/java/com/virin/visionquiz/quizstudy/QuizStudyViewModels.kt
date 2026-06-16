@@ -334,6 +334,7 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
     private val _practiceReviewRatings =
         MutableLiveData<Map<Int, ReviewRating>>(emptyMap())
     private val similarQuizCache = ConcurrentHashMap<Int, List<Quiz>>()
+    private val reviewCardCache = ConcurrentHashMap<Int, ReviewCard>()
 
     val quizList: LiveData<List<Quiz>> = repository.getQuizListByLibraryId(libraryId)
     val favoriteQuizIds: LiveData<List<Int>> = repository.getFavoriteQuizIdsByLibraryId(libraryId)
@@ -667,6 +668,19 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
 
     suspend fun getQuizListByIds(ids: List<Int>): List<Quiz> {
         return repository.getQuizListByIds(ids)
+    }
+
+    suspend fun loadReviewCardsForQuizIds(quizIds: List<Int>) {
+        quizIds.forEach { quizId ->
+            val card = repository.getReviewCardByQuizId(quizId)
+            if (card != null) {
+                reviewCardCache[quizId] = card
+            }
+        }
+    }
+
+    fun getReviewCardForQuiz(quizId: Int): ReviewCard? {
+        return reviewCardCache[quizId]
     }
 
     companion object {
