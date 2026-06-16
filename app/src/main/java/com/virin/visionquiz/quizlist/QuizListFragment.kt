@@ -852,6 +852,41 @@ class QuizListFragment : BaseQuizFragment() {
                                     }
                                 }
 
+                                QuizExportUtil.FileType.TSV_ANKI -> {
+                                    runIO {
+                                        try {
+                                            QuizExportUtil.createAndSaveAnkiTSV(
+                                                viewModel.library.value!!,
+                                                viewModel.quizList.value!!
+                                            ).also { targetPath ->
+                                                runMain {
+                                                    Snackbar.make(
+                                                        requireView(),
+                                                        "文件已保存至 $targetPath",
+                                                        Snackbar.LENGTH_LONG
+                                                    ).setTextMaxLines(3)
+                                                        .setAction(R.string.open) { view ->
+                                                            QuizExportUtil.openFile(
+                                                                targetPath,
+                                                                "text/plain",
+                                                                requireContext()
+                                                            )
+                                                        }.show()
+                                                }
+                                            }
+                                        } catch (err: Exception) {
+                                            runMain {
+                                                err.printStackTrace()
+                                                MaterialAlertDialogBuilder(requireContext())
+                                                    .setTitle("导出失败")
+                                                    .setMessage(err.toString())
+                                                    .setPositiveButton(R.string.confirm) { button, which -> }
+                                                    .show()
+                                            }
+                                        }
+                                    }
+                                }
+
                             }
                         } else {
                             Toast.makeText(requireContext(), "未选择导出类型", Toast.LENGTH_LONG)

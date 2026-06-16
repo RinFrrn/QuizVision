@@ -50,6 +50,11 @@ object QuizExportUtil {
             "Excel 97-2004 工作簿 (.xls) for 安规题库(Android)",
             "xls",
             "application/vnd.ms-excel"
+        ),
+        TSV_ANKI(
+            "Anki 文本文件 (.txt)",
+            "txt",
+            "text/plain"
         );
 
         fun getIndex(): Int {
@@ -74,6 +79,7 @@ object QuizExportUtil {
             FileType.XLSX_MTB -> createExcel4MTBBytes(quizzes)
             FileType.XLSX_ANGUI_FOR_IOS -> createExcel4AnGuiBytes(true, quizzes)
             FileType.XLS_ANGUI_FOR_ANDROID -> createExcel4AnGuiBytes(false, quizzes)
+            FileType.TSV_ANKI -> createAnkiTSVBytes(quizzes)
         }
         return ExportFile(
             fileName = "${sanitizeFileName(library.name)}.${fileType.extension}",
@@ -115,6 +121,10 @@ object QuizExportUtil {
 
     fun createAndSaveExcel4MTB(library: QuizLibrary, quizzes: List<Quiz>): String {
         return saveExportFileToDownload(createExportFile(library, quizzes, FileType.XLSX_MTB))
+    }
+
+    fun createAndSaveAnkiTSV(library: QuizLibrary, quizzes: List<Quiz>): String {
+        return saveExportFileToDownload(createExportFile(library, quizzes, FileType.TSV_ANKI))
     }
 
     private fun createWordBytes(quizzes: List<Quiz>): ByteArray {
@@ -226,6 +236,24 @@ object QuizExportUtil {
             row.createCell(8, CellType.STRING).setCellValue(quiz.answerString())
         }
         return workbookToBytes(workbook)
+    }
+
+    private fun createAnkiTSVBytes(quizzes: List<Quiz>): ByteArray {
+        val sb = StringBuilder()
+        quizzes.forEachIndexed { index, quiz ->
+            val front = buildString {
+                append("<b>${index + 1}. ${quiz.prompt}</b>")
+                quiz.options.forEachIndexed { optIndex, option ->
+                    if (option.isNotEmpty()) {
+                        append("<br>${convertNumToChar(optIndex)}. $option")
+                    }
+                }
+            }
+            val answerLabel = quiz.answer.sorted().joinToString(", ") { convertNumToChar(it).toString() }
+            val back = "<b>答案：$answerLabel</b>"
+            sb.appendLine("$front	$back")
+        }
+        return sb.toString().toByteArray(Charsets.UTF_8)
     }
 
     private fun workbookToBytes(workbook: Workbook): ByteArray {
