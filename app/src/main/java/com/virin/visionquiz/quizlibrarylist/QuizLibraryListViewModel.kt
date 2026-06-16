@@ -44,6 +44,49 @@ class QuizLibraryListViewModel(application: Application) : AndroidViewModel(appl
 
     private val repository: QuizRepository = QuizRepositoryImpl(application)
 
+    // Selection state
+    private val _isSelectionMode = MutableLiveData(false)
+    val isSelectionMode: LiveData<Boolean> = _isSelectionMode
+
+    private val _selectedIds = MutableLiveData<Set<Int>>(emptySet())
+    val selectedIds: LiveData<Set<Int>> = _selectedIds
+
+    fun enterSelectionMode(libraryId: Int? = null) {
+        _isSelectionMode.value = true
+        _selectedIds.value = if (libraryId != null) setOf(libraryId) else emptySet()
+    }
+
+    fun toggleSelection(libraryId: Int) {
+        val current = _selectedIds.value.orEmpty()
+        if (libraryId in current) {
+            val updated = current - libraryId
+            if (updated.isEmpty()) {
+                exitSelectionMode()
+            } else {
+                _selectedIds.value = updated
+            }
+        } else {
+            _selectedIds.value = current + libraryId
+        }
+    }
+
+    fun exitSelectionMode() {
+        _isSelectionMode.value = false
+        _selectedIds.value = emptySet()
+    }
+
+    fun getSelectedLibraries(): List<QuizLibrary> {
+        val ids = _selectedIds.value.orEmpty()
+        return quizLibraryList.value.orEmpty().filter { it.id in ids }
+    }
+
+    // Sort state
+    data class SortConfig(val sortBy: String = "default", val ascending: Boolean = true)
+    private val _sortConfig = MutableLiveData(SortConfig())
+    fun setSortConfig(sortBy: String, ascending: Boolean) {
+        _sortConfig.value = SortConfig(sortBy, ascending)
+    }
+
     val quizLibraryList: LiveData<List<QuizLibrary>> = repository.getQuizLibraryList()
     
     val librariesWithReviewCount: LiveData<List<QuizLibraryWithReviewCount>> = 
@@ -81,7 +124,22 @@ class QuizLibraryListViewModel(application: Application) : AndroidViewModel(appl
                 }
             }
         }
-    
+
+    val sortedLibrariesWithReviewCount: LiveData<List<QuizLibraryWithReviewCount>> =
+        MediatorLiveData<List<QuizLibraryWithReviewCount>>().apply {
+            addSource(librariesWithReviewCount) { list -> value = applySort(list, _sortConfig.value ?: SortConfig()) }
+            addSource(_sortConfig) { config -> value = applySort(librariesWithReviewCount.value.orEmpty(), config ?: SortConfig()) }
+        }
+
+    private fun applySort(list: List<QuizLibraryWithReviewCount>, config: SortConfig): List<QuizLibraryWithReviewCount> {
+        val comparator: Comparator<QuizLibraryWithReviewCount> = when (config.sortBy) {
+            "name" -> compareBy(nullsLast()) { it.library.name.lowercase(java.util.Locale.getDefault()) }
+            "count" -> compareBy { it.library.quizCount }
+            else -> compareBy { it.library.id }
+        }
+        return if (config.ascending) list.sortedWith(comparator) else list.sortedWith(comparator.reversed())
+    }
+
     fun updateAiExplanationProgress(libraryId: Int, cached: Int, total: Int, isGenerating: Boolean) {
         val currentList = librariesWithReviewCount.value.orEmpty().toMutableList()
         val index = currentList.indexOfFirst { it.library.id == libraryId }

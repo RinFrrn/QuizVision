@@ -61,6 +61,7 @@ import com.virin.visionquiz.preference.SettingsActivity
 import com.virin.visionquiz.quizdetector.CameraXDetectorActivity
 import com.virin.visionquiz.quizlibraryfeatures.QuizLibraryFeaturesFragment
 import com.virin.visionquiz.screendetector.ScreenDetectorController
+import com.virin.visionquiz.util.MdcThemeBridge
 import com.virin.visionquiz.util.BaseQuizFragment
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -139,7 +140,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         if (_binding != null) {
             hideImportMenu(animated = false)
         }
-        getAdapter().exitSelectionMode()
+        viewModel.exitSelectionMode()
     }
 
     override fun onCreateView(
@@ -163,38 +164,94 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         super.onViewCreated(view, savedInstanceState)
 
         onBackPressedCallback = requireActivity().onBackPressedDispatcher.addCallback(this, false) {
-            if (getAdapter().isSelectionMode) {
-                getAdapter().exitSelectionMode()
-            }
+            viewModel.exitSelectionMode()
         }
 
-        binding.recyclerView.setPadding(8.dp, 8.dp, 8.dp, 96.dp)
-        updateLayoutManager(resources.configuration.screenWidthDp)
-        binding.recyclerView.setHasFixedSize(true)
-        (binding.recyclerView.itemAnimator as SimpleItemAnimator).supportsChangeAnimations = false
-
+        // Set up adapter (still needed for existing code references)
         val adapter = QuizLibraryListAdapter(onItemClickListBtnListener, onSelectionListener)
         binding.recyclerView.adapter = adapter
         SimilarQuizStore.progress.observe(viewLifecycleOwner) { map ->
             adapter.updateSimilarProgress(map)
         }
+        
+        // Get the ViewModel (must be before refreshTopBarMenu which reads selection state)
+        viewModel = ViewModelProvider(this)[QuizLibraryListViewModel::class.java]
+        binding.viewModel = viewModel
+
+        applySort()
         configureQuizTopBar(binding.toolbar, TITLE, showNavigation = false)
         refreshTopBarMenu()
         setupPermissionNotice()
         setupImportMenu()
 
-        // Get the ViewModel
-        viewModel = ViewModelProvider(this)[QuizLibraryListViewModel::class.java]
-        binding.viewModel = viewModel
-
-        viewModel.quizLibraryList.observe(viewLifecycleOwner) { list ->
-            binding.emptyLl.visibility = if (list.isNullOrEmpty()) View.VISIBLE else View.GONE
-            if (!list.isNullOrEmpty()) {
-                getAdapter().submitList(sortList(list))
+        // Observe selection state to update toolbar and FAB
+        viewModel.isSelectionMode.observe(viewLifecycleOwner) { isSelecting ->
+            if (isSelecting) {
+                hideImportMenu(animated = false)
+                configureQuizTopBar(
+                    binding.toolbar,
+                    "选择项目",
+                    navigationIconRes = R.drawable.round_close_24,
+                    onNavigationClick = { viewModel.exitSelectionMode() }
+                )
+                binding.fabAddQuizLibrary.hide()
+                onBackPressedCallback.isEnabled = true
             } else {
-                getAdapter().submitList(emptyList())
+                configureQuizTopBar(binding.toolbar, TITLE, showNavigation = false)
+                binding.fabAddQuizLibrary.show()
+                onBackPressedCallback.isEnabled = false
+            }
+            refreshTopBarMenu()
+        }
+        viewModel.selectedIds.observe(viewLifecycleOwner) { ids ->
+            if (viewModel.isSelectionMode.value == true) {
+                binding.toolbar.title = if (ids.isEmpty()) "选择项目" else "已选择 ${ids.size} 项"
             }
         }
+
+        // Hide old RecyclerView and empty view
+        binding.recyclerView.visibility = View.GONE
+        binding.emptyLl.visibility = View.GONE
+        
+        // Add ComposeView for the library list
+        val composeView = ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                MdcThemeBridge {
+                QuizLibraryListScreen(
+                    viewModel = viewModel,
+                    onLibraryClick = { library ->
+                        onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.ROOT_VIEW)
+                    },
+                    onLibraryLongClick = { library ->
+                        // handled by original adapter
+                    },
+                    onCameraClick = { library ->
+                        onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.CAMERA_BUTTON)
+                    },
+                    onScreenRecordClick = { library ->
+                        onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.SCREEN_RECORD_BUTTON)
+                    },
+                    onRename = { library ->
+                        onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.RENAME_BUTTON)
+                    },
+                    onDelete = { library ->
+                        onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.DELETE_BUTTON)
+                    }
+                )
+                }
+            }
+        }
+        val constraintLayout = binding.root as androidx.constraintlayout.widget.ConstraintLayout
+        constraintLayout.addView(composeView, androidx.constraintlayout.widget.ConstraintLayout.LayoutParams(
+            androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.MATCH_CONSTRAINT,
+            androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.MATCH_CONSTRAINT
+        ).apply {
+            topToBottom = binding.toolbar.id
+            bottomToBottom = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
+            startToStart = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
+            endToEnd = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
+        })
 //        // Observe the quiz library list from the ViewModel
 //        viewModel.quizLibraryList.observe(viewLifecycleOwner, { quizLibraries ->
 //            // Set the data for the adapter
@@ -604,7 +661,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
                 binding.toolbar,
                 "选择项目",
                 navigationIconRes = R.drawable.round_close_24,
-                onNavigationClick = { getAdapter().exitSelectionMode() }
+                onNavigationClick = { viewModel.exitSelectionMode() }
             )
             binding.fabAddQuizLibrary.hide()
             onBackPressedCallback.isEnabled = true
@@ -706,7 +763,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
     }
 
     private fun refreshTopBarMenu() {
-        val menuRes = if (getAdapter().isSelectionMode) {
+        val menuRes = if (viewModel.isSelectionMode.value == true) {
             R.menu.quiz_lib_selection_menu
         } else {
             R.menu.quiz_lib_menu
@@ -732,7 +789,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         val colorError =
             MaterialColors.getColor(requireView(), R.attr.colorError)
 
-        val menuList = if (getAdapter().isSelectionMode)
+        val menuList = if (viewModel.isSelectionMode.value == true)
             listOf<MenuItem>(
                 menu.findItem(R.id.merge),
                 menu.findItem(R.id.delete)
@@ -772,7 +829,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
                 showSortDialog()
             }
             R.id.select -> {
-                getAdapter().enterSelectionMode()
+                viewModel.enterSelectionMode()
             }
             R.id.import_settings -> {
                 findNavController().navigate(R.id.action_QuizLibListFragment_to_ImportCandidateSettingsFragment)
@@ -798,7 +855,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
             }
             // 批量 - 合并
             R.id.merge -> {
-                val libs = getAdapter().getSelectedLibraries()
+                val libs = viewModel.getSelectedLibraries()
 
                 if (libs.size > 1) {
                     RenameDialogFragment(
@@ -807,7 +864,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
                         object : RenameDialogFragment.RenameDialogListener {
                             override fun onDialogPositiveClick(newName: String) {
                                 // 退出选择状态
-                                getAdapter().exitSelectionMode()
+                                viewModel.exitSelectionMode()
                                 // 合并题库
                                 viewModel.mergeQuizLibraries(requireContext(), libs, newName)
                             }
@@ -816,7 +873,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 //                    MaterialAlertDialogBuilder(requireContext()).setTitle("合并 ${libs.size} 个题库？")
 //                        .setPositiveButton(R.string.confirm) { dialog, which ->
 //                            // 退出选择状态
-//                            getAdapter().exitSelectionMode()
+//                            viewModel.exitSelectionMode()
 //                            // 合并题库
 //                            viewModel.mergeQuizLibraries(libs, "222")
 //                            dialog.dismiss() // 关闭对话框
@@ -834,13 +891,13 @@ class QuizLibraryListFragment : BaseQuizFragment() {
             }
             // 批量 - 删除
             R.id.delete -> {
-                val libs = getAdapter().getSelectedLibraries()
+                val libs = viewModel.getSelectedLibraries()
 
                 if (libs.isNotEmpty()) {
                     MaterialAlertDialogBuilder(requireContext()).setTitle("删除 ${libs.size} 个题库？")
                         .setPositiveButton(R.string.delete) { dialog, which ->
                             // 退出选择状态
-                            getAdapter().exitSelectionMode()
+                            viewModel.exitSelectionMode()
                             // 删除题目和题库
                             viewModel.deleteQuizLibraries(libs)
                             dialog.dismiss() // 关闭对话框
@@ -1150,16 +1207,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
     }
 
     private fun applySort() {
-        viewModel.quizLibraryList.value?.let { list ->
-            getAdapter().submitList(sortList(list))
-        }
-    }
-
-    private fun showLibraryMenu(library: QuizLibrary, offset: androidx.compose.ui.geometry.Offset) {
-        // Show popup menu at the given offset
-        // This is a simplified version - you may need to implement the full menu logic
-        val popupMenu = android.widget.ListPopupWindow(requireContext())
-        // ... menu setup code ...
+        viewModel.setSortConfig(getSortBy(), isAscending())
     }
 
     companion object {

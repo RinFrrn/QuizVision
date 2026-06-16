@@ -2,11 +2,16 @@ package com.virin.visionquiz.quizlibrarylist
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material3.*
@@ -14,11 +19,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.virin.visionquiz.dao.QuizLibrary
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuizLibraryListScreen(
     viewModel: QuizLibraryListViewModel,
@@ -26,11 +31,14 @@ fun QuizLibraryListScreen(
     onLibraryLongClick: (QuizLibrary) -> Unit,
     onCameraClick: (QuizLibrary) -> Unit,
     onScreenRecordClick: (QuizLibrary) -> Unit,
-    onMoreClick: (QuizLibrary, androidx.compose.ui.geometry.Offset) -> Unit
+    onRename: (QuizLibrary) -> Unit,
+    onDelete: (QuizLibrary) -> Unit
 ) {
-    val librariesWithReviewCount by viewModel.librariesWithReviewCount.observeAsState(emptyList())
-    
-    if (librariesWithReviewCount.isEmpty()) {
+    val librariesWithReviewCount by viewModel.sortedLibrariesWithReviewCount.observeAsState(emptyList())
+    val isSelectionMode by viewModel.isSelectionMode.observeAsState(false)
+    val selectedIds by viewModel.selectedIds.observeAsState(emptySet())
+
+    if (librariesWithReviewCount.isEmpty() && !isSelectionMode) {
         EmptyLibraryView()
     } else {
         LazyColumn(
@@ -39,35 +47,68 @@ fun QuizLibraryListScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(librariesWithReviewCount) { item ->
+                val isSelected = item.library.id in selectedIds
                 QuizLibraryCard(
                     library = item.library,
                     reviewCount = item.reviewCount,
                     aiExplanationProgress = item.aiExplanationProgress,
-                    onClick = { onLibraryClick(item.library) },
-                    onLongClick = { onLibraryLongClick(item.library) },
-                    onCameraClick = { onCameraClick(item.library) },
-                    onScreenRecordClick = { onScreenRecordClick(item.library) },
-                    onMoreClick = { offset -> onMoreClick(item.library, offset) }
+                    isSelectionMode = isSelectionMode,
+                    isSelected = isSelected,
+                    onClick = {
+                        if (isSelectionMode) {
+                            viewModel.toggleSelection(item.library.id)
+                        } else {
+                            onLibraryClick(item.library)
+                        }
+                    },
+                    onLongClick = {
+                        if (!isSelectionMode) {
+                            viewModel.enterSelectionMode(item.library.id)
+                        } else {
+                            viewModel.toggleSelection(item.library.id)
+                        }
+                    },
+                    onCameraClick = {
+                        if (!isSelectionMode) onCameraClick(item.library)
+                    },
+                    onScreenRecordClick = {
+                        if (!isSelectionMode) onScreenRecordClick(item.library)
+                    },
+                    onRename = { onRename(item.library) },
+                    onDelete = { onDelete(item.library) }
                 )
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun QuizLibraryCard(
     library: QuizLibrary,
     reviewCount: Int,
     aiExplanationProgress: AiExplanationProgress = AiExplanationProgress(),
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onCameraClick: () -> Unit,
     onScreenRecordClick: () -> Unit,
-    onMoreClick: (androidx.compose.ui.geometry.Offset) -> Unit
+    onRename: () -> Unit,
+    onDelete: () -> Unit
 ) {
-    var moreMenuOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-    
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    val containerColor = if (isSelected)
+        MaterialTheme.colorScheme.primaryContainer
+    else
+        MaterialTheme.colorScheme.surfaceContainer
+
+    val borderColor = if (isSelected)
+        MaterialTheme.colorScheme.primary
+    else
+        MaterialTheme.colorScheme.outlineVariant
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -75,80 +116,109 @@ fun QuizLibraryCard(
                 onClick = onClick,
                 onLongClick = onLongClick
             ),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
-        ),
-        shape = MaterialTheme.shapes.medium,
-        border = CardDefaults.outlinedCardBorder()
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 2.dp else 0.dp),
+        border = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            Text(
-                text = library.name,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth()
-            )
-            
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isSelectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = { onClick() },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = MaterialTheme.colorScheme.primary,
+                            uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+
+                Text(
+                    text = library.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (isSelected)
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    else
+                        MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
-            
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Surface(
                     shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.secondaryContainer
+                    color = if (isSelected)
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                    else
+                        MaterialTheme.colorScheme.secondaryContainer
                 ) {
                     Text(
                         text = "${library.quizCount} \u9898",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        color = if (isSelected)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
-                
+
                 if (reviewCount > 0) {
                     Surface(
                         shape = MaterialTheme.shapes.small,
-                        color = MaterialTheme.colorScheme.tertiaryContainer
+                        color = if (isSelected)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        else
+                            MaterialTheme.colorScheme.tertiaryContainer
                     ) {
                         Text(
                             text = "\u5F85\u590D\u4E60 $reviewCount",
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            color = if (isSelected)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onTertiaryContainer,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
                 }
-                
-                if (aiExplanationProgress.cached > 0 || aiExplanationProgress.isGenerating) {
+                if (aiExplanationProgress.isGenerating) {
                     Surface(
                         shape = MaterialTheme.shapes.small,
-                        color = if (aiExplanationProgress.isGenerating) 
-                            MaterialTheme.colorScheme.primaryContainer 
-                        else 
-                            MaterialTheme.colorScheme.surfaceVariant
+                        color = if (isSelected)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        else
+                            MaterialTheme.colorScheme.primaryContainer
                     ) {
                         Text(
-                            text = aiExplanationProgress.description,
+                            text = "解析中 ${aiExplanationProgress.cached}/${aiExplanationProgress.total}",
                             style = MaterialTheme.typography.labelMedium,
-                            color = if (aiExplanationProgress.isGenerating) 
-                                MaterialTheme.colorScheme.onPrimaryContainer 
-                            else 
-                                MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (isSelected)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
                 }
             }
-            
-            if (aiExplanationProgress.isGenerating) {
+
+            if (aiExplanationProgress.isGenerating && !isSelected) {
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
                     progress = { aiExplanationProgress.progressPercent / 100f },
@@ -157,49 +227,87 @@ fun QuizLibraryCard(
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
             }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = onCameraClick,
-                    modifier = Modifier.size(40.dp)
+
+            if (!isSelectionMode) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CameraAlt,
-                        contentDescription = "\u76F8\u673A\u641C\u9898",
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
-                
-                Spacer(modifier = Modifier.width(6.dp))
-                
-                IconButton(
-                    onClick = onScreenRecordClick,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PictureInPicture,
-                        contentDescription = "\u5C4F\u5E55\u641C\u9898",
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
-                
-                Spacer(modifier = Modifier.width(6.dp))
-                
-                IconButton(
-                    onClick = { onMoreClick(moreMenuOffset) },
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "\u66F4\u591A",
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
+                    IconButton(
+                        onClick = onCameraClick,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = "\u76F8\u673A\u641C\u9898",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    IconButton(
+                        onClick = onScreenRecordClick,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PictureInPicture,
+                            contentDescription = "\u5C4F\u5E55\u641C\u9898",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "\u66F4\u591A",
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("\u91CD\u547D\u540D") },
+                                onClick = {
+                                    menuExpanded = false
+                                    onRename()
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Edit,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("\u5220\u9664") },
+                                onClick = {
+                                    menuExpanded = false
+                                    onDelete()
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -230,17 +338,17 @@ fun EmptyLibraryView() {
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(18.dp))
-            
+
             Text(
                 text = "\u65E0\u9898\u5E93",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            
+
             Spacer(modifier = Modifier.height(8.dp))
-            
+
             Text(
                 text = "\u70B9\u51FB\u53F3\u4E0B\u89D2\u201C\u5BFC\u5165\u201D\u6DFB\u52A0 Word\u3001Excel \u9898\u5E93",
                 style = MaterialTheme.typography.bodyMedium,

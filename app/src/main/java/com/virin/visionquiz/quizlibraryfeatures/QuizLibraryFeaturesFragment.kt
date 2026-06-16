@@ -230,6 +230,12 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         viewModel.reviewEntryState.observe(viewLifecycleOwner) { state ->
             adapter.updateReviewEntryState(state)
         }
+        viewModel.aiExplanationProgress.observe(viewLifecycleOwner) { progress ->
+            adapter.updateFeatureDescription(
+                QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN,
+                progress.description
+            )
+        }
         viewModel.stats.observe(viewLifecycleOwner) { stats ->
             binding.libraryStatsText.text =
                 "共 ${stats.total} 题 · 单选 ${stats.singleChoice} · 多选 ${stats.multipleChoice} · 判断 ${stats.judgement}"
@@ -869,12 +875,6 @@ internal fun buildLibraryStudyFeatures(): List<QuizLibraryFeaturesFragment.Study
             QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS
         ),
         QuizLibraryFeaturesFragment.StudyFeature(
-            "生成 AI 解析",
-            "批量为题库生成快速复盘解析",
-            R.drawable.icon_science_24px,
-            QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN
-        ),
-        QuizLibraryFeaturesFragment.StudyFeature(
             "导出题库",
             "保存为文档或分享到其他 App",
             R.drawable.icon_file_export_24px,
@@ -885,6 +885,12 @@ internal fun buildLibraryStudyFeatures(): List<QuizLibraryFeaturesFragment.Study
             "查看和搜索全部题型",
             R.drawable.icon_all_inclusive_24px,
             QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "生成 AI 解析",
+            "批量为题库生成快速复盘解析",
+            R.drawable.icon_science_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN
         )
     )
 }
@@ -918,9 +924,9 @@ internal fun buildGroupedFeatureItems(
         QuizLibraryFeaturesFragment.FeatureAction.EXAM_HISTORY.featureItem()?.let(::add)
 
         add(QuizLibraryFeatureListItem.SectionHeader("题库工具"))
-        QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN.featureItem()?.let(::add)
         QuizLibraryFeaturesFragment.FeatureAction.EXPORT.featureItem()?.let(::add)
         QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS.featureItem()?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN.featureItem()?.let(::add)
     }
 }
 
