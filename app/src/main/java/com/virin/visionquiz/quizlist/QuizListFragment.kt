@@ -29,9 +29,11 @@ import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.virin.visionquiz.R
+import com.virin.visionquiz.ai.AiExplanationType
 import com.virin.visionquiz.dao.Quiz
-import com.virin.visionquiz.dao.QuizUiType
+import com.virin.visionquiz.dao.QuizDatabase
 import com.virin.visionquiz.dao.QuizLibrary
+import com.virin.visionquiz.dao.QuizUiType
 import com.virin.visionquiz.databinding.ActivityQuizListBinding
 import com.virin.visionquiz.quizdetector.CameraXDetectorActivity
 import com.virin.visionquiz.quizlist.quizcontent.showQuizContentDialog
@@ -855,10 +857,11 @@ class QuizListFragment : BaseQuizFragment() {
                                 QuizExportUtil.FileType.TSV_ANKI -> {
                                     runIO {
                                         try {
-                                            QuizExportUtil.createAndSaveAnkiTSV(
-                                                viewModel.library.value!!,
-                                                viewModel.quizList.value!!
-                                            ).also { targetPath ->
+                                            val lib = viewModel.library.value!!
+                                            val quizzes = viewModel.quizList.value!!
+                                            val explanations = buildExplanationsMap(quizzes)
+                                            val exportFile = QuizExportUtil.createExportFile(lib, quizzes, QuizExportUtil.FileType.TSV_ANKI, explanations)
+                                            QuizExportUtil.saveExportFileToDownload(exportFile).also { targetPath ->
                                                 runMain {
                                                     Snackbar.make(
                                                         requireView(),
@@ -898,6 +901,19 @@ class QuizListFragment : BaseQuizFragment() {
         }
 
         return true
+    }
+
+    private suspend fun buildExplanationsMap(quizzes: List<Quiz>): Map<Int, String> {
+        val db = QuizDatabase.getInstance(requireContext())
+        val dao = db.aiExplanationCacheDao()
+        val map = mutableMapOf<Int, String>()
+        for (quiz in quizzes) {
+            val cache = dao.getCache(quiz.id, AiExplanationType.ANALYSIS.value)
+            if (cache != null) {
+                map[quiz.id] = cache.content
+            }
+        }
+        return map
     }
 
     companion object {

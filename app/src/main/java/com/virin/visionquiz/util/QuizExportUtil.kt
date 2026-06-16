@@ -71,7 +71,8 @@ object QuizExportUtil {
     fun createExportFile(
         library: QuizLibrary,
         quizzes: List<Quiz>,
-        fileType: FileType
+        fileType: FileType,
+        explanations: Map<Int, String> = emptyMap()
     ): ExportFile {
         val bytes = when (fileType) {
             FileType.DOCX -> createWordBytes(quizzes)
@@ -79,7 +80,7 @@ object QuizExportUtil {
             FileType.XLSX_MTB -> createExcel4MTBBytes(quizzes)
             FileType.XLSX_ANGUI_FOR_IOS -> createExcel4AnGuiBytes(true, quizzes)
             FileType.XLS_ANGUI_FOR_ANDROID -> createExcel4AnGuiBytes(false, quizzes)
-            FileType.TSV_ANKI -> createAnkiTSVBytes(library.name, quizzes)
+            FileType.TSV_ANKI -> createAnkiTSVBytes(library.name, quizzes, explanations)
         }
         return ExportFile(
             fileName = "${sanitizeFileName(library.name)}.${fileType.extension}",
@@ -238,13 +239,18 @@ object QuizExportUtil {
         return workbookToBytes(workbook)
     }
 
-    private fun createAnkiTSVBytes(libraryName: String, quizzes: List<Quiz>): ByteArray {
+    private fun createAnkiTSVBytes(
+        libraryName: String,
+        quizzes: List<Quiz>,
+        explanations: Map<Int, String> = emptyMap()
+    ): ByteArray {
         val sb = StringBuilder()
         quizzes.forEachIndexed { _, quiz ->
             val question = quiz.prompt
             val options = quiz.options.filter { it.isNotEmpty() }.joinToString("<br>")
             val answer = quiz.answer.sorted().joinToString(",") { convertNumToChar(it).toString() }
-            sb.appendLine("$question	$options	$answer	$libraryName")
+            val explanation = explanations[quiz.id] ?: libraryName
+            sb.appendLine("$question	$options	$answer	$explanation")
         }
         return sb.toString().toByteArray(Charsets.UTF_8)
     }
@@ -257,7 +263,7 @@ object QuizExportUtil {
         }
     }
 
-    private fun saveExportFileToDownload(exportFile: ExportFile): String {
+    fun saveExportFileToDownload(exportFile: ExportFile): String {
         val fileDir = "/storage/emulated/0/Download/"
         val uniqueFileName = getUniqueFileName(fileDir, exportFile.fileName)
         val targetFile = File(fileDir, uniqueFileName)
