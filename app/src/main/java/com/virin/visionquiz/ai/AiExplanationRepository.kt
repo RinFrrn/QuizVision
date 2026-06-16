@@ -87,9 +87,11 @@ class AiExplanationRepository internal constructor(
         type: AiExplanationType,
         fingerprint: String
     ): AiExplanationResult? {
-        return cacheDao.getCache(quizId, type.value)
-            ?.takeIf { it.fingerprint == fingerprint }
-            ?.let { AiExplanationResult(it.content, fromCache = true) }
+        val cached = cacheDao.getCache(quizId, type.value) ?: return null
+        // Return cached content if fingerprint matches exactly,
+        // or if a cache exists for the same quiz+type (e.g. batch-generated
+        // with selectedAnswer=null, requested during study with a real answer)
+        return AiExplanationResult(cached.content, fromCache = true)
     }
 
     suspend fun clearAll() = cacheDao.clearAll()
