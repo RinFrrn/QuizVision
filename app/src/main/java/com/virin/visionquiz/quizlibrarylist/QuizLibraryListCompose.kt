@@ -42,6 +42,7 @@ fun QuizLibraryListScreen(
                 QuizLibraryCard(
                     library = item.library,
                     reviewCount = item.reviewCount,
+                    aiExplanationProgress = item.aiExplanationProgress,
                     onClick = { onLibraryClick(item.library) },
                     onLongClick = { onLibraryLongClick(item.library) },
                     onCameraClick = { onCameraClick(item.library) },
@@ -58,6 +59,7 @@ fun QuizLibraryListScreen(
 fun QuizLibraryCard(
     library: QuizLibrary,
     reviewCount: Int,
+    aiExplanationProgress: AiExplanationProgress = AiExplanationProgress(),
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onCameraClick: () -> Unit,
@@ -124,6 +126,36 @@ fun QuizLibraryCard(
                         )
                     }
                 }
+                
+                if (aiExplanationProgress.cached > 0 || aiExplanationProgress.isGenerating) {
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = if (aiExplanationProgress.isGenerating) 
+                            MaterialTheme.colorScheme.primaryContainer 
+                        else 
+                            MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Text(
+                            text = aiExplanationProgress.description,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (aiExplanationProgress.isGenerating) 
+                                MaterialTheme.colorScheme.onPrimaryContainer 
+                            else 
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+            
+            if (aiExplanationProgress.isGenerating) {
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { aiExplanationProgress.progressPercent / 100f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                )
             }
             
             Spacer(modifier = Modifier.height(12.dp))

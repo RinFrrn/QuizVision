@@ -5,9 +5,11 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ClipboardManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.content.res.Configuration
@@ -62,6 +64,7 @@ import com.virin.visionquiz.screendetector.ScreenDetectorController
 import com.virin.visionquiz.util.BaseQuizFragment
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import com.virin.visionquiz.ai.BatchAiExplanationService
 import com.virin.visionquiz.quizlibrarylist.QuizLibraryListScreen
 import com.virin.visionquiz.util.SimilarQuizStore
 import com.virin.visionquiz.util.PermissionManager
@@ -101,12 +104,33 @@ class QuizLibraryListFragment : BaseQuizFragment() {
             refreshPermissionNotice()
         }
 
+    private val aiProgressReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == BatchAiExplanationService.ACTION_PROGRESS_UPDATE) {
+                val cached = intent.getIntExtra(BatchAiExplanationService.EXTRA_CACHED_COUNT, 0)
+                val total = intent.getIntExtra(BatchAiExplanationService.EXTRA_TOTAL_COUNT, 0)
+                val isGenerating = intent.getBooleanExtra(BatchAiExplanationService.EXTRA_IS_GENERATING, false)
+                val libraryId = intent.getIntExtra("library_id", 0)
+                if (libraryId > 0) {
+                    viewModel.updateAiExplanationProgress(libraryId, cached, total, isGenerating)
+                }
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         ScreenDetectorController.onHostResumed(requireActivity())
         if (_binding != null) {
             refreshPermissionNotice()
         }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        try {
+            requireContext().unregisterReceiver(aiProgressReceiver)
+        } catch (_: Exception) {}
     }
 
     override fun onPause() {
@@ -227,10 +251,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         refreshPermissionNotice()
     }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
-    }
+    
 
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

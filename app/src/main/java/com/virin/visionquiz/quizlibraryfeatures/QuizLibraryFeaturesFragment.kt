@@ -53,6 +53,7 @@ import com.virin.visionquiz.quizdetector.CameraXDetectorActivity
 import com.virin.visionquiz.quizlist.QuizListFragment
 import com.virin.visionquiz.quizstudy.LibraryAnswerStats
 import com.virin.visionquiz.quizstudy.QuizFavoritesFragment
+import com.virin.visionquiz.quizstudy.AiExplanationProgress
 import com.virin.visionquiz.quizstudy.QuizLibraryFeaturesViewModel
 import com.virin.visionquiz.quizstudy.QuizRunnerFragment
 import com.virin.visionquiz.quizstudy.ReviewEntryState

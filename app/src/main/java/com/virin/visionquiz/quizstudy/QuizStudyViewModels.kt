@@ -199,6 +199,23 @@ fun parseContextualSuggestions(content: String): List<String> {
         .take(3)
 }
 
+data class AiExplanationProgress(
+    val total: Int = 0,
+    val cached: Int = 0,
+    val isGenerating: Boolean = false
+) {
+    val progressPercent: Int
+        get() = if (total > 0) (cached * 100 / total) else 0
+    val description: String
+        get() = if (isGenerating) {
+            "生成中 $cached/$total"
+        } else if (cached > 0) {
+            "已缓存 $cached/$total"
+        } else {
+            "批量为题库生成快速复盘解析"
+        }
+}
+
 class QuizLibraryFeaturesViewModel(application: Application, private val libraryId: Int) :
     AndroidViewModel(application) {
 
@@ -243,6 +260,35 @@ class QuizLibraryFeaturesViewModel(application: Application, private val library
         addSource(reviewStats) { stats ->
             latestReviewStats = stats ?: ReviewStats()
             value = buildCurrentReviewEntryState()
+        }
+    }
+
+    val aiExplanationProgress: LiveData<AiExplanationProgress> = 
+        MediatorLiveData<AiExplanationProgress>().apply {
+            addSource(quizList) { quizzes ->
+                val total = quizzes?.size ?: 0
+                value = AiExplanationProgress(total = total, cached = 0, isGenerating = false)
+                viewModelScope.launch {
+                    val cached = repository.countByLibraryAndType(libraryId, AiExplanationType.QUICK_REVIEW.value)
+                    value = AiExplanationProgress(total = total, cached = cached, isGenerating = false)
+                }
+            }
+        }
+    
+    private var isGeneratingAiExplanation = false
+    
+    fun setAiExplanationGenerating(generating: Boolean) {
+        isGeneratingAiExplanation = generating
+        val current = aiExplanationProgress.value ?: AiExplanationProgress()
+        (aiExplanationProgress as MutableLiveData).value = current.copy(isGenerating = generating)
+    }
+    
+    fun refreshAiExplanationProgress() {
+        viewModelScope.launch {
+            val total = quizList.value?.size ?: 0
+            val cached = repository.countByLibraryAndType(libraryId, AiExplanationType.QUICK_REVIEW.value)
+            (aiExplanationProgress as MutableLiveData).value = 
+                AiExplanationProgress(total = total, cached = cached, isGenerating = isGeneratingAiExplanation)
         }
     }
 

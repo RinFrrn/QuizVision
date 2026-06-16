@@ -118,6 +118,7 @@ class BatchAiExplanationService : Service() {
                 0,
                 skipped
             )
+            broadcastProgress(skipped, allQuizzes.size, false)
             stopSelfSafely(startId)
             return
         }
@@ -220,6 +221,16 @@ class BatchAiExplanationService : Service() {
             .build()
     }
 
+    private fun broadcastProgress(cached: Int, total: Int, isGenerating: Boolean) {
+        val intent = Intent(ACTION_PROGRESS_UPDATE).apply {
+            putExtra(EXTRA_CACHED_COUNT, cached)
+            putExtra(EXTRA_TOTAL_COUNT, total)
+            putExtra(EXTRA_IS_GENERATING, isGenerating)
+            putExtra(EXTRA_LIBRARY_ID, currentLibraryId)
+        }
+        sendBroadcast(intent)
+    }
+
     private fun showCompletionNotification(
         text: String,
         totalInLibrary: Int,
@@ -277,6 +288,11 @@ class BatchAiExplanationService : Service() {
             "com.virin.visionquiz.action.START_BATCH_AI_EXPLANATION"
         private const val ACTION_CANCEL =
             "com.virin.visionquiz.action.CANCEL_BATCH_AI_EXPLANATION"
+        const val ACTION_PROGRESS_UPDATE =
+            "com.virin.visionquiz.action.AI_EXPLANATION_PROGRESS_UPDATE"
+        const val EXTRA_CACHED_COUNT = "cached_count"
+        const val EXTRA_TOTAL_COUNT = "total_count"
+        const val EXTRA_IS_GENERATING = "is_generating"
         private const val EXTRA_LIBRARY_ID = "library_id"
         private const val CHANNEL_ID = "batch_ai_explanation"
         private const val NOTIFICATION_ID = 3501

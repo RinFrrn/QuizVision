@@ -105,4 +105,5 @@ interface QuizRepository {
 
     suspend fun buildReviewQuizList(libraryId: Int, newCardLimit: Int): List<Int>
 
+    suspend fun countByLibraryAndType(libraryId: Int, type: String): Int
 }

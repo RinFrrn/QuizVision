@@ -3,11 +3,13 @@ package com.virin.visionquiz.quizlibrarylist
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.viewModelScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.virin.visionquiz.R
+import com.virin.visionquiz.ai.AiExplanationType
 import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizLibrary
 import com.virin.visionquiz.util.await
@@ -17,8 +19,26 @@ import kotlinx.coroutines.launch
 
 data class QuizLibraryWithReviewCount(
     val library: QuizLibrary,
-    val reviewCount: Int
+    val reviewCount: Int,
+    val aiExplanationProgress: AiExplanationProgress = AiExplanationProgress()
 )
+
+data class AiExplanationProgress(
+    val total: Int = 0,
+    val cached: Int = 0,
+    val isGenerating: Boolean = false
+) {
+    val progressPercent: Int
+        get() = if (total > 0) (cached * 100 / total) else 0
+    val description: String
+        get() = if (isGenerating) {
+            "生成中 $cached/$total"
+        } else if (cached > 0) {
+            "已缓存 $cached/$total"
+        } else {
+            ""
+        }
+}
 
 class QuizLibraryListViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -38,15 +58,39 @@ class QuizLibraryListViewModel(application: Application) : AndroidViewModel(appl
                         val currentList = value.orEmpty().toMutableList()
                         val index = currentList.indexOfFirst { it.library.id == library.id }
                         if (index >= 0) {
-                            currentList[index] = QuizLibraryWithReviewCount(library, count ?: 0)
+                            currentList[index] = currentList[index].copy(reviewCount = count ?: 0)
                         } else {
                             currentList.add(QuizLibraryWithReviewCount(library, count ?: 0))
+                        }
+                        value = currentList
+                    }
+                    // Fetch AI explanation progress
+                    viewModelScope.launch {
+                        val total = repository.getQuizCountByLibraryId(library.id)
+                        val cached = repository.countByLibraryAndType(library.id, AiExplanationType.QUICK_REVIEW.value)
+                        val currentList = value.orEmpty().toMutableList()
+                        val index = currentList.indexOfFirst { it.library.id == library.id }
+                        val progress = AiExplanationProgress(total = total, cached = cached)
+                        if (index >= 0) {
+                            currentList[index] = currentList[index].copy(aiExplanationProgress = progress)
+                        } else {
+                            currentList.add(QuizLibraryWithReviewCount(library, 0, progress))
                         }
                         value = currentList
                     }
                 }
             }
         }
+    
+    fun updateAiExplanationProgress(libraryId: Int, cached: Int, total: Int, isGenerating: Boolean) {
+        val currentList = librariesWithReviewCount.value.orEmpty().toMutableList()
+        val index = currentList.indexOfFirst { it.library.id == libraryId }
+        if (index >= 0) {
+            val progress = AiExplanationProgress(total = total, cached = cached, isGenerating = isGenerating)
+            currentList[index] = currentList[index].copy(aiExplanationProgress = progress)
+            (librariesWithReviewCount as MutableLiveData).value = currentList
+        }
+    }
 
     fun mergeQuizLibraries(context: Context, quizLibraryList: List<QuizLibrary>, newName: String) {
         viewModelScope.launch {

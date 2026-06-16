@@ -269,6 +269,10 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
         )
     }
 
+    override suspend fun countByLibraryAndType(libraryId: Int, type: String): Int {
+        return aiExplanationCacheDao.countByLibraryAndType(libraryId, type)
+    }
+
     override suspend fun buildReviewQuizList(libraryId: Int, newCardLimit: Int): List<Int> {
         val dueCards = getDueReviewCards(libraryId)
         val newQuizIds = getNewReviewQuizIds(libraryId, newCardLimit)
