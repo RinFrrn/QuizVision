@@ -265,6 +265,8 @@ class AiSettingsFragment : Fragment() {
             .create()
         dialog.setOnShowListener {
             fetchModelsButton.setOnClickListener {
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                imm.hideSoftInputFromWindow(urlInput.windowToken, 0)
                 fetchModels(
                     urlLayout,
                     urlInput,

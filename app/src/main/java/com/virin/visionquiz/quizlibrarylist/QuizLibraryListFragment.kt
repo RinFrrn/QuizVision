@@ -60,6 +60,9 @@ import com.virin.visionquiz.quizdetector.CameraXDetectorActivity
 import com.virin.visionquiz.quizlibraryfeatures.QuizLibraryFeaturesFragment
 import com.virin.visionquiz.screendetector.ScreenDetectorController
 import com.virin.visionquiz.util.BaseQuizFragment
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import com.virin.visionquiz.quizlibrarylist.QuizLibraryListScreen
 import com.virin.visionquiz.util.SimilarQuizStore
 import com.virin.visionquiz.util.PermissionManager
 import com.virin.visionquiz.util.configureQuizTopBar
@@ -1129,6 +1132,13 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         viewModel.quizLibraryList.value?.let { list ->
             getAdapter().submitList(sortList(list))
         }
+    }
+
+    private fun showLibraryMenu(library: QuizLibrary, offset: androidx.compose.ui.geometry.Offset) {
+        // Show popup menu at the given offset
+        // This is a simplified version - you may need to implement the full menu logic
+        val popupMenu = android.widget.ListPopupWindow(requireContext())
+        // ... menu setup code ...
     }
 
     companion object {

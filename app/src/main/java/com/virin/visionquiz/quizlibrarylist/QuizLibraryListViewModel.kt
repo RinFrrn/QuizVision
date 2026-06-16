@@ -3,6 +3,7 @@ package com.virin.visionquiz.quizlibrarylist
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.viewModelScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -14,11 +15,38 @@ import com.virin.visionquiz.util.showProgressAlertDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+data class QuizLibraryWithReviewCount(
+    val library: QuizLibrary,
+    val reviewCount: Int
+)
+
 class QuizLibraryListViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: QuizRepository = QuizRepositoryImpl(application)
 
     val quizLibraryList: LiveData<List<QuizLibrary>> = repository.getQuizLibraryList()
+    
+    val librariesWithReviewCount: LiveData<List<QuizLibraryWithReviewCount>> = 
+        MediatorLiveData<List<QuizLibraryWithReviewCount>>().apply {
+            addSource(quizLibraryList) { libraries ->
+                value = libraries?.map { library ->
+                    QuizLibraryWithReviewCount(library, 0)
+                } ?: emptyList()
+                libraries?.forEach { library ->
+                    val reviewCountLiveData = repository.getDueReviewCardCount(library.id)
+                    addSource(reviewCountLiveData) { count ->
+                        val currentList = value.orEmpty().toMutableList()
+                        val index = currentList.indexOfFirst { it.library.id == library.id }
+                        if (index >= 0) {
+                            currentList[index] = QuizLibraryWithReviewCount(library, count ?: 0)
+                        } else {
+                            currentList.add(QuizLibraryWithReviewCount(library, count ?: 0))
+                        }
+                        value = currentList
+                    }
+                }
+            }
+        }
 
     fun mergeQuizLibraries(context: Context, quizLibraryList: List<QuizLibrary>, newName: String) {
         viewModelScope.launch {
