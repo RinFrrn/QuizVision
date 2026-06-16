@@ -55,6 +55,8 @@ import com.virin.visionquiz.quizstudy.QuizLibraryFeaturesViewModel
 import com.virin.visionquiz.quizstudy.QuizRunnerFragment
 import com.virin.visionquiz.quizstudy.ReviewEntryState
 import com.virin.visionquiz.quizstudy.ReviewStats
+import com.virin.visionquiz.ai.AiConfigStore
+import com.virin.visionquiz.ai.BatchAiExplanationService
 import com.virin.visionquiz.screendetector.ScreenDetectorController
 import com.virin.visionquiz.util.BaseQuizFragment
 import com.virin.visionquiz.util.SimilarQuizStore
@@ -79,12 +81,17 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
     private var pendingExportFile: QuizExportUtil.ExportFile? = null
     private var exportProgressDialog: AlertDialog? = null
     private var enqueueSimilarAnalysisAfterPermission = false
+    private var enqueueBatchAiAfterPermission = false
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) {
         if (enqueueSimilarAnalysisAfterPermission) {
             enqueueSimilarAnalysisAfterPermission = false
             enqueueSimilarAnalysis()
+        }
+        if (enqueueBatchAiAfterPermission) {
+            enqueueBatchAiAfterPermission = false
+            enqueueBatchAiExplanation()
         }
     }
     private val exportDocumentLauncher = registerForActivityResult(
@@ -381,6 +388,52 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         Snackbar.make(binding.root, message, Snackbar.LENGTH_SHORT).show()
     }
 
+    private fun startBatchAiExplanation() {
+        val config = AiConfigStore(requireContext()).read()
+        if (!config.isComplete()) {
+            showAiConfigurationRequired()
+            return
+        }
+        val quizzes = viewModel.quizList.value
+        if (quizzes.isNullOrEmpty()) {
+            Toast.makeText(requireContext(), "题库为空", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                requireContext(),
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            enqueueBatchAiAfterPermission = true
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            enqueueBatchAiExplanation()
+        }
+    }
+
+    private fun enqueueBatchAiExplanation() {
+        ContextCompat.startForegroundService(requireContext(), BatchAiExplanationService.start(requireContext(), libraryId))
+        Snackbar.make(binding.root, "已开始后台生成解析", Snackbar.LENGTH_SHORT).show()
+    }
+
+    private fun showAiConfigurationRequired() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.ai_not_configured_title)
+            .setMessage(R.string.ai_not_configured_message)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.ai_go_to_settings) { _, _ ->
+                startActivity(Intent(requireContext(),
+                    com.virin.visionquiz.preference.SettingsActivity::class.java).apply {
+                    putExtra(
+                        com.virin.visionquiz.preference.SettingsActivity.EXTRA_LAUNCH_SOURCE,
+                        com.virin.visionquiz.preference.SettingsActivity.LaunchSource.AI_SETTINGS
+                    )
+                })
+            }
+            .show()
+    }
+
     private fun showRenameDialog() {
         val lib = viewModel.library.value ?: return
         RenameDialogFragment(
@@ -661,6 +714,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
             FeatureAction.EXAM_HISTORY -> findNavController().navigate(R.id.ExamHistoryFragment, bundle)
             FeatureAction.EXPORT -> showExportDialog()
             FeatureAction.SIMILAR_ANALYSIS -> computeSimilarAnalysis()
+            FeatureAction.BATCH_AI_EXPLAIN -> startBatchAiExplanation()
             FeatureAction.QUIZ_LIST -> findNavController().navigate(
                 R.id.QuizListFragment,
                 bundleOf(QuizListFragment.LIBRARY_ID to libraryId)
@@ -707,6 +761,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         EXAM_HISTORY,
         EXPORT,
         SIMILAR_ANALYSIS,
+        BATCH_AI_EXPLAIN,
         QUIZ_LIST
     }
 
@@ -788,6 +843,12 @@ internal fun buildLibraryStudyFeatures(): List<QuizLibraryFeaturesFragment.Study
             QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS
         ),
         QuizLibraryFeaturesFragment.StudyFeature(
+            "生成 AI 解析",
+            "批量为题库生成快速复盘解析",
+            R.drawable.icon_science_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
             "导出题库",
             "保存为文档或分享到其他 App",
             R.drawable.icon_file_export_24px,
@@ -831,6 +892,7 @@ internal fun buildGroupedFeatureItems(
         QuizLibraryFeaturesFragment.FeatureAction.EXAM_HISTORY.featureItem()?.let(::add)
 
         add(QuizLibraryFeatureListItem.SectionHeader("题库工具"))
+        QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN.featureItem()?.let(::add)
         QuizLibraryFeaturesFragment.FeatureAction.EXPORT.featureItem()?.let(::add)
         QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS.featureItem()?.let(::add)
     }

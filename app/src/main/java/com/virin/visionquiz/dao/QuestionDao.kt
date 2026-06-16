@@ -182,6 +182,9 @@ interface AiExplanationCacheDao {
 
     @Query("DELETE FROM AiExplanationCache")
     suspend fun clearAll()
+
+    @Query("SELECT COUNT(*) FROM AiExplanationCache WHERE library_id = :libraryId AND type = :type")
+    suspend fun countByLibraryAndType(libraryId: Int, type: String): Int
 }
 
 @Dao

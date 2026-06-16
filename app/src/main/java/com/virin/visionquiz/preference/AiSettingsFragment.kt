@@ -199,9 +199,9 @@ class AiSettingsFragment : Fragment() {
         val context = requireContext()
         val draft = existing ?: AiProfile(
             name = getString(R.string.ai_profile_new_name),
-            baseUrl = AiConfigStore.DEFAULT_BASE_URL,
+            baseUrl = "",
             apiKey = "",
-            model = AiConfigStore.DEFAULT_MODEL
+            model = ""
         )
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -211,7 +211,9 @@ class AiSettingsFragment : Fragment() {
         val nameInput = singleLineInput(context).apply { setText(draft.name) }
         nameLayout.addView(nameInput)
         column.addView(nameLayout, matchWrap(bottom = 12))
-        val urlLayout = inputLayout(context, R.string.ai_settings_base_url)
+        val urlLayout = inputLayout(context, R.string.ai_settings_base_url).apply {
+            placeholderText = AiConfigStore.DEFAULT_BASE_URL
+        }
         val urlInput = singleLineInput(context).apply { setText(draft.baseUrl) }
         urlLayout.addView(urlInput)
         column.addView(urlLayout, matchWrap(bottom = 12))
@@ -226,6 +228,7 @@ class AiSettingsFragment : Fragment() {
         }
         val modelLayout = inputLayout(context, R.string.ai_settings_model).apply {
             endIconMode = TextInputLayout.END_ICON_DROPDOWN_MENU
+            placeholderText = AiConfigStore.DEFAULT_MODEL
         }
         val modelInput = MaterialAutoCompleteTextView(context).apply {
             setSingleLine(true)

@@ -229,5 +229,9 @@ class AiExplanationRepositoryTest {
         override suspend fun clearAll() {
             caches.clear()
         }
+
+        override suspend fun countByLibraryAndType(libraryId: Int, type: String): Int {
+            return caches.values.count { it.libraryId == libraryId && it.type == type }
+        }
     }
 }

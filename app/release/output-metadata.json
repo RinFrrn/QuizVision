@@ -11,8 +11,8 @@
       "type": "SINGLE",
       "filters": [],
       "attributes": [],
-      "versionCode": 260,
-      "versionName": "2.6.0",
+      "versionCode": 273,
+      "versionName": "2.7.3",
       "outputFile": "vision-quiz-release.apk"
     }
   ],

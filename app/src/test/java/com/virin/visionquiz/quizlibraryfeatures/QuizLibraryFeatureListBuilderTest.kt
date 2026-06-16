@@ -39,6 +39,7 @@ class QuizLibraryFeatureListBuilderTest {
                 "WRONG",
                 "HISTORY",
                 "EXAM_HISTORY",
+                "BATCH_AI_EXPLAIN",
                 "EXPORT",
                 "SIMILAR_ANALYSIS"
             ),
@@ -88,5 +89,10 @@ class QuizLibraryFeatureListBuilderTest {
         assertEquals(3, quizLibraryFeatureSpanSize(favoriteItem, 6))
         assertEquals(3, quizLibraryFeatureSpanSize(exportItem, 6))
         assertEquals(3, quizLibraryFeatureSpanSize(similarAnalysisItem, 6))
+
+        val batchAiItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
+            .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN }
+        assertFalse(isFullSpanFeatureItem(batchAiItem))
+        assertEquals(3, quizLibraryFeatureSpanSize(batchAiItem, 6))
     }
 }
