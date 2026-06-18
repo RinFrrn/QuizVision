@@ -43,6 +43,19 @@ class OcrOptionLocatorTest {
     }
 
     @Test
+    fun marksPartialAnswerWhenMultipleChoiceIsIncomplete() {
+        val firstAnswer = candidate("A. 第一个正确答案", 1, 100)
+        val result = locate(
+            options = listOf("第一个正确答案", "错误选项", "第二个正确答案"),
+            answers = setOf(0, 2),
+            candidates = listOf(firstAnswer)
+        )
+
+        assertEquals(listOf(firstAnswer.bounds), result.answerBounds)
+        assertTrue(result.isAnswerPartiallyMatched)
+    }
+
+    @Test
     fun shortOptionsRequireExactMatch() {
         val result = locate(
             options = listOf("对", "错"),

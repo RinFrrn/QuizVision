@@ -600,7 +600,7 @@ class AccessibilityTextSource(
                     ?: match.question.prompt
                 val answers = match.answerRects.joinToString(",") { it.flattenToString() }
                 val options = match.optionRects.joinToString(",") { it.flattenToString() }
-                "$identity:${match.rect.flattenToString()}:$answers:$options"
+                "$identity:${match.rect.flattenToString()}:$answers:$options:${match.isAnswerPartiallyMatched}"
             }
     }
 
@@ -754,9 +754,16 @@ class AccessibilityTextSource(
             }
             match.item.copy(
                 answerRects = answerRects,
-                optionRects = completeOptionRects
+                optionRects = completeOptionRects,
+                isAnswerPartiallyMatched = isPartialAnswerMatch(match.item, answerRects)
             )
         }
+    }
+
+    private fun isPartialAnswerMatch(match: QuizGraphicItem, answerRects: List<Rect>): Boolean {
+        return match.question.answer.size > 1 &&
+            answerRects.isNotEmpty() &&
+            answerRects.size < match.question.answer.size
     }
 
     private fun findOptionRects(

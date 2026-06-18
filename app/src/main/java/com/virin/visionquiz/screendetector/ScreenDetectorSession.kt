@@ -488,7 +488,7 @@ object ScreenDetectorSession {
                     ?.toString()
                     ?: match.question.prompt
                 val answers = match.answerRects.joinToString(",") { it.flattenToString() }
-                "$identity:${match.rect.flattenToString()}:$answers"
+                "$identity:${match.rect.flattenToString()}:$answers:${match.isAnswerPartiallyMatched}"
             }
         return parts.takeIf { it.isNotEmpty() }?.joinToString("|")
     }

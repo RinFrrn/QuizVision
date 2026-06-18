@@ -33,7 +33,8 @@ internal object OcrOptionLocator {
 
     data class Result(
         val optionBounds: List<Bounds>,
-        val answerBounds: List<Bounds>
+        val answerBounds: List<Bounds>,
+        val isAnswerPartiallyMatched: Boolean = false
     )
 
     fun locate(
@@ -71,7 +72,11 @@ internal object OcrOptionLocator {
             val answers = question.answerIndices
                 .sorted()
                 .mapNotNull(allOptions::getOrNull)
-            return Result(allOptions, answers)
+            return Result(
+                optionBounds = allOptions,
+                answerBounds = answers,
+                isAnswerPartiallyMatched = isPartialAnswerMatch(question, answers)
+            )
         }
 
         val answerOptions = question.answerIndices
@@ -79,10 +84,18 @@ internal object OcrOptionLocator {
             .mapNotNull { index ->
                 question.options.getOrNull(index)?.let { IndexedOption(index, it) }
             }
+        val answerBounds = locateTexts(answerOptions, searchCandidates, minMatchScore)
         return Result(
             optionBounds = emptyList(),
-            answerBounds = locateTexts(answerOptions, searchCandidates, minMatchScore)
+            answerBounds = answerBounds,
+            isAnswerPartiallyMatched = isPartialAnswerMatch(question, answerBounds)
         )
+    }
+
+    private fun isPartialAnswerMatch(question: QuestionMatch, answerBounds: List<Bounds>): Boolean {
+        return question.answerIndices.size > 1 &&
+            answerBounds.isNotEmpty() &&
+            answerBounds.size < question.answerIndices.size
     }
 
     private fun locateTexts(

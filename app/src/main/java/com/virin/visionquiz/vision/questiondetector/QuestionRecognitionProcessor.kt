@@ -197,7 +197,8 @@ class QuizRecognitionProcessor(
                 },
                 optionRects = locatedOptions.optionBounds.map {
                     padAndClampRect(it.toAndroidRect(), imageWidth, imageHeight)
-                }
+                },
+                isAnswerPartiallyMatched = locatedOptions.isAnswerPartiallyMatched
             )
         }
             .sortedByDescending { it.distance }

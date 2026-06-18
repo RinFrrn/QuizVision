@@ -55,6 +55,16 @@ class ScreenMatchGraphic(
         style = Paint.Style.STROKE
         strokeWidth = ANSWER_FRAME_WIDTH
     }
+    private val partialAnswerFrameShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = PARTIAL_ANSWER_FRAME_SHADOW_COLOR
+        style = Paint.Style.STROKE
+        strokeWidth = ANSWER_FRAME_SHADOW_WIDTH
+    }
+    private val partialAnswerFramePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = PARTIAL_ANSWER_FRAME_COLOR
+        style = Paint.Style.STROKE
+        strokeWidth = ANSWER_FRAME_WIDTH
+    }
     private val briefAnswerDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = BRIEF_ANSWER_DOT_COLOR
         style = Paint.Style.FILL
@@ -94,6 +104,16 @@ class ScreenMatchGraphic(
                 canvas.drawRoundRect(rect, FRAME_RADIUS, FRAME_RADIUS, framePaint)
             }
             if (showAnswerFrames) {
+                val answerShadowPaint = if (match.isAnswerPartiallyMatched) {
+                    partialAnswerFrameShadowPaint
+                } else {
+                    answerFrameShadowPaint
+                }
+                val answerPaint = if (match.isAnswerPartiallyMatched) {
+                    partialAnswerFramePaint
+                } else {
+                    answerFramePaint
+                }
                 match.answerRects.forEach { answerSourceRect ->
                     val answerRect = mapFrameRectToOverlay(answerSourceRect, overlayLocation)
                     if (useTouchAnswerDots) {
@@ -103,13 +123,13 @@ class ScreenMatchGraphic(
                             answerRect,
                             ANSWER_FRAME_RADIUS,
                             ANSWER_FRAME_RADIUS,
-                            answerFrameShadowPaint
+                            answerShadowPaint
                         )
                         canvas.drawRoundRect(
                             answerRect,
                             ANSWER_FRAME_RADIUS,
                             ANSWER_FRAME_RADIUS,
-                            answerFramePaint
+                            answerPaint
                         )
                         addFrameMaskBounds(answerRect, overlayLocation, screenMaskBounds)
                     }
@@ -288,6 +308,8 @@ class ScreenMatchGraphic(
         private const val FRAME_SHADOW_COLOR = 0xAA000000.toInt()
         private const val ANSWER_FRAME_COLOR = 0xFF4ADE80.toInt()
         private const val ANSWER_FRAME_SHADOW_COLOR = 0xAA052E16.toInt()
+        private const val PARTIAL_ANSWER_FRAME_COLOR = 0xFFFACC15.toInt()
+        private const val PARTIAL_ANSWER_FRAME_SHADOW_COLOR = 0xAA713F12.toInt()
         private const val BRIEF_ANSWER_DOT_COLOR = 0xDD000000.toInt()
         private const val LABEL_BACKGROUND_COLOR = 0xDD111111.toInt()
         private const val LABEL_BORDER_COLOR = 0xEEFFFFFF.toInt()
