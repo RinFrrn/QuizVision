@@ -44,9 +44,7 @@ import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.radiobutton.MaterialRadioButton
 import com.google.android.material.snackbar.Snackbar
 import com.virin.visionquiz.R
-import com.virin.visionquiz.ai.AiExplanationType
 import com.virin.visionquiz.dao.Quiz
-import com.virin.visionquiz.dao.QuizDatabase
 import com.virin.visionquiz.dao.QuizLibrary
 import com.virin.visionquiz.dao.QuizStudyMode
 import com.virin.visionquiz.databinding.FragmentQuizLibraryDetailBinding
@@ -602,12 +600,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         showExportProgress("正在生成文档")
         runIO {
             try {
-                val explanations = if (fileType == QuizExportUtil.FileType.TSV_ANKI) {
-                    buildExplanationsMap(quizzes)
-                } else {
-                    emptyMap()
-                }
-                val exportFile = QuizExportUtil.createExportFile(library, quizzes, fileType, explanations)
+                val exportFile = QuizExportUtil.createExportFile(library, quizzes, fileType)
                 runMain {
                     dismissExportProgress()
                     pendingExportFile = exportFile
@@ -635,12 +628,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         showExportProgress("正在生成文档")
         runIO {
             try {
-                val explanations = if (fileType == QuizExportUtil.FileType.TSV_ANKI) {
-                    buildExplanationsMap(quizzes)
-                } else {
-                    emptyMap()
-                }
-                val exportFile = QuizExportUtil.createExportFile(library, quizzes, fileType, explanations)
+                val exportFile = QuizExportUtil.createExportFile(library, quizzes, fileType)
                 val uri = QuizExportUtil.createShareUri(requireContext(), exportFile)
                 runMain {
                     dismissExportProgress()
@@ -809,19 +797,6 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         SIMILAR_ANALYSIS,
         BATCH_AI_EXPLAIN,
         QUIZ_LIST
-    }
-
-    private suspend fun buildExplanationsMap(quizzes: List<Quiz>): Map<Int, String> {
-        val db = QuizDatabase.getInstance(requireContext())
-        val dao = db.aiExplanationCacheDao()
-        val map = mutableMapOf<Int, String>()
-        for (quiz in quizzes) {
-            val cache = dao.getCache(quiz.id, AiExplanationType.QUICK_REVIEW.value)
-            if (cache != null) {
-                map[quiz.id] = cache.content
-            }
-        }
-        return map
     }
 
     companion object {
