@@ -54,6 +54,29 @@ class OcrOptionLocatorTest {
     }
 
     @Test
+    fun longOptionAllowsSmallOcrTypo() {
+        val answer = candidate("社会主义核心介值观", 2, 140)
+        val result = locate(
+            options = listOf("依法治国基本方略", "社会主义核心价值观"),
+            answers = setOf(1),
+            candidates = listOf(answer)
+        )
+
+        assertEquals(listOf(answer.bounds), result.answerBounds)
+    }
+
+    @Test
+    fun fuzzyOptionStillRejectsDifferentLongText() {
+        val result = locate(
+            options = listOf("依法治国基本方略", "社会主义核心价值观"),
+            answers = setOf(1),
+            candidates = listOf(candidate("社会主义市场经济体制", 2, 140))
+        )
+
+        assertTrue(result.answerBounds.isEmpty())
+    }
+
+    @Test
     fun shortOptionUsesExpectedPrefixWhenOcrTextIsWrong() {
         val expectedAnswer = candidate("B. 已", 2, 140)
         val result = locate(

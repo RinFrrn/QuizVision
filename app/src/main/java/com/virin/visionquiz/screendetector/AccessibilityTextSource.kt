@@ -13,6 +13,7 @@ import androidx.lifecycle.LiveData
 import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizManager
 import com.virin.visionquiz.preference.PreferenceUtils
+import com.virin.visionquiz.util.AnswerOptionTextMatcher
 import com.virin.visionquiz.util.QuizGraphicItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -811,32 +812,7 @@ class AccessibilityTextSource(
     }
 
     private fun answerCandidateScore(candidateText: String, normalizedOption: String): Int? {
-        val normalizedCandidate = normalizeOptionText(candidateText)
-        if (normalizedCandidate.isBlank()) {
-            return null
-        }
-        if (normalizedCandidate == normalizedOption) {
-            return ANSWER_MATCH_EXACT
-        }
-        if (normalizedOption.length <= SHORT_OPTION_EXACT_MATCH_MAX_LENGTH) {
-            return null
-        }
-        if (
-            normalizedCandidate.length < MIN_CONTAINS_OPTION_LENGTH ||
-            normalizedOption.length < MIN_CONTAINS_OPTION_LENGTH
-        ) {
-            return null
-        }
-        if (normalizedCandidate.contains(normalizedOption)) {
-            return ANSWER_MATCH_CONTAINS_OPTION
-        }
-        if (
-            normalizedOption.contains(normalizedCandidate) &&
-            normalizedCandidate.length * 2 >= normalizedOption.length
-        ) {
-            return ANSWER_MATCH_OPTION_CONTAINS_CANDIDATE
-        }
-        return null
+        return AnswerOptionTextMatcher.candidateScore(candidateText, normalizedOption)
     }
 
     private fun isReliableQuestionMatch(candidateText: String, prompt: String): Boolean {
@@ -850,12 +826,7 @@ class AccessibilityTextSource(
     }
 
     private fun normalizeOptionText(text: String): String {
-        return QuizManager.normalizeAnswerText(
-            OPTION_PREFIX_REGEX.replace(
-                text.replace(WHITESPACE_REGEX, " ").trim(),
-                ""
-            )
-        )
+        return AnswerOptionTextMatcher.normalizeOptionText(text)
     }
 
     private fun rectArea(rect: Rect): Int {
@@ -959,17 +930,11 @@ class AccessibilityTextSource(
         private const val MAX_COMBINED_NODE_COUNT = 8
         private const val MAX_ANSWER_SEARCH_NODE_COUNT = 24
         private const val MAX_ANSWER_CANDIDATE_NODE_COUNT = 3
-        private const val MIN_CONTAINS_OPTION_LENGTH = 2
-        private const val SHORT_OPTION_EXACT_MATCH_MAX_LENGTH = 4
         private const val STRICT_MATCH_SCORE = 1.0
         private const val MAX_COMBINED_RECT_HEIGHT_RATIO = 0.45f
         private const val MAX_ANSWER_RECT_HEIGHT_RATIO = 0.18f
         private const val MAX_ANSWER_VERTICAL_SPAN_RATIO = 0.5f
         private const val DISPLAY_RECT_PADDING_PX = 4
-        private const val ANSWER_MATCH_EXACT = 0
-        private const val ANSWER_MATCH_CONTAINS_OPTION = 1
-        private const val ANSWER_MATCH_OPTION_CONTAINS_CANDIDATE = 2
         private val WHITESPACE_REGEX = Regex("\\s+")
-        private val OPTION_PREFIX_REGEX = Regex("^[A-Ha-h](?:[、.．)）]\\s*|\\s+)")
     }
 }

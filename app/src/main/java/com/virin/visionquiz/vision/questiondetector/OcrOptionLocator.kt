@@ -1,6 +1,6 @@
 package com.virin.visionquiz.vision.questiondetector
 
-import com.virin.visionquiz.dao.QuizManager
+import com.virin.visionquiz.util.AnswerOptionTextMatcher
 import kotlin.math.abs
 
 internal object OcrOptionLocator {
@@ -224,41 +224,11 @@ internal object OcrOptionLocator {
     }
 
     private fun candidateScore(candidateText: String, normalizedOption: String): Int? {
-        val normalizedCandidate = normalizeOptionText(candidateText)
-        if (normalizedCandidate.isBlank()) {
-            return null
-        }
-        if (normalizedCandidate == normalizedOption) {
-            return MATCH_EXACT
-        }
-        if (normalizedOption.length <= SHORT_OPTION_EXACT_MATCH_MAX_LENGTH) {
-            return null
-        }
-        if (
-            normalizedCandidate.length < MIN_CONTAINS_OPTION_LENGTH ||
-            normalizedOption.length < MIN_CONTAINS_OPTION_LENGTH
-        ) {
-            return null
-        }
-        if (normalizedCandidate.contains(normalizedOption)) {
-            return MATCH_CONTAINS_OPTION
-        }
-        if (
-            normalizedOption.contains(normalizedCandidate) &&
-            normalizedCandidate.length * 2 >= normalizedOption.length
-        ) {
-            return MATCH_OPTION_CONTAINS_CANDIDATE
-        }
-        return null
+        return AnswerOptionTextMatcher.candidateScore(candidateText, normalizedOption)
     }
 
     private fun normalizeOptionText(text: String): String {
-        return QuizManager.normalizeAnswerText(
-            OPTION_PREFIX_REGEX.replace(
-                text.replace(WHITESPACE_REGEX, " ").trim(),
-                ""
-            )
-        )
+        return AnswerOptionTextMatcher.normalizeOptionText(text)
     }
 
     private data class CandidateMatch(
@@ -278,15 +248,9 @@ internal object OcrOptionLocator {
     private const val MAX_ADJACENT_ORDER_DISTANCE = 8
     private const val MAX_HORIZONTAL_GAP_HEIGHT_MULTIPLIER = 4
     private const val MIN_VERTICAL_OVERLAP_RATIO = 0.5f
-    private const val MIN_CONTAINS_OPTION_LENGTH = 2
-    private const val SHORT_OPTION_EXACT_MATCH_MAX_LENGTH = 4
     private const val MAX_RECT_HEIGHT_RATIO = 0.18f
     private const val MAX_VERTICAL_SPAN_RATIO = 0.5f
-    private const val MATCH_EXACT = 0
-    private const val MATCH_CONTAINS_OPTION = 1
-    private const val MATCH_OPTION_CONTAINS_CANDIDATE = 2
-    private const val MATCH_EXPECTED_PREFIX = 3
-    private val WHITESPACE_REGEX = Regex("\\s+")
+    private val MATCH_EXPECTED_PREFIX = AnswerOptionTextMatcher.MATCH_PREFIX_ANCHOR
     private val OPTION_PREFIX_REGEX = Regex("^[A-Ha-h](?:[、.．)）]\\s*|\\s+)")
     private val PREFIX_WITH_CONTENT_REGEX =
         Regex("^\\s*([A-Ha-h])(?:[、.．)）:：]\\s*|\\s+)(.+?)\\s*$")
