@@ -184,7 +184,8 @@ class QuizRecognitionProcessor(
                     ),
                     candidates = lineCandidates,
                     nextQuestionStartOrder = nextQuestionStartOrder,
-                    imageHeight = imageHeight
+                    imageHeight = imageHeight,
+                    minMatchScore = minMatchScore
                 )
             } else {
                 OcrOptionLocator.Result(emptyList(), emptyList())

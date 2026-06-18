@@ -13,12 +13,14 @@ internal object AnswerOptionTextMatcher {
     private const val MIN_CONTAINS_OPTION_LENGTH = 2
     private const val SHORT_OPTION_EXACT_MATCH_MAX_LENGTH = 4
     private const val MIN_FUZZY_OPTION_LENGTH = 5
-    private const val MIN_FUZZY_SCORE = 0.78
-    private const val MIN_FUZZY_SCORE_FOR_SHORT_TEXT = 0.84
     private val WHITESPACE_REGEX = Regex("\\s+")
     private val OPTION_PREFIX_REGEX = Regex("^[A-Ha-h](?:[、.．)）]\\s*|\\s+)")
 
-    fun candidateScore(candidateText: String, normalizedOption: String): Int? {
+    fun candidateScore(
+        candidateText: String,
+        normalizedOption: String,
+        minMatchScore: Double
+    ): Int? {
         val normalizedCandidate = normalizeOptionText(candidateText)
         if (normalizedCandidate.isBlank()) {
             return null
@@ -44,7 +46,7 @@ internal object AnswerOptionTextMatcher {
         ) {
             return MATCH_OPTION_CONTAINS_CANDIDATE
         }
-        if (isFuzzyOptionMatch(normalizedCandidate, normalizedOption)) {
+        if (isFuzzyOptionMatch(normalizedCandidate, normalizedOption, minMatchScore)) {
             return MATCH_FUZZY
         }
         return null
@@ -59,17 +61,15 @@ internal object AnswerOptionTextMatcher {
         )
     }
 
-    private fun isFuzzyOptionMatch(candidate: String, option: String): Boolean {
+    private fun isFuzzyOptionMatch(
+        candidate: String,
+        option: String,
+        minMatchScore: Double
+    ): Boolean {
         if (candidate.length < MIN_FUZZY_OPTION_LENGTH || option.length < MIN_FUZZY_OPTION_LENGTH) {
             return false
         }
-        val maxLength = max(candidate.length, option.length)
-        val minScore = if (maxLength <= 8) {
-            MIN_FUZZY_SCORE_FOR_SHORT_TEXT
-        } else {
-            MIN_FUZZY_SCORE
-        }
-        return editSimilarity(candidate, option) >= minScore
+        return editSimilarity(candidate, option) >= minMatchScore.coerceIn(0.0, 1.0)
     }
 
     private fun editSimilarity(left: String, right: String): Double {

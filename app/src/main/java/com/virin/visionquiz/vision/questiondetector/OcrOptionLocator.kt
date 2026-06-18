@@ -1,5 +1,6 @@
 package com.virin.visionquiz.vision.questiondetector
 
+import com.virin.visionquiz.dao.QuizManager
 import com.virin.visionquiz.util.AnswerOptionTextMatcher
 import kotlin.math.abs
 
@@ -39,7 +40,8 @@ internal object OcrOptionLocator {
         question: QuestionMatch,
         candidates: List<TextCandidate>,
         nextQuestionStartOrder: Int?,
-        imageHeight: Int
+        imageHeight: Int,
+        minMatchScore: Double = QuizManager.DEFAULT_MIN_MATCH_SCORE
     ): Result {
         if (question.options.isEmpty() || imageHeight <= 0) {
             return Result(emptyList(), emptyList())
@@ -62,7 +64,8 @@ internal object OcrOptionLocator {
 
         val allOptions = locateTexts(
             question.options.mapIndexed { index, text -> IndexedOption(index, text) },
-            searchCandidates
+            searchCandidates,
+            minMatchScore
         )
         if (allOptions.size == question.options.size) {
             val answers = question.answerIndices
@@ -78,13 +81,14 @@ internal object OcrOptionLocator {
             }
         return Result(
             optionBounds = emptyList(),
-            answerBounds = locateTexts(answerOptions, searchCandidates)
+            answerBounds = locateTexts(answerOptions, searchCandidates, minMatchScore)
         )
     }
 
     private fun locateTexts(
         options: List<IndexedOption>,
-        candidates: List<TextCandidate>
+        candidates: List<TextCandidate>,
+        minMatchScore: Double
     ): List<Bounds> {
         val usedOrders = mutableSetOf<Int>()
         val usedBounds = mutableSetOf<Bounds>()
@@ -100,7 +104,7 @@ internal object OcrOptionLocator {
                     usedBounds.any { used -> used.intersects(candidate.bounds) }
                 }
                 .mapNotNull { candidate ->
-                    val score = candidateScore(candidate.text, normalizedOption)
+                    val score = candidateScore(candidate.text, normalizedOption, minMatchScore)
                         ?: return@mapNotNull null
                     CandidateMatch(
                         candidate = candidate,
@@ -223,8 +227,16 @@ internal object OcrOptionLocator {
             other.top < bottom
     }
 
-    private fun candidateScore(candidateText: String, normalizedOption: String): Int? {
-        return AnswerOptionTextMatcher.candidateScore(candidateText, normalizedOption)
+    private fun candidateScore(
+        candidateText: String,
+        normalizedOption: String,
+        minMatchScore: Double
+    ): Int? {
+        return AnswerOptionTextMatcher.candidateScore(
+            candidateText,
+            normalizedOption,
+            minMatchScore
+        )
     }
 
     private fun normalizeOptionText(text: String): String {

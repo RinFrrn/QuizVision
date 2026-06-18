@@ -66,6 +66,18 @@ class OcrOptionLocatorTest {
     }
 
     @Test
+    fun highThresholdRejectsSmallOcrTypo() {
+        val result = locate(
+            options = listOf("依法治国基本方略", "社会主义核心价值观"),
+            answers = setOf(1),
+            candidates = listOf(candidate("社会主义核心介值观", 2, 140)),
+            minMatchScore = 0.95
+        )
+
+        assertTrue(result.answerBounds.isEmpty())
+    }
+
+    @Test
     fun fuzzyOptionStillRejectsDifferentLongText() {
         val result = locate(
             options = listOf("依法治国基本方略", "社会主义核心价值观"),
@@ -191,7 +203,8 @@ class OcrOptionLocatorTest {
         options: List<String>,
         answers: Set<Int>,
         candidates: List<OcrOptionLocator.TextCandidate>,
-        nextQuestionStartOrder: Int? = null
+        nextQuestionStartOrder: Int? = null,
+        minMatchScore: Double = 0.76
     ): OcrOptionLocator.Result {
         return OcrOptionLocator.locate(
             question = OcrOptionLocator.QuestionMatch(
@@ -203,7 +216,8 @@ class OcrOptionLocatorTest {
             ),
             candidates = candidates,
             nextQuestionStartOrder = nextQuestionStartOrder,
-            imageHeight = 1000
+            imageHeight = 1000,
+            minMatchScore = minMatchScore
         )
     }
 

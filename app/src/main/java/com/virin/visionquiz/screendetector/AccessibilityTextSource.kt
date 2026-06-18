@@ -812,7 +812,11 @@ class AccessibilityTextSource(
     }
 
     private fun answerCandidateScore(candidateText: String, normalizedOption: String): Int? {
-        return AnswerOptionTextMatcher.candidateScore(candidateText, normalizedOption)
+        return AnswerOptionTextMatcher.candidateScore(
+            candidateText,
+            normalizedOption,
+            minMatchScore
+        )
     }
 
     private fun isReliableQuestionMatch(candidateText: String, prompt: String): Boolean {
