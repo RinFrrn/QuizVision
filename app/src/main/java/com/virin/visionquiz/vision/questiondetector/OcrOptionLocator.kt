@@ -137,10 +137,27 @@ internal object OcrOptionLocator {
                             usedBounds.any { used -> used.intersects(candidate.bounds) }
                         }
                         .mapNotNull { candidate ->
+                            buildWrappedLineMatch(
+                                candidate = candidate,
+                                candidates = candidates,
+                                normalizedOption = normalizedOption,
+                                minMatchScore = minMatchScore
+                            )
+                        }
+                )
+                .plus(
+                    candidates.asSequence()
+                        .filterNot { it.order in usedOrders }
+                        .filterNot { candidate ->
+                            usedBounds.any { used -> used.intersects(candidate.bounds) }
+                        }
+                        .mapNotNull { candidate ->
                             buildPrefixAnchoredMatch(
                                 optionIndex = option.index,
                                 candidate = candidate,
-                                candidates = candidates
+                                candidates = candidates,
+                                normalizedOption = normalizedOption,
+                                minMatchScore = minMatchScore
                             )
                         }
                 )
@@ -160,10 +177,73 @@ internal object OcrOptionLocator {
         }
     }
 
+    private fun buildWrappedLineMatch(
+        candidate: TextCandidate,
+        candidates: List<TextCandidate>,
+        normalizedOption: String,
+        minMatchScore: Double
+    ): CandidateMatch? {
+        var selectedBounds = candidate.bounds
+        val combinedText = StringBuilder(candidate.text)
+        var continuationCount = 0
+        val nextLines = candidates
+            .asSequence()
+            .filter { it.order > candidate.order }
+            .filter { it.order - candidate.order <= MAX_WRAPPED_LINE_ORDER_DISTANCE }
+            .sortedWith(compareBy<TextCandidate> { it.order }.thenBy { it.bounds.top })
+            .toList()
+        for (nextLine in nextLines) {
+            if (OPTION_PREFIX_REGEX.containsMatchIn(nextLine.text.trim())) {
+                break
+            }
+            if (!isLikelyWrappedContinuation(selectedBounds, nextLine.bounds)) {
+                continue
+            }
+            continuationCount++
+            combinedText.append(' ').append(nextLine.text)
+            selectedBounds = selectedBounds.union(nextLine.bounds)
+            val normalizedCandidate = normalizeOptionText(combinedText.toString())
+            val score = candidateScore(
+                combinedText.toString(),
+                normalizedOption,
+                minMatchScore
+            )
+            if (score == null) {
+                if (continuationCount >= MAX_WRAPPED_CONTINUATION_LINES) {
+                    break
+                }
+                continue
+            }
+            return CandidateMatch(
+                candidate = candidate,
+                selectedBounds = selectedBounds,
+                score = score,
+                optionPrefixRank =
+                    if (OPTION_PREFIX_REGEX.containsMatchIn(candidate.text.trim())) 0 else 1,
+                normalizedLengthDifference = abs(normalizedCandidate.length - normalizedOption.length)
+            )
+        }
+        return null
+    }
+
+    private fun isLikelyWrappedContinuation(first: Bounds, second: Bounds): Boolean {
+        val verticalGap = second.top - first.bottom
+        if (verticalGap < 0 || verticalGap > first.height * MAX_WRAPPED_VERTICAL_GAP_HEIGHT_MULTIPLIER) {
+            return false
+        }
+        val leftDelta = abs(second.left - first.left)
+        val rightDelta = abs(second.right - first.right)
+        return leftDelta <= first.height * MAX_WRAPPED_LEFT_DELTA_HEIGHT_MULTIPLIER ||
+            second.left in first.left..first.right ||
+            rightDelta <= first.height * MAX_WRAPPED_RIGHT_DELTA_HEIGHT_MULTIPLIER
+    }
+
     private fun buildPrefixAnchoredMatch(
         optionIndex: Int,
         candidate: TextCandidate,
-        candidates: List<TextCandidate>
+        candidates: List<TextCandidate>,
+        normalizedOption: String,
+        minMatchScore: Double
     ): CandidateMatch? {
         val expectedLabel = ('A'.code + optionIndex).toChar()
         val trimmedText = candidate.text.trim()
@@ -179,12 +259,19 @@ internal object OcrOptionLocator {
             ) {
                 return null
             }
+            val score = if (normalizedOption.length <= MAX_BLIND_PREFIX_ANCHOR_OPTION_LENGTH) {
+                MATCH_EXPECTED_PREFIX
+            } else {
+                candidateScore(trimmedText, normalizedOption, minMatchScore) ?: return null
+            }
             return CandidateMatch(
                 candidate = candidate,
                 selectedBounds = candidate.bounds,
-                score = MATCH_EXPECTED_PREFIX,
+                score = score,
                 optionPrefixRank = 0,
-                normalizedLengthDifference = 0
+                normalizedLengthDifference = abs(
+                    normalizeOptionText(trimmedText).length - normalizedOption.length
+                )
             )
         }
 
@@ -208,12 +295,20 @@ internal object OcrOptionLocator {
                     .thenBy { it.bounds.left - candidate.bounds.right }
                     .thenBy { it.bounds.area }
             ) ?: return null
+        val combinedText = "$trimmedText ${adjacent.text}"
+        val score = if (normalizedOption.length <= MAX_BLIND_PREFIX_ANCHOR_OPTION_LENGTH) {
+            MATCH_EXPECTED_PREFIX
+        } else {
+            candidateScore(combinedText, normalizedOption, minMatchScore) ?: return null
+        }
         return CandidateMatch(
             candidate = candidate,
             selectedBounds = candidate.bounds.union(adjacent.bounds),
-            score = MATCH_EXPECTED_PREFIX,
+            score = score,
             optionPrefixRank = 0,
-            normalizedLengthDifference = 0
+            normalizedLengthDifference = abs(
+                normalizeOptionText(combinedText).length - normalizedOption.length
+            )
         )
     }
 
@@ -271,8 +366,14 @@ internal object OcrOptionLocator {
 
     private const val MAX_SEARCH_CANDIDATE_COUNT = 24
     private const val MAX_ADJACENT_ORDER_DISTANCE = 8
+    private const val MAX_WRAPPED_LINE_ORDER_DISTANCE = 2_200
+    private const val MAX_WRAPPED_CONTINUATION_LINES = 2
     private const val MAX_HORIZONTAL_GAP_HEIGHT_MULTIPLIER = 4
+    private const val MAX_WRAPPED_VERTICAL_GAP_HEIGHT_MULTIPLIER = 1.4f
+    private const val MAX_WRAPPED_LEFT_DELTA_HEIGHT_MULTIPLIER = 2.5f
+    private const val MAX_WRAPPED_RIGHT_DELTA_HEIGHT_MULTIPLIER = 2.5f
     private const val MIN_VERTICAL_OVERLAP_RATIO = 0.5f
+    private const val MAX_BLIND_PREFIX_ANCHOR_OPTION_LENGTH = 4
     private const val MAX_RECT_HEIGHT_RATIO = 0.18f
     private const val MAX_VERTICAL_SPAN_RATIO = 0.5f
     private val MATCH_EXPECTED_PREFIX = AnswerOptionTextMatcher.MATCH_PREFIX_ANCHOR

@@ -76,6 +76,14 @@ class QuizRecognitionProcessor(
         val optionSupportScore: Double
     )
 
+    private data class StableMatchCandidate(
+        val fingerprint: String,
+        val matches: List<QuizGraphicItem>,
+        val count: Int
+    )
+
+    private var stableCandidate: StableMatchCandidate? = null
+
     private fun createRecognizedTextItem(
         text: String,
         boundingBox: Rect,
@@ -551,12 +559,13 @@ class QuizRecognitionProcessor(
                 if (generation != matchGeneration.get()) {
                     return@withContext
                 }
-                displayedMatches = sortedMatches
-                onMatchesDetected?.invoke(sortedMatches)
+                val stableMatches = resolveStableMatches(sortedMatches)
+                displayedMatches = stableMatches
+                onMatchesDetected?.invoke(stableMatches)
 //            logExtrasForTesting(text)
 
                 graphicOverlay.clear()
-                addMatchesGraphic(graphicOverlay, sortedMatches)
+                addMatchesGraphic(graphicOverlay, stableMatches)
                 graphicOverlay.postInvalidate()
             }
         }
@@ -564,8 +573,58 @@ class QuizRecognitionProcessor(
 
     override fun onFailure(e: Exception) {
         displayedMatches = emptyList()
+        stableCandidate = null
         onMatchesDetected?.invoke(emptyList())
         Log.w(TAG, "Text detection failed.$e")
+    }
+
+    private fun resolveStableMatches(newMatches: List<QuizGraphicItem>): List<QuizGraphicItem> {
+        val fingerprint = buildStableMatchesFingerprint(newMatches)
+        val previousCandidate = stableCandidate
+        val count = if (previousCandidate?.fingerprint == fingerprint) {
+            previousCandidate.count + 1
+        } else {
+            1
+        }
+        stableCandidate = StableMatchCandidate(fingerprint, newMatches, count)
+
+        if (newMatches.isEmpty()) {
+            return if (displayedMatches.isEmpty() || count >= REQUIRED_STABLE_MATCH_FRAMES) {
+                newMatches
+            } else {
+                displayedMatches
+            }
+        }
+        if (displayedMatches.isEmpty() || count >= REQUIRED_STABLE_MATCH_FRAMES) {
+            return newMatches
+        }
+        return displayedMatches
+    }
+
+    private fun buildStableMatchesFingerprint(matches: List<QuizGraphicItem>): String {
+        return matches
+            .sortedWith(
+                compareBy<QuizGraphicItem> { it.rect.top }
+                    .thenBy { it.rect.left }
+                    .thenByDescending { it.distance }
+            )
+            .joinToString("|") { match ->
+                val identity = match.question.id
+                    .takeIf { it != 0 }
+                    ?.toString()
+                    ?: match.question.prompt
+                val answers = match.answerRects.joinToString(",") { rect ->
+                    rect.toStableRectKey()
+                }
+                "$identity:${match.rect.toStableRectKey()}:$answers:${match.isAnswerPartiallyMatched}"
+            }
+    }
+
+    private fun Rect.toStableRectKey(): String {
+        return listOf(left, top, right, bottom)
+            .joinToString(",") { coordinate ->
+                ((coordinate + STABLE_RECT_BUCKET_PX / 2) / STABLE_RECT_BUCKET_PX).toString()
+            }
     }
 
     companion object {
@@ -582,6 +641,8 @@ class QuizRecognitionProcessor(
         private const val MIN_OPTION_SUPPORT_LENGTH = 5
         private const val STRONG_QUESTION_MATCH_SCORE = 0.90
         private const val MIN_AMBIGUOUS_MATCH_MARGIN = 0.02
+        private const val REQUIRED_STABLE_MATCH_FRAMES = 2
+        private const val STABLE_RECT_BUCKET_PX = 12
         private const val DISPLAY_RECT_PADDING_PX = 4
         private const val MIN_PROMPT_PREFIX_MATCH_LENGTH = 6
         private const val ORDER_SCALE = 1_000

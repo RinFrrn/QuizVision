@@ -144,6 +144,49 @@ class OcrOptionLocatorTest {
     }
 
     @Test
+    fun wrappedLongOptionCombinesFollowingLine() {
+        val firstLine = candidate("B. 这是一个需要换行", 2, 140)
+        val secondLine = candidate("才能完整显示", 3, 184, left = 36)
+        val result = locate(
+            options = listOf("错误选项内容", "这是一个需要换行才能完整显示正确答案内容"),
+            answers = setOf(1),
+            candidates = listOf(
+                candidate("A. 错误选项内容", 1, 100),
+                firstLine,
+                secondLine
+            )
+        )
+
+        assertEquals(
+            listOf(
+                OcrOptionLocator.Bounds(
+                    firstLine.bounds.left,
+                    firstLine.bounds.top,
+                    maxOf(firstLine.bounds.right, secondLine.bounds.right),
+                    secondLine.bounds.bottom
+                )
+            ),
+            result.answerBounds
+        )
+    }
+
+    @Test
+    fun wrappedLongOptionStopsAtNextOptionPrefix() {
+        val result = locate(
+            options = listOf("错误选项内容", "这是一个需要换行才能完整显示正确答案内容"),
+            answers = setOf(1),
+            candidates = listOf(
+                candidate("A. 错误选项内容", 1, 100),
+                candidate("B. 这是一个需要换行", 2, 140),
+                candidate("C. 另一个选项", 3, 184),
+                candidate("才能完整显示", 4, 228, left = 36)
+            )
+        )
+
+        assertTrue(result.answerBounds.isEmpty())
+    }
+
+    @Test
     fun wrongOptionPrefixDoesNotRescueShortText() {
         val result = locate(
             options = listOf("甲", "乙"),
