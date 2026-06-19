@@ -35,6 +35,9 @@ class QuizGraphic constructor(
     private val labelPaint: Paint
     private val labelBorderPaint: Paint
     private val connectorPaint: Paint
+    private val debugPanelPaint: Paint
+    private val debugPanelBorderPaint: Paint
+    private val debugTextPaint: TextPaint
 
     init {
         rectPaint.color = MARKER_COLOR
@@ -59,6 +62,20 @@ class QuizGraphic constructor(
         connectorPaint.color = CONNECTOR_COLOR
         connectorPaint.style = Paint.Style.STROKE
         connectorPaint.strokeWidth = CONNECTOR_WIDTH
+        debugPanelPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        debugPanelPaint.color = DEBUG_PANEL_COLOR
+        debugPanelPaint.style = Paint.Style.FILL
+        debugPanelBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        debugPanelBorderPaint.color = DEBUG_PANEL_BORDER_COLOR
+        debugPanelBorderPaint.style = Paint.Style.STROKE
+        debugPanelBorderPaint.strokeWidth = 1.5f
+        debugTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
+        debugTextPaint.color = DEBUG_TEXT_COLOR
+        debugTextPaint.textSize = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP,
+            DEBUG_TEXT_SIZE_SP,
+            overlay?.context?.resources?.displayMetrics
+        )
         // Redraw the overlay, as this graphic has been added.
         postInvalidate()
     }
@@ -67,6 +84,9 @@ class QuizGraphic constructor(
     /** Draws the text block annotations for position, size, and raw value on the supplied canvas. */
     override fun draw(canvas: Canvas) {
         val occupiedLabels = mutableListOf<RectF>()
+        if (showConfidence) {
+            drawDebugPanel(canvas)?.let(occupiedLabels::add)
+        }
 
         for (item in matchedQuiz.sortedBy { it.rect.top }) {
             val prompt = item.question.prompt
@@ -99,6 +119,57 @@ class QuizGraphic constructor(
                 occupiedLabels
             )
         }
+    }
+
+    private fun drawDebugPanel(canvas: Canvas): RectF? {
+        val debugText = buildDebugPanelText()
+        if (debugText.isBlank()) {
+            return null
+        }
+        val panelWidth = max(
+            MIN_DEBUG_PANEL_WIDTH,
+            min(canvas.width - EDGE_PADDING * 2, canvas.width * DEBUG_PANEL_WIDTH_RATIO)
+        ).toInt()
+        val layout = StaticLayout.Builder
+            .obtain(debugText, 0, debugText.length, debugTextPaint, panelWidth)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setIncludePad(false)
+            .setLineSpacing(0f, 1f)
+            .setMaxLines(MAX_DEBUG_PANEL_LINES)
+            .setEllipsize(android.text.TextUtils.TruncateAt.END)
+            .build()
+        val rect = RectF(
+            EDGE_PADDING,
+            EDGE_PADDING,
+            EDGE_PADDING + layout.width + DEBUG_PANEL_PADDING * 2,
+            EDGE_PADDING + layout.height + DEBUG_PANEL_PADDING * 2
+        )
+        canvas.drawRoundRect(rect, DEBUG_PANEL_RADIUS, DEBUG_PANEL_RADIUS, debugPanelPaint)
+        canvas.drawRoundRect(rect, DEBUG_PANEL_RADIUS, DEBUG_PANEL_RADIUS, debugPanelBorderPaint)
+        canvas.save()
+        canvas.translate(rect.left + DEBUG_PANEL_PADDING, rect.top + DEBUG_PANEL_PADDING)
+        layout.draw(canvas)
+        canvas.restore()
+        return rect
+    }
+
+    private fun buildDebugPanelText(): String {
+        val lines = mutableListOf("OCR 调试")
+        matchedQuiz
+            .sortedByDescending { it.distance }
+            .take(MAX_DEBUG_MATCHES)
+            .forEachIndexed { index, item ->
+                val answerState = when {
+                    item.isAnswerPartiallyMatched -> "黄"
+                    item.answerRects.isNotEmpty() -> "绿"
+                    else -> "无框"
+                }
+                lines += "${index + 1}. ${String.format("%.2f", item.distance)} $answerState"
+                item.debugLines.take(MAX_DEBUG_LINES_PER_MATCH).forEach {
+                    lines += "   $it"
+                }
+            }
+        return lines.joinToString("\n")
     }
 
     private fun buildAnswerContent(
@@ -259,8 +330,12 @@ class QuizGraphic constructor(
         private const val MARKER_COLOR = Color.WHITE
         private const val LABEL_BORDER_COLOR = 0xDD222222.toInt()
         private const val CONNECTOR_COLOR = 0xEEFFFFFF.toInt()
+        private const val DEBUG_PANEL_COLOR = 0xDD111111.toInt()
+        private const val DEBUG_PANEL_BORDER_COLOR = 0xEEFFFFFF.toInt()
+        private const val DEBUG_TEXT_COLOR = Color.WHITE
         private const val LABEL_ALPHA = 228
         private const val DEFAULT_TEXT_SIZE_SP = 12.0f
+        private const val DEBUG_TEXT_SIZE_SP = 11.0f
         private const val STROKE_WIDTH = 4.0f
         private const val CONNECTOR_WIDTH = 2.0f
         private const val CONNECTOR_DOT_RADIUS = 3.0f
@@ -270,8 +345,15 @@ class QuizGraphic constructor(
         private const val EDGE_PADDING = 8.0f
         private const val MIN_LABEL_WIDTH = 220.0f
         private const val MAX_LABEL_WIDTH_RATIO = 0.72f
+        private const val MIN_DEBUG_PANEL_WIDTH = 220.0f
+        private const val DEBUG_PANEL_WIDTH_RATIO = 0.82f
+        private const val DEBUG_PANEL_PADDING = 8.0f
+        private const val DEBUG_PANEL_RADIUS = 8.0f
         private const val MIN_CONNECTOR_DISTANCE = 18.0f
         private const val MAX_LABEL_LINES = 6
+        private const val MAX_DEBUG_PANEL_LINES = 14
+        private const val MAX_DEBUG_MATCHES = 3
+        private const val MAX_DEBUG_LINES_PER_MATCH = 4
         private const val MAX_PLACEMENT_ATTEMPTS = 8
         private const val QUESTION_TEXT_SCALE = 0.92f
         private val WHITESPACE_REGEX = Regex("\\s+")

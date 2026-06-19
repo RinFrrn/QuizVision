@@ -73,7 +73,14 @@ class QuizRecognitionProcessor(
         val quiz: Quiz,
         val originalScore: Double,
         val adjustedScore: Double,
-        val optionSupportScore: Double
+        val optionSupportScore: Double,
+        val runnerUpMargin: Double?
+    )
+
+    private data class SelectedQuizMatch(
+        val quiz: Quiz,
+        val score: Double,
+        val debugLines: List<String>
     )
 
     private data class StableMatchCandidate(
@@ -141,9 +148,10 @@ class QuizRecognitionProcessor(
         if (bestMatch != null) {
             return MatchedTextItem(
                 item = QuizGraphicItem(
-                    bestMatch.first,
-                    bestMatch.second,
-                    recognizedTextItem.rect
+                    bestMatch.quiz,
+                    bestMatch.score,
+                    recognizedTextItem.rect,
+                    debugLines = bestMatch.debugLines
                 ),
                 source = recognizedTextItem
             )
@@ -155,12 +163,23 @@ class QuizRecognitionProcessor(
         matches: List<Pair<Quiz, Double>>,
         source: RecognizedTextItem,
         lineCandidates: List<OcrOptionLocator.TextCandidate>
-    ): Pair<Quiz, Double>? {
+    ): SelectedQuizMatch? {
         if (matches.isEmpty()) {
             return null
         }
         if (matches.size == 1) {
-            return matches.first()
+            val only = matches.first()
+            return SelectedQuizMatch(
+                quiz = only.first,
+                score = only.second,
+                debugLines = buildMatchDebugLines(
+                    originalScore = only.second,
+                    adjustedScore = only.second,
+                    optionSupportScore = 0.0,
+                    runnerUpMargin = null,
+                    source = source
+                )
+            )
         }
         val nearbyOptionTexts = collectNearbyOptionTexts(source, lineCandidates)
         val rankedMatches = matches
@@ -174,7 +193,8 @@ class QuizRecognitionProcessor(
                     quiz = match.first,
                     originalScore = match.second,
                     adjustedScore = minOf(1.0, match.second + optionSupport),
-                    optionSupportScore = optionSupport
+                    optionSupportScore = optionSupport,
+                    runnerUpMargin = null
                 )
             }
             .sortedWith(
@@ -183,15 +203,53 @@ class QuizRecognitionProcessor(
             )
         val best = rankedMatches.firstOrNull() ?: return null
         val runnerUp = rankedMatches.getOrNull(1)
+        val margin = runnerUp?.let { best.adjustedScore - it.adjustedScore }
         if (
             runnerUp != null &&
             best.optionSupportScore == 0.0 &&
             best.originalScore < STRONG_QUESTION_MATCH_SCORE &&
-            best.adjustedScore - runnerUp.adjustedScore < MIN_AMBIGUOUS_MATCH_MARGIN
+            (margin ?: 0.0) < MIN_AMBIGUOUS_MATCH_MARGIN
         ) {
             return null
         }
-        return best.quiz to best.adjustedScore
+        return SelectedQuizMatch(
+            quiz = best.quiz,
+            score = best.adjustedScore,
+            debugLines = buildMatchDebugLines(
+                originalScore = best.originalScore,
+                adjustedScore = best.adjustedScore,
+                optionSupportScore = best.optionSupportScore,
+                runnerUpMargin = margin,
+                source = source
+            )
+        )
+    }
+
+    private fun buildMatchDebugLines(
+        originalScore: Double,
+        adjustedScore: Double,
+        optionSupportScore: Double,
+        runnerUpMargin: Double?,
+        source: RecognizedTextItem
+    ): List<String> {
+        return buildList {
+            add("题干 ${formatScore(originalScore)} -> ${formatScore(adjustedScore)}")
+            if (optionSupportScore > 0.0) {
+                add("选项支持 +${formatScore(optionSupportScore)}")
+            }
+            runnerUpMargin?.let {
+                add("候选差 ${formatScore(it)}")
+            }
+            add("OCR ${resolveSourceLineCount(source)} 行")
+        }
+    }
+
+    private fun resolveSourceLineCount(source: RecognizedTextItem): Int {
+        return ((source.endOrder - source.startOrder) / ORDER_SCALE + 1).coerceAtLeast(1)
+    }
+
+    private fun formatScore(value: Double): String {
+        return String.format("%.2f", value)
     }
 
     private fun collectNearbyOptionTexts(
@@ -328,10 +386,29 @@ class QuizRecognitionProcessor(
                 optionRects = locatedOptions.optionBounds.map {
                     padAndClampRect(it.toAndroidRect(), imageWidth, imageHeight)
                 },
-                isAnswerPartiallyMatched = locatedOptions.isAnswerPartiallyMatched
+                isAnswerPartiallyMatched = locatedOptions.isAnswerPartiallyMatched,
+                debugLines = match.item.debugLines + buildAnswerLocationDebugLines(
+                    match,
+                    locatedOptions
+                )
             )
         }
             .sortedByDescending { it.distance }
+    }
+
+    private fun buildAnswerLocationDebugLines(
+        match: MatchedTextItem,
+        result: OcrOptionLocator.Result
+    ): List<String> {
+        if (!locateScreenAnswerRects) {
+            return emptyList()
+        }
+        val answerCount = match.item.question.answer.size
+        val partial = if (result.isAnswerPartiallyMatched) " partial" else ""
+        return listOf(
+            "答案框 ${result.answerBounds.size}/$answerCount$partial",
+            "选项框 ${result.optionBounds.size}/${match.item.question.options.size}"
+        )
     }
 
     private fun resolveQuestionEndOrder(

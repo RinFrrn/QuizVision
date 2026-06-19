@@ -91,12 +91,35 @@ class ScreenMatchGraphic(
             overlayView.context.resources.displayMetrics
         )
     }
+    private val debugPanelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = DEBUG_PANEL_COLOR
+        style = Paint.Style.FILL
+    }
+    private val debugPanelBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = DEBUG_PANEL_BORDER_COLOR
+        style = Paint.Style.STROKE
+        strokeWidth = DEBUG_PANEL_BORDER_WIDTH
+    }
+    private val debugTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP,
+            DEBUG_TEXT_SIZE_SP,
+            overlayView.context.resources.displayMetrics
+        )
+    }
 
     override fun draw(canvas: Canvas) {
         val occupiedLabels = mutableListOf<RectF>()
         val screenMaskBounds = mutableListOf<android.graphics.Rect>()
         val overlayLocation = IntArray(2)
         overlayView.getLocationOnScreen(overlayLocation)
+        if (showConfidence) {
+            drawDebugPanel(canvas)?.let { debugRect ->
+                occupiedLabels += debugRect
+                addMaskBound(debugRect, overlayLocation, screenMaskBounds)
+            }
+        }
         displayMatches.forEach { match ->
             val rect = mapFrameRectToOverlay(match.rect, overlayLocation)
             if (showQuestionAnnotations) {
@@ -142,6 +165,54 @@ class ScreenMatchGraphic(
         }
         ScreenDetectorSession.publishAnnotationBounds(screenMaskBounds)
         ScreenDetectorSession.markOverlayRendered(overlayFingerprint)
+    }
+
+    private fun drawDebugPanel(canvas: Canvas): RectF? {
+        val debugText = buildDebugPanelText()
+        if (debugText.isBlank()) {
+            return null
+        }
+        val panelWidth = max(
+            MIN_DEBUG_PANEL_WIDTH,
+            min(canvas.width - EDGE_PADDING * 2, canvas.width * DEBUG_PANEL_WIDTH_RATIO)
+        ).toInt()
+        val layout = StaticLayout.Builder
+            .obtain(debugText, 0, debugText.length, debugTextPaint, panelWidth)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setIncludePad(false)
+            .setLineSpacing(0f, 1f)
+            .setMaxLines(MAX_DEBUG_PANEL_LINES)
+            .setEllipsize(TextUtils.TruncateAt.END)
+            .build()
+        val rect = RectF(
+            EDGE_PADDING,
+            EDGE_PADDING,
+            EDGE_PADDING + layout.width + DEBUG_PANEL_PADDING * 2,
+            EDGE_PADDING + layout.height + DEBUG_PANEL_PADDING * 2
+        )
+        canvas.drawRoundRect(rect, DEBUG_PANEL_RADIUS, DEBUG_PANEL_RADIUS, debugPanelPaint)
+        canvas.drawRoundRect(rect, DEBUG_PANEL_RADIUS, DEBUG_PANEL_RADIUS, debugPanelBorderPaint)
+        canvas.save()
+        canvas.translate(rect.left + DEBUG_PANEL_PADDING, rect.top + DEBUG_PANEL_PADDING)
+        layout.draw(canvas)
+        canvas.restore()
+        return rect
+    }
+
+    private fun buildDebugPanelText(): String {
+        val lines = mutableListOf("OCR 调试")
+        displayMatches.take(MAX_DEBUG_MATCHES).forEachIndexed { index, match ->
+            val answerState = when {
+                match.isAnswerPartiallyMatched -> "黄"
+                match.answerRects.isNotEmpty() -> "绿"
+                else -> "无框"
+            }
+            lines += "${index + 1}. ${String.format("%.2f", match.distance)} $answerState"
+            match.debugLines.take(MAX_DEBUG_LINES_PER_MATCH).forEach {
+                lines += "   $it"
+            }
+        }
+        return lines.joinToString("\n")
     }
 
     private fun mapFrameRectToOverlay(
@@ -314,6 +385,8 @@ class ScreenMatchGraphic(
         private const val LABEL_BACKGROUND_COLOR = 0xDD111111.toInt()
         private const val LABEL_BORDER_COLOR = 0xEEFFFFFF.toInt()
         private const val CONNECTOR_COLOR = 0xCCFFFFFF.toInt()
+        private const val DEBUG_PANEL_COLOR = 0xDD111111.toInt()
+        private const val DEBUG_PANEL_BORDER_COLOR = 0xEEFFFFFF.toInt()
         private const val FRAME_WIDTH = 4f
         private const val FRAME_SHADOW_WIDTH = 7f
         private const val ANSWER_FRAME_WIDTH = 5f
@@ -324,14 +397,23 @@ class ScreenMatchGraphic(
         private const val BRIEF_ANSWER_DOT_DIAMETER_DP = 2f
         private const val BRIEF_ANSWER_DOT_GAP_DP = 4f
         private const val LABEL_BORDER_WIDTH = 1.5f
+        private const val DEBUG_PANEL_BORDER_WIDTH = 1.5f
         private const val CONNECTOR_WIDTH = 2f
         private const val LABEL_PADDING = 8f
         private const val LABEL_GAP = 8f
         private const val LABEL_RADIUS = 8f
+        private const val DEBUG_PANEL_PADDING = 8f
+        private const val DEBUG_PANEL_RADIUS = 8f
         private const val EDGE_PADDING = 12f
         private const val MIN_LABEL_TEXT_WIDTH = 180f
         private const val MAX_LABEL_WIDTH_RATIO = 0.72f
+        private const val MIN_DEBUG_PANEL_WIDTH = 220f
+        private const val DEBUG_PANEL_WIDTH_RATIO = 0.82f
         private const val MAX_LABEL_LINES = 2
+        private const val MAX_DEBUG_PANEL_LINES = 14
+        private const val MAX_DEBUG_MATCHES = 3
+        private const val MAX_DEBUG_LINES_PER_MATCH = 4
+        private const val DEBUG_TEXT_SIZE_SP = 11f
         private const val MAX_PLACEMENT_ATTEMPTS = 8
         private const val MIN_CONNECTOR_DISTANCE = 20f
         private val WHITESPACE_REGEX = Regex("\\s+")

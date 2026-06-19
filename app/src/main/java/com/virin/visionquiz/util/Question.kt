@@ -9,5 +9,6 @@ data class QuizGraphicItem(
     val rect: Rect,
     val answerRects: List<Rect> = emptyList(),
     val optionRects: List<Rect> = emptyList(),
-    val isAnswerPartiallyMatched: Boolean = false
+    val isAnswerPartiallyMatched: Boolean = false,
+    val debugLines: List<String> = emptyList()
 )
