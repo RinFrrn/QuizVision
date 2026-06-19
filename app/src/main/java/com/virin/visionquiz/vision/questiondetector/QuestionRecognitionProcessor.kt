@@ -11,6 +11,7 @@ import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizManager
 import com.virin.visionquiz.vision.VisionProcessorBase
 import com.virin.visionquiz.preference.PreferenceUtils
+import com.virin.visionquiz.util.AnswerOptionTextMatcher
 import com.virin.visionquiz.util.QuizGraphicItem
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -57,9 +58,22 @@ class QuizRecognitionProcessor(
         val endOrder: Int
     )
 
+    private data class RecognizedLineItem(
+        val text: String,
+        val rect: Rect,
+        val order: Int
+    )
+
     private data class MatchedTextItem(
         val item: QuizGraphicItem,
         val source: RecognizedTextItem
+    )
+
+    private data class RankedQuizMatch(
+        val quiz: Quiz,
+        val originalScore: Double,
+        val adjustedScore: Double,
+        val optionSupportScore: Double
     )
 
     private fun createRecognizedTextItem(
@@ -88,15 +102,34 @@ class QuizRecognitionProcessor(
         return QuizManager.normalizeQuestionText(text).length >= MIN_NORMALIZED_TEXT_LENGTH
     }
 
+    private fun createRecognizedLineItem(
+        text: String,
+        boundingBox: Rect,
+        order: Int
+    ): RecognizedLineItem? {
+        val rect = Rect(boundingBox)
+        if (!isValidRecognizedTextItem(text, rect)) {
+            return null
+        }
+        return RecognizedLineItem(text, rect, order)
+    }
+
     private fun getMatchedQuizGraphicItem(
         recognizedTextItem: RecognizedTextItem,
-        quizIndex: QuizManager.QuizMatchIndex
+        quizIndex: QuizManager.QuizMatchIndex,
+        lineCandidates: List<OcrOptionLocator.TextCandidate>
     ): MatchedTextItem? {
-        val bestMatch = QuizManager.matchQuiz(
+        val matches = QuizManager.matchQuiz(
             recognizedTextItem.text,
             quizIndex,
-            minScore = minMatchScore
-        ).firstOrNull()
+            minScore = minMatchScore,
+            maxResults = OPTION_RERANK_CANDIDATE_COUNT
+        )
+        val bestMatch = selectBestMatch(
+            matches = matches,
+            source = recognizedTextItem,
+            lineCandidates = lineCandidates
+        )
         if (bestMatch != null) {
             return MatchedTextItem(
                 item = QuizGraphicItem(
@@ -108,6 +141,95 @@ class QuizRecognitionProcessor(
             )
         }
         return null
+    }
+
+    private fun selectBestMatch(
+        matches: List<Pair<Quiz, Double>>,
+        source: RecognizedTextItem,
+        lineCandidates: List<OcrOptionLocator.TextCandidate>
+    ): Pair<Quiz, Double>? {
+        if (matches.isEmpty()) {
+            return null
+        }
+        if (matches.size == 1) {
+            return matches.first()
+        }
+        val nearbyOptionTexts = collectNearbyOptionTexts(source, lineCandidates)
+        val rankedMatches = matches
+            .map { match ->
+                val optionSupport = if (nearbyOptionTexts.isEmpty()) {
+                    0.0
+                } else {
+                    computeOptionSupportScore(match.first, nearbyOptionTexts)
+                }
+                RankedQuizMatch(
+                    quiz = match.first,
+                    originalScore = match.second,
+                    adjustedScore = minOf(1.0, match.second + optionSupport),
+                    optionSupportScore = optionSupport
+                )
+            }
+            .sortedWith(
+                compareByDescending<RankedQuizMatch> { it.adjustedScore }
+                    .thenByDescending { it.originalScore }
+            )
+        val best = rankedMatches.firstOrNull() ?: return null
+        val runnerUp = rankedMatches.getOrNull(1)
+        if (
+            runnerUp != null &&
+            best.optionSupportScore == 0.0 &&
+            best.originalScore < STRONG_QUESTION_MATCH_SCORE &&
+            best.adjustedScore - runnerUp.adjustedScore < MIN_AMBIGUOUS_MATCH_MARGIN
+        ) {
+            return null
+        }
+        return best.quiz to best.adjustedScore
+    }
+
+    private fun collectNearbyOptionTexts(
+        source: RecognizedTextItem,
+        lineCandidates: List<OcrOptionLocator.TextCandidate>
+    ): List<String> {
+        val maxOrder = source.endOrder + OPTION_CONTEXT_LINE_COUNT * ORDER_SCALE
+        return lineCandidates
+            .asSequence()
+            .filter { it.order % ORDER_SCALE == LINE_CANDIDATE_ORDER_OFFSET }
+            .filter { it.order > source.endOrder }
+            .filter { it.order <= maxOrder }
+            .filter { it.bounds.top >= source.rect.top }
+            .map { it.text }
+            .filter { AnswerOptionTextMatcher.normalizeOptionText(it).length >= MIN_OPTION_SUPPORT_LENGTH }
+            .take(MAX_OPTION_SUPPORT_TEXTS)
+            .toList()
+    }
+
+    private fun computeOptionSupportScore(
+        quiz: Quiz,
+        nearbyOptionTexts: List<String>
+    ): Double {
+        var matchedOptionCount = 0
+        quiz.options.forEach { option ->
+            val normalizedOption = AnswerOptionTextMatcher.normalizeOptionText(option)
+            if (normalizedOption.length < MIN_OPTION_SUPPORT_LENGTH) {
+                return@forEach
+            }
+            val hasMatch = nearbyOptionTexts.any { candidate ->
+                AnswerOptionTextMatcher.candidateScore(
+                    candidate,
+                    normalizedOption,
+                    minMatchScore
+                ) != null
+            }
+            if (hasMatch) {
+                matchedOptionCount++
+            }
+        }
+        return when {
+            matchedOptionCount >= 3 -> 0.10
+            matchedOptionCount == 2 -> 0.07
+            matchedOptionCount == 1 -> 0.03
+            else -> 0.0
+        }
     }
 
     private fun getQuizIndex(quizSnapshot: List<Quiz>): QuizManager.QuizMatchIndex {
@@ -279,6 +401,7 @@ class QuizRecognitionProcessor(
         var lineOrder = 0
         results.textBlocks.forEach { textBlock ->
             val blockStartOrder = lineOrder * ORDER_SCALE
+            val blockLines = mutableListOf<RecognizedLineItem>()
             textBlock.lines.forEach { line ->
                 val lineBaseOrder = lineOrder * ORDER_SCALE
                 line.boundingBox?.let { boundingBox ->
@@ -288,6 +411,11 @@ class QuizRecognitionProcessor(
                         lineBaseOrder + LINE_CANDIDATE_ORDER_OFFSET
                     )
                         ?.let(lineCandidates::add)
+                    createRecognizedLineItem(
+                        line.text,
+                        boundingBox,
+                        lineBaseOrder
+                    )?.let(blockLines::add)
                     if (!shouldGroupRecognizedTextInBlocks) {
                         createRecognizedTextItem(
                             line.text,
@@ -309,6 +437,7 @@ class QuizRecognitionProcessor(
                 }
                 lineOrder++
             }
+            addLineWindowRecognizedTextItems(recognizedTextItems, blockLines)
             if (shouldGroupRecognizedTextInBlocks) {
                 textBlock.boundingBox?.let { boundingBox ->
                     createRecognizedTextItem(
@@ -321,6 +450,38 @@ class QuizRecognitionProcessor(
             }
         }
         return recognizedTextItems
+    }
+
+    private fun addLineWindowRecognizedTextItems(
+        output: MutableList<RecognizedTextItem>,
+        lines: List<RecognizedLineItem>
+    ) {
+        if (lines.size < MIN_LINE_WINDOW_SIZE) {
+            return
+        }
+        lines.forEachIndexed { startIndex, startLine ->
+            val combinedText = StringBuilder(startLine.text)
+            val combinedRect = Rect(startLine.rect)
+            val maxEndExclusive = minOf(lines.size, startIndex + MAX_LINE_WINDOW_SIZE)
+            for (endIndex in startIndex + 1 until maxEndExclusive) {
+                val endLine = lines[endIndex]
+                combinedText.append('\n').append(endLine.text)
+                combinedRect.union(endLine.rect)
+                val text = combinedText.toString()
+                if (
+                    QuizManager.normalizeQuestionText(text).length <
+                    MIN_WINDOW_NORMALIZED_TEXT_LENGTH
+                ) {
+                    continue
+                }
+                createRecognizedTextItem(
+                    text = text,
+                    boundingBox = combinedRect,
+                    startOrder = startLine.order,
+                    endOrder = endLine.order + ORDER_SCALE - 1
+                )?.let(output::add)
+            }
+        }
     }
 
     private fun matchIdentity(item: QuizGraphicItem): String {
@@ -375,7 +536,7 @@ class QuizRecognitionProcessor(
             val quizIndex = getQuizIndex(quizSnapshot)
             val matchedQuizs: MutableList<MatchedTextItem> = ArrayList()
             for (item in recognizedTextItems) {
-                val matched = getMatchedQuizGraphicItem(item, quizIndex)
+                val matched = getMatchedQuizGraphicItem(item, quizIndex, lineCandidates)
                 matched?.let { matchedQuizs.add(it) }
             }
 
@@ -412,6 +573,15 @@ class QuizRecognitionProcessor(
         private const val MIN_TEXT_RECT_SIZE = 3
         private const val MIN_TEXT_RECT_AREA = 24
         private const val MIN_NORMALIZED_TEXT_LENGTH = 2
+        private const val MIN_WINDOW_NORMALIZED_TEXT_LENGTH = 6
+        private const val MIN_LINE_WINDOW_SIZE = 2
+        private const val MAX_LINE_WINDOW_SIZE = 5
+        private const val OPTION_RERANK_CANDIDATE_COUNT = 5
+        private const val OPTION_CONTEXT_LINE_COUNT = 8
+        private const val MAX_OPTION_SUPPORT_TEXTS = 12
+        private const val MIN_OPTION_SUPPORT_LENGTH = 5
+        private const val STRONG_QUESTION_MATCH_SCORE = 0.90
+        private const val MIN_AMBIGUOUS_MATCH_MARGIN = 0.02
         private const val DISPLAY_RECT_PADDING_PX = 4
         private const val MIN_PROMPT_PREFIX_MATCH_LENGTH = 6
         private const val ORDER_SCALE = 1_000
