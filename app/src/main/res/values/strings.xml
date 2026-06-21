@@ -97,6 +97,7 @@
     <string name="pref_key_accessibility_search_min_match_score" translatable="false">asmm</string>
     <string name="pref_key_accessibility_show_floating_control" translatable="false">asfc</string>
     <string name="pref_key_accessibility_simplified_answer_display" translatable="false">asad</string>
+    <string name="pref_key_accessibility_answer_dot_color" translatable="false">aadc</string>
     <string name="pref_key_accessibility_vertical_swipe_mode" translatable="false">avsm</string>
     <string name="pref_value_accessibility_vertical_swipe_fixed" translatable="false">fixed</string>
     <string name="pref_value_accessibility_vertical_swipe_smart" translatable="false">smart</string>
@@ -117,6 +118,14 @@
     <string name="pref_title_screen_capture_frame_rate" translatable="true">Screen capture frame rate</string>
     <string name="pref_title_accessibility_search_interval" translatable="true">Accessibility search interval</string>
     <string name="pref_category_accessibility_search" translatable="true">Accessibility search</string>
+    <string name="pref_title_accessibility_answer_dot_color" translatable="true">Answer dot color</string>
+    <string name="pref_accessibility_answer_dot_color_white" translatable="true">White</string>
+    <string name="pref_accessibility_answer_dot_color_light_gray" translatable="true">Light gray</string>
+    <string name="pref_accessibility_answer_dot_color_silver_gray" translatable="true">Silver gray</string>
+    <string name="pref_accessibility_answer_dot_color_medium_light_gray" translatable="true">Medium light gray</string>
+    <string name="pref_accessibility_answer_dot_color_medium_gray" translatable="true">Medium gray</string>
+    <string name="pref_accessibility_answer_dot_color_dark_gray" translatable="true">Dark gray</string>
+    <string name="pref_accessibility_answer_dot_color_black" translatable="true">Black</string>
     <string name="pref_title_accessibility_vertical_swipe_mode" translatable="true">Accessibility swipe method</string>
     <string name="pref_summary_accessibility_vertical_swipe_mode" translatable="true" formatted="false">Fixed distance always swipes 60% of the screen height. Smart swipe aligns to the last question when possible and falls back to 60%.</string>
     <string name="pref_accessibility_vertical_swipe_fixed" translatable="true">Fixed distance swipe</string>

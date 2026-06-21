@@ -2,6 +2,8 @@ package com.virin.visionquiz.preference
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCharacteristics
@@ -185,6 +187,14 @@ class SearchSettingsFragment : Fragment() {
                 entriesResId = R.array.pref_entries_screen_search_interval,
                 valuesResId = R.array.pref_entry_values_screen_search_interval
             ),
+            createColorListRow(
+                context = context,
+                keyResId = R.string.pref_key_accessibility_answer_dot_color,
+                titleResId = R.string.pref_title_accessibility_answer_dot_color,
+                defaultValue = DEFAULT_ACCESSIBILITY_ANSWER_DOT_COLOR,
+                entriesResId = R.array.pref_entries_accessibility_answer_dot_color,
+                valuesResId = R.array.pref_entry_values_accessibility_answer_dot_color
+            ),
             createArrayListRow(
                 context = context,
                 keyResId = R.string.pref_key_accessibility_vertical_swipe_mode,
@@ -297,6 +307,55 @@ class SearchSettingsFragment : Fragment() {
             entries = resources.getStringArray(entriesResId),
             values = resources.getStringArray(valuesResId)
         )
+    }
+
+    private fun createColorListRow(
+        context: Context,
+        @StringRes keyResId: Int,
+        @StringRes titleResId: Int,
+        defaultValue: String,
+        @ArrayRes entriesResId: Int,
+        @ArrayRes valuesResId: Int
+    ): View {
+        val key = getString(keyResId)
+        val entries = resources.getStringArray(entriesResId)
+        val values = resources.getStringArray(valuesResId)
+        val currentValue = readStringValue(key, defaultValue, values)
+        val summaryView = TextView(context).apply {
+            text = entryForValue(currentValue, entries, values)
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
+            setTextColor(context.resolveThemeColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            maxLines = 1
+        }
+        val swatchView = View(context)
+        updateColorSwatch(context, swatchView, currentValue)
+
+        val trailing = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(summaryView)
+            addView(swatchView, LinearLayout.LayoutParams(18.dp(context), 18.dp(context)).apply {
+                leftMargin = 8.dp(context)
+            })
+        }
+
+        return createBaseRow(context, getString(titleResId), null, trailing).apply {
+            setOnClickListener {
+                val selectedIndex = values.indexOf(readStringValue(key, defaultValue, values))
+                    .coerceAtLeast(0)
+                MaterialAlertDialogBuilder(context)
+                    .setTitle(getString(titleResId))
+                    .setSingleChoiceItems(entries, selectedIndex) { dialog, which ->
+                        val newValue = values[which]
+                        sharedPreferences.edit().putString(key, newValue).apply()
+                        summaryView.text = entries[which]
+                        updateColorSwatch(context, swatchView, newValue)
+                        dialog.dismiss()
+                    }
+                    .show()
+            }
+        }
     }
 
     private fun createThresholdRow(
@@ -528,6 +587,19 @@ class SearchSettingsFragment : Fragment() {
         return if (index in entries.indices) entries[index] else value
     }
 
+    private fun updateColorSwatch(context: Context, swatchView: View, colorValue: String) {
+        val fillColor = runCatching { Color.parseColor(colorValue) }
+            .getOrDefault(Color.BLACK)
+        swatchView.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(fillColor)
+            setStroke(
+                1.dp(context),
+                context.resolveThemeColor(com.google.android.material.R.attr.colorOutlineVariant)
+            )
+        }
+    }
+
     private fun getCameraResolutionEntries(context: Context, lensFacing: Int): Array<String> {
         val cameraCharacteristics = getCameraCharacteristics(context, lensFacing)
         val outputSizes = cameraCharacteristics
@@ -608,5 +680,6 @@ class SearchSettingsFragment : Fragment() {
         const val DEFAULT_THRESHOLD_SCORE = 0.76
         const val ACCESSIBILITY_THRESHOLD_DEFAULT_SCORE = 1.00
         const val THRESHOLD_SCORE_STEP = 0.02
+        const val DEFAULT_ACCESSIBILITY_ANSWER_DOT_COLOR = "#000000"
     }
 }

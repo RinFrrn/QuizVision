@@ -110,6 +110,14 @@
     <string name="pref_title_screen_capture_frame_rate">屏幕采集帧率</string>
     <string name="pref_title_accessibility_search_interval">无障碍搜题间隔</string>
     <string name="pref_category_accessibility_search">无障碍搜题</string>
+    <string name="pref_title_accessibility_answer_dot_color">答案小点颜色</string>
+    <string name="pref_accessibility_answer_dot_color_white">白色</string>
+    <string name="pref_accessibility_answer_dot_color_light_gray">浅灰</string>
+    <string name="pref_accessibility_answer_dot_color_silver_gray">银灰</string>
+    <string name="pref_accessibility_answer_dot_color_medium_light_gray">中浅灰</string>
+    <string name="pref_accessibility_answer_dot_color_medium_gray">中灰</string>
+    <string name="pref_accessibility_answer_dot_color_dark_gray">深灰</string>
+    <string name="pref_accessibility_answer_dot_color_black">黑色</string>
     <string name="pref_title_accessibility_vertical_swipe_mode">无障碍上滑方式</string>
     <string name="pref_summary_accessibility_vertical_swipe_mode" formatted="false">智能滑动优先对齐最后一题，无法计算时回退到固定距离。</string>
     <string name="pref_accessibility_vertical_swipe_fixed">固定距离滑动</string>

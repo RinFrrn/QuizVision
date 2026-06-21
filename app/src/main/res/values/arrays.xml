@@ -53,6 +53,26 @@
     <item>@string/pref_value_accessibility_vertical_swipe_smart</item>
   </string-array>
 
+  <string-array name="pref_entries_accessibility_answer_dot_color">
+    <item>@string/pref_accessibility_answer_dot_color_white</item>
+    <item>@string/pref_accessibility_answer_dot_color_light_gray</item>
+    <item>@string/pref_accessibility_answer_dot_color_silver_gray</item>
+    <item>@string/pref_accessibility_answer_dot_color_medium_light_gray</item>
+    <item>@string/pref_accessibility_answer_dot_color_medium_gray</item>
+    <item>@string/pref_accessibility_answer_dot_color_dark_gray</item>
+    <item>@string/pref_accessibility_answer_dot_color_black</item>
+  </string-array>
+
+  <string-array name="pref_entry_values_accessibility_answer_dot_color">
+    <item>#FFFFFF</item>
+    <item>#E5E5E5</item>
+    <item>#CCCCCC</item>
+    <item>#A6A6A6</item>
+    <item>#808080</item>
+    <item>#4D4D4D</item>
+    <item>#000000</item>
+  </string-array>
+
   <string-array name="pref_entries_face_detector_landmark_mode">
     <item>@string/pref_entries_face_detector_landmark_mode_no_landmarks</item>
     <item>@string/pref_entries_face_detector_landmark_mode_all_landmarks</item>

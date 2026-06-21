@@ -18,6 +18,7 @@ package com.virin.visionquiz.preference;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.os.Build.VERSION_CODES;
 import android.preference.PreferenceManager;
 import androidx.annotation.Nullable;
@@ -31,6 +32,7 @@ import com.virin.visionquiz.CameraSource;
 import com.virin.visionquiz.CameraSource.SizePair;
 import com.virin.visionquiz.R;
 import com.virin.visionquiz.dao.QuizManager;
+import java.util.Arrays;
 //import com.google.mlkit.vision.face.FaceDetectorOptions;
 //import com.google.mlkit.vision.facemesh.FaceMeshDetectorOptions;
 //import com.google.mlkit.vision.objects.ObjectDetectorOptionsBase.DetectorMode;
@@ -48,6 +50,8 @@ public class PreferenceUtils {
   private static final int DEFAULT_ACCESSIBILITY_SEARCH_INTERVAL_MS = 250;
   private static final int MIN_SCREEN_SEARCH_INTERVAL_MS = 250;
   private static final int DEFAULT_SCREEN_CAPTURE_FRAME_RATE = 30;
+  private static final int ACCESSIBILITY_ANSWER_DOT_ALPHA = 0xDD;
+  private static final String DEFAULT_ACCESSIBILITY_ANSWER_DOT_COLOR = "#000000";
   private static final double MIN_SEARCH_MATCH_SCORE = 0.60;
   private static final double MAX_SEARCH_MATCH_SCORE = 1.00;
   private static final android.util.Size DEFAULT_CAMERAX_TARGET_RESOLUTION =
@@ -427,6 +431,31 @@ public class PreferenceUtils {
         .putBoolean(
             context.getString(R.string.pref_key_accessibility_simplified_answer_display), enabled)
         .apply();
+  }
+
+  public static int getAccessibilityAnswerDotColor(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_accessibility_answer_dot_color);
+    String storedValue =
+        sharedPreferences.getString(prefKey, DEFAULT_ACCESSIBILITY_ANSWER_DOT_COLOR);
+    String selectedValue = isAccessibilityAnswerDotColorValue(context, storedValue)
+        ? storedValue
+        : DEFAULT_ACCESSIBILITY_ANSWER_DOT_COLOR;
+    try {
+      int rgb = Color.parseColor(selectedValue) & 0x00FFFFFF;
+      return (ACCESSIBILITY_ANSWER_DOT_ALPHA << 24) | rgb;
+    } catch (Exception e) {
+      return (ACCESSIBILITY_ANSWER_DOT_ALPHA << 24) | Color.BLACK;
+    }
+  }
+
+  private static boolean isAccessibilityAnswerDotColorValue(Context context, @Nullable String value) {
+    if (value == null) {
+      return false;
+    }
+    String[] values =
+        context.getResources().getStringArray(R.array.pref_entry_values_accessibility_answer_dot_color);
+    return Arrays.asList(values).contains(value);
   }
 
   public static boolean shouldUseSmartAccessibilityVerticalSwipe(Context context) {

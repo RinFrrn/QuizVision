@@ -22,4 +22,14 @@
     <item>60 FPS</item>
   </string-array>
 
+  <string-array name="pref_entries_accessibility_answer_dot_color">
+    <item>@string/pref_accessibility_answer_dot_color_white</item>
+    <item>@string/pref_accessibility_answer_dot_color_light_gray</item>
+    <item>@string/pref_accessibility_answer_dot_color_silver_gray</item>
+    <item>@string/pref_accessibility_answer_dot_color_medium_light_gray</item>
+    <item>@string/pref_accessibility_answer_dot_color_medium_gray</item>
+    <item>@string/pref_accessibility_answer_dot_color_dark_gray</item>
+    <item>@string/pref_accessibility_answer_dot_color_black</item>
+  </string-array>
+
 </resources>

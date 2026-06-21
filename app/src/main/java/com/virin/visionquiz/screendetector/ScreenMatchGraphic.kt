@@ -66,7 +66,7 @@ class ScreenMatchGraphic(
         strokeWidth = ANSWER_FRAME_WIDTH
     }
     private val briefAnswerDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = BRIEF_ANSWER_DOT_COLOR
+        color = PreferenceUtils.getAccessibilityAnswerDotColor(overlayView.context)
         style = Paint.Style.FILL
     }
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -381,7 +381,6 @@ class ScreenMatchGraphic(
         private const val ANSWER_FRAME_SHADOW_COLOR = 0xAA052E16.toInt()
         private const val PARTIAL_ANSWER_FRAME_COLOR = 0xFFFACC15.toInt()
         private const val PARTIAL_ANSWER_FRAME_SHADOW_COLOR = 0xAA713F12.toInt()
-        private const val BRIEF_ANSWER_DOT_COLOR = 0xDD000000.toInt()
         private const val LABEL_BACKGROUND_COLOR = 0xDD111111.toInt()
         private const val LABEL_BORDER_COLOR = 0xEEFFFFFF.toInt()
         private const val CONNECTOR_COLOR = 0xCCFFFFFF.toInt()
