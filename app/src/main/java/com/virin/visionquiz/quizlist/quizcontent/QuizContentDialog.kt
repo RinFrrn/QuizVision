@@ -3,9 +3,10 @@ package com.virin.visionquiz.quizlist.quizcontent
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color as AndroidColor
-import android.view.Gravity
+import android.util.TypedValue
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,12 +19,15 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -46,12 +50,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.LiveData
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.LifecycleOwner
@@ -67,6 +77,10 @@ import com.virin.visionquiz.dao.QuizUiType
 import com.virin.visionquiz.dao.answerString
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.dao.typeString
+import com.virin.visionquiz.ai.AiExplanationType
+import com.virin.visionquiz.quizstudy.AiExplanationUiState
+import com.virin.visionquiz.quizstudy.AiRequestKey
+import com.virin.visionquiz.quizstudy.existingSimilarAnalysisSubKey
 import com.virin.visionquiz.util.MAX_SIMILAR_QUIZ_RESULTS
 import com.virin.visionquiz.util.QuizSimilarityIndex
 import com.virin.visionquiz.util.SimilarQuizStore
@@ -133,6 +147,11 @@ fun showSimilarQuizContentDialog(
     originQuiz: Quiz,
     similarQuizzes: List<Quiz>,
     allQuizzes: List<Quiz>,
+    aiStates: LiveData<Map<AiRequestKey, AiExplanationUiState>>? = null,
+    aiConfigComplete: Boolean = false,
+    onGenerateExistingSimilarAnalysis: ((List<Quiz>, Boolean) -> Unit)? = null,
+    onOpenAiSettings: (() -> Unit)? = null,
+    renderMarkdown: ((TextView, String) -> Unit)? = null,
     onQuizClick: (Quiz) -> Unit
 ) {
     val activity = context as? Activity ?: return
@@ -157,6 +176,11 @@ fun showSimilarQuizContentDialog(
                     originQuiz = originQuiz,
                     initialSimilarQuizzes = similarQuizzes,
                     allQuizzes = allQuizzes,
+                    aiStates = aiStates,
+                    aiConfigComplete = aiConfigComplete,
+                    onGenerateExistingSimilarAnalysis = onGenerateExistingSimilarAnalysis,
+                    onOpenAiSettings = onOpenAiSettings,
+                    renderMarkdown = renderMarkdown,
                     onQuizClick = onQuizClick,
                     onDismiss = { (overlay.parent as? ViewGroup)?.removeView(overlay) }
                 )
@@ -233,6 +257,11 @@ private fun SimilarQuizContentBottomSheet(
     originQuiz: Quiz,
     initialSimilarQuizzes: List<Quiz>,
     allQuizzes: List<Quiz>,
+    aiStates: LiveData<Map<AiRequestKey, AiExplanationUiState>>?,
+    aiConfigComplete: Boolean,
+    onGenerateExistingSimilarAnalysis: ((List<Quiz>, Boolean) -> Unit)?,
+    onOpenAiSettings: (() -> Unit)?,
+    renderMarkdown: ((TextView, String) -> Unit)?,
     onQuizClick: (Quiz) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -272,6 +301,11 @@ private fun SimilarQuizContentBottomSheet(
                 originQuiz = originQuiz,
                 initialSimilarQuizzes = initialSimilarQuizzes,
                 allQuizzes = allQuizzes,
+                aiStates = aiStates,
+                aiConfigComplete = aiConfigComplete,
+                onGenerateExistingSimilarAnalysis = onGenerateExistingSimilarAnalysis,
+                onOpenAiSettings = onOpenAiSettings,
+                renderMarkdown = renderMarkdown,
                 onQuizClick = { quiz ->
                     visible = false
                     onDismiss()
@@ -512,6 +546,11 @@ private fun SimilarQuizContentCard(
     originQuiz: Quiz,
     initialSimilarQuizzes: List<Quiz>,
     allQuizzes: List<Quiz>,
+    aiStates: LiveData<Map<AiRequestKey, AiExplanationUiState>>?,
+    aiConfigComplete: Boolean,
+    onGenerateExistingSimilarAnalysis: ((List<Quiz>, Boolean) -> Unit)?,
+    onOpenAiSettings: (() -> Unit)?,
+    renderMarkdown: ((TextView, String) -> Unit)?,
     onQuizClick: (Quiz) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -569,6 +608,15 @@ private fun SimilarQuizContentCard(
                 fontSize = 18.sp,
                 lineHeight = 26.sp,
                 fontWeight = FontWeight.Bold
+            )
+            ExistingSimilarAnalysisSection(
+                originQuiz = originQuiz,
+                similarQuizzes = similarQuizzes,
+                aiStates = aiStates,
+                aiConfigComplete = aiConfigComplete,
+                onGenerate = onGenerateExistingSimilarAnalysis,
+                onOpenAiSettings = onOpenAiSettings,
+                renderMarkdown = renderMarkdown
             )
             SimilarQuizSection(
                 quizzes = similarQuizzes,
@@ -651,6 +699,174 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
+private fun ExistingSimilarAnalysisSection(
+    originQuiz: Quiz,
+    similarQuizzes: List<Quiz>,
+    aiStates: LiveData<Map<AiRequestKey, AiExplanationUiState>>?,
+    aiConfigComplete: Boolean,
+    onGenerate: ((List<Quiz>, Boolean) -> Unit)?,
+    onOpenAiSettings: (() -> Unit)?,
+    renderMarkdown: ((TextView, String) -> Unit)?
+) {
+    val analysisQuizzes = remember(similarQuizzes) { similarQuizzes.take(5) }
+    Spacer(Modifier.height(18.dp))
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    SectionLabel("AI 相似题辨析")
+
+    if (analysisQuizzes.isEmpty()) {
+        Text(
+            text = "暂无可分析的相似题",
+            modifier = Modifier.padding(top = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        return
+    }
+    if (aiStates == null || onGenerate == null) {
+        Text(
+            text = "当前入口暂不支持 AI 辨析",
+            modifier = Modifier.padding(top = 8.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        return
+    }
+
+    val observedAiStates = aiStates.observeAsState(emptyMap())
+    val key = remember(originQuiz.id, analysisQuizzes) {
+        AiRequestKey(
+            originQuiz.id,
+            AiExplanationType.EXISTING_SIMILAR_ANALYSIS,
+            existingSimilarAnalysisSubKey(analysisQuizzes)
+        )
+    }
+    val state = observedAiStates.value[key] ?: AiExplanationUiState.Idle
+
+    if (state is AiExplanationUiState.Success && state.fromCache) {
+        Text(
+            text = "已读取缓存",
+            modifier = Modifier.padding(start = 2.dp, top = 6.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall
+        )
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        )
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            when (state) {
+                AiExplanationUiState.Idle,
+                AiExplanationUiState.ConfigurationRequired -> {
+                    val message = if (state == AiExplanationUiState.ConfigurationRequired || !aiConfigComplete) {
+                        "需要先完成 AI 配置"
+                    } else {
+                        "分析当前题与相似题的共同考点、关键差异和易错点"
+                    }
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            if (aiConfigComplete) {
+                                onGenerate(analysisQuizzes, false)
+                            } else {
+                                onOpenAiSettings?.invoke()
+                            }
+                        },
+                        modifier = Modifier.padding(top = 10.dp)
+                    ) {
+                        Text(if (aiConfigComplete) "生成 AI 辨析" else "去配置 AI")
+                    }
+                }
+                AiExplanationUiState.Loading -> {
+                    SimilarAnalysisLoadingText("正在生成 AI 辨析...")
+                }
+                is AiExplanationUiState.Streaming -> {
+                    SimilarAnalysisLoadingText("正在生成 AI 辨析...")
+                    Spacer(Modifier.height(10.dp))
+                    AiMarkdownContent(state.content, renderMarkdown)
+                }
+                is AiExplanationUiState.Success -> {
+                    AiMarkdownContent(state.content, renderMarkdown)
+                    FilledTonalButton(
+                        onClick = { onGenerate(analysisQuizzes, true) },
+                        modifier = Modifier.padding(top = 6.dp)
+                    ) {
+                        Text("重新生成")
+                    }
+                }
+                is AiExplanationUiState.Error -> {
+                    Text(
+                        text = state.message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (state.partialContent.isNotBlank()) {
+                        Spacer(Modifier.height(10.dp))
+                        AiMarkdownContent(state.partialContent, renderMarkdown)
+                    }
+                    TextButton(
+                        onClick = { onGenerate(analysisQuizzes, true) },
+                        modifier = Modifier.padding(top = 6.dp)
+                    ) {
+                        Text("重试")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SimilarAnalysisLoadingText(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        CircularProgressIndicator(
+            strokeWidth = 2.dp,
+            modifier = Modifier.height(18.dp).width(18.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+@Composable
+private fun AiMarkdownContent(
+    content: String,
+    renderMarkdown: ((TextView, String) -> Unit)?
+) {
+    AndroidView(
+        factory = { context ->
+            TextView(context).apply {
+                setTextColor(MaterialColors.getColor(context, R.attr.colorOnSurface, AndroidColor.BLACK))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
+                setLineSpacing(0f, 1.22f)
+            }
+        },
+        update = { textView ->
+            textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
+            textView.setLineSpacing(0f, 1.22f)
+            if (renderMarkdown != null) {
+                renderMarkdown(textView, content)
+            } else {
+                textView.text = content
+            }
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+@Composable
 private fun SimilarQuizSection(
     quizzes: List<Quiz>,
     hasAnalysis: Boolean,
@@ -668,16 +884,16 @@ private fun SimilarQuizSection(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 8.dp),
-        label = { Text("必须包含的关键词") },
-        placeholder = { Text("如：SF6 电流互感器") },
-        supportingText = { Text("多个关键词以空格分隔，需同时包含") },
+        label = { Text("查找匹配关键词") },
+        placeholder = { Text("输入题干或答案关键词") },
+        supportingText = { Text("多个关键词用空格分隔，匹配内容会高亮显示") },
         singleLine = true
     )
 
     if (quizzes.isEmpty()) {
         Text(
             text = if (keywordQuery.isNotBlank()) {
-                "没有同时包含这些关键词的题目"
+                "没有找到匹配关键词的题目"
             } else if (hasAnalysis) {
                 "暂无相似题目"
             } else {
@@ -702,7 +918,10 @@ private fun SimilarQuizSection(
         ) {
             Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                 Text(
-                    text = "${index + 1}. ${quiz.prompt}",
+                    text = highlightedKeywordText(
+                        text = "${index + 1}. ${quiz.prompt}",
+                        keywordQuery = keywordQuery
+                    ),
                     color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
@@ -715,7 +934,10 @@ private fun SimilarQuizSection(
                     style = MaterialTheme.typography.labelMedium
                 )
                 Text(
-                    text = quiz.correctOptionsText(),
+                    text = highlightedKeywordText(
+                        text = quiz.correctOptionsText(),
+                        keywordQuery = keywordQuery
+                    ),
                     modifier = Modifier.padding(top = 4.dp),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodySmall,
@@ -744,6 +966,68 @@ private fun Quiz.correctOptionsText(): String {
 }
 
 @Composable
+private fun highlightedKeywordText(text: String, keywordQuery: String): AnnotatedString {
+    val highlightStyle = SpanStyle(
+        background = MaterialTheme.colorScheme.primaryContainer,
+        color = MaterialTheme.colorScheme.onPrimaryContainer,
+        fontWeight = FontWeight.Bold
+    )
+    val ranges = remember(text, keywordQuery) {
+        keywordHighlightRanges(text, keywordQuery)
+    }
+    if (ranges.isEmpty()) return AnnotatedString(text)
+
+    return buildAnnotatedString {
+        var cursor = 0
+        ranges.forEach { range ->
+            if (cursor < range.first) {
+                append(text.substring(cursor, range.first))
+            }
+            pushStyle(highlightStyle)
+            append(text.substring(range.first, range.last + 1))
+            pop()
+            cursor = range.last + 1
+        }
+        if (cursor < text.length) {
+            append(text.substring(cursor))
+        }
+    }
+}
+
+private fun keywordHighlightRanges(text: String, keywordQuery: String): List<IntRange> {
+    val keywords = keywordQuery
+        .split(Regex("\\s+"))
+        .map(String::trim)
+        .filter { it.isNotEmpty() }
+        .distinctBy { it.lowercase() }
+    if (keywords.isEmpty()) return emptyList()
+
+    val ranges = buildList {
+        keywords.forEach { keyword ->
+            var startIndex = 0
+            while (startIndex < text.length) {
+                val matchIndex = text.indexOf(keyword, startIndex, ignoreCase = true)
+                if (matchIndex < 0) break
+                add(matchIndex..(matchIndex + keyword.length - 1))
+                startIndex = matchIndex + keyword.length
+            }
+        }
+    }.sortedWith(compareBy<IntRange> { it.first }.thenByDescending { it.last })
+
+    if (ranges.isEmpty()) return emptyList()
+    val merged = mutableListOf<IntRange>()
+    ranges.forEach { range ->
+        val previous = merged.lastOrNull()
+        if (previous == null || range.first > previous.last + 1) {
+            merged += range
+        } else if (range.last > previous.last) {
+            merged[merged.lastIndex] = previous.first..range.last
+        }
+    }
+    return merged
+}
+
+@Composable
 private fun QuizContentTheme(context: Context, content: @Composable () -> Unit) {
     fun color(attr: Int, fallback: Int): Color {
         return Color(MaterialColors.getColor(context, attr, fallback))
@@ -756,16 +1040,16 @@ private fun QuizContentTheme(context: Context, content: @Composable () -> Unit) 
             primaryContainer = color(R.attr.colorPrimaryContainer, AndroidColor.rgb(183, 243, 151)),
             onPrimaryContainer = color(R.attr.colorOnPrimaryContainer, AndroidColor.rgb(8, 33, 0)),
             secondaryContainer = color(R.attr.colorSecondaryContainer, AndroidColor.LTGRAY),
-            onSecondaryContainer = color(R.attr.colorSecondaryContainer, AndroidColor.DKGRAY),
+            onSecondaryContainer = color(R.attr.colorOnSecondaryContainer, AndroidColor.DKGRAY),
             tertiaryContainer = color(R.attr.colorTertiaryContainer, AndroidColor.CYAN),
             onTertiaryContainer = color(R.attr.colorOnTertiaryContainer, AndroidColor.DKGRAY),
             errorContainer = color(R.attr.colorErrorContainer, AndroidColor.rgb(255, 218, 214)),
             onErrorContainer = color(R.attr.colorOnErrorContainer, AndroidColor.rgb(65, 0, 2)),
             surface = color(R.attr.colorSurface, AndroidColor.WHITE),
             onSurface = color(R.attr.colorOnSurface, AndroidColor.BLACK),
-            surfaceContainer = Color(0xFFEAEEE8),
-            surfaceContainerHigh = Color(0xFFE0E6DE),
-            surfaceContainerHighest = Color(0xFFD6DCD4),
+            surfaceContainer = color(R.attr.colorSurfaceContainer, AndroidColor.rgb(234, 238, 232)),
+            surfaceContainerHigh = color(R.attr.colorSurfaceContainerHigh, AndroidColor.rgb(224, 230, 222)),
+            surfaceContainerHighest = color(R.attr.colorSurfaceContainerHighest, AndroidColor.rgb(214, 220, 212)),
             onSurfaceVariant = color(R.attr.colorOnSurfaceVariant, AndroidColor.DKGRAY),
             outline = color(R.attr.colorOutline, AndroidColor.GRAY),
             outlineVariant = color(R.attr.colorOutlineVariant, AndroidColor.LTGRAY)

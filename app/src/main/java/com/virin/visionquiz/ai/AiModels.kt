@@ -14,6 +14,7 @@ enum class AiExplanationType(val value: String, val label: String) {
     MNEMONIC("mnemonic", "口诀"),
     QUESTION_EXTENSION("question_extension", "举一反三"),
     SIMILAR_ANALYSIS("similar_analysis", "相似题分析"),
+    EXISTING_SIMILAR_ANALYSIS("similar_existing_analysis", "相似题辨析"),
     CONTEXTUAL_SUGGESTIONS("contextual_suggestions", "上下文建议"),
     CONTEXTUAL_QA("contextual_qa", "上下文问答")
 }
@@ -42,6 +43,7 @@ data class AiConfig(
         AiExplanationType.MNEMONIC -> mnemonicPrompt
         AiExplanationType.QUESTION_EXTENSION -> questionExtensionPrompt
         AiExplanationType.SIMILAR_ANALYSIS -> similarAnalysisPrompt
+        AiExplanationType.EXISTING_SIMILAR_ANALYSIS -> similarAnalysisPrompt
         AiExplanationType.CONTEXTUAL_SUGGESTIONS -> contextualSuggestionsPrompt
         AiExplanationType.CONTEXTUAL_QA -> contextualQaPrompt
     }
@@ -212,6 +214,54 @@ object AiPromptBuilder {
         )
     }
 
+    fun buildExistingSimilarAnalysis(
+        quiz: Quiz,
+        similarQuizzes: List<Quiz>,
+        selectedAnswer: Set<Int>?
+    ): AiPrompt {
+        val standard = formatAnswer(quiz.answer)
+        val userAnswer = selectedAnswer?.takeIf { it.isNotEmpty() }?.let(::formatAnswer) ?: "未作答"
+        val result = when {
+            selectedAnswer == null || selectedAnswer.isEmpty() -> "未作答"
+            quiz.isCorrectAnswer(selectedAnswer) -> "正确"
+            else -> "错误"
+        }
+        return AiPrompt(
+            system = SYSTEM_PROMPT,
+            user = buildString {
+                appendLine("任务：${AiExplanationType.EXISTING_SIMILAR_ANALYSIS.label}")
+                appendLine("分析当前题与已检索到的相似题之间的共同考点、关键差异和易错点。")
+                appendLine("只基于当前题和相似题内容进行辨析，不要构造新题，不要修改标准答案。")
+                appendLine("相似题最多分析前 5 道；若相似题之间差异很小，也要指出最可能导致误判的细节。")
+                appendLine("控制在 180–420 字。")
+                appendLine()
+                appendLine("输出格式（必须严格遵守，标题文字和顺序不得改变）：")
+                appendLine(outputFormat(AiExplanationType.EXISTING_SIMILAR_ANALYSIS))
+                appendLine()
+                appendLine("当前题：")
+                appendLine("题型：${quiz.inferredUiType().label}")
+                appendLine("题干：${quiz.prompt}")
+                appendLine("选项：")
+                appendLine(formatOptions(quiz))
+                appendLine("标准答案：$standard")
+                appendLine("用户答案：$userAnswer")
+                appendLine("作答结果：$result")
+                appendLine()
+                appendLine("相似题：")
+                similarQuizzes.take(MAX_EXISTING_SIMILAR_CONTEXT_COUNT).forEachIndexed { index, similar ->
+                    appendLine("${index + 1}. 题型：${similar.inferredUiType().label}")
+                    appendLine("题干：${similar.prompt}")
+                    appendLine("选项：")
+                    appendLine(formatOptions(similar))
+                    appendLine("标准答案：${formatAnswer(similar.answer)}")
+                    if (index < similarQuizzes.take(MAX_EXISTING_SIMILAR_CONTEXT_COUNT).lastIndex) {
+                        appendLine()
+                    }
+                }
+            }
+        )
+    }
+
     internal fun outputFormat(type: AiExplanationType): String = when (type) {
         AiExplanationType.QUICK_REVIEW ->
             """
@@ -272,6 +322,15 @@ object AiPromptBuilder {
             ### 辨析要点
             总结识别此类题目细微差异的方法。
             """.trimIndent()
+        AiExplanationType.EXISTING_SIMILAR_ANALYSIS ->
+            """
+            ### 共同考点
+            归纳当前题与相似题共同考查的知识点、规则或判断框架。
+            ### 关键差异
+            使用无序列表对比题干条件、选项表述、答案依据上的关键区别。
+            ### 易错提醒
+            总结最容易误判的细节和做同类题时的核验方法。
+            """.trimIndent()
         AiExplanationType.CONTEXTUAL_SUGGESTIONS ->
             """
             严格按以下格式输出，每行一条，不要添加标题或其他内容：
@@ -292,7 +351,15 @@ object AiPromptBuilder {
         return answer.sorted().joinToString("") { answerLetter(it).toString() }
     }
 
+    private fun formatOptions(quiz: Quiz): String {
+        return quiz.options.mapIndexed { index, option ->
+            "${answerLetter(index)}. $option"
+        }.joinToString("\n")
+    }
+
     private fun answerLetter(index: Int): Char = ('A'.code + index).toChar()
+
+    private const val MAX_EXISTING_SIMILAR_CONTEXT_COUNT = 5
 }
 
 object AiEndpointValidator {

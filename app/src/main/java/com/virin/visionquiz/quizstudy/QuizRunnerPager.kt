@@ -86,9 +86,6 @@ internal data class QuizRunnerPageState(
     val aiConfigComplete: Boolean,
     val quickAiState: AiExplanationUiState,
     val detailedAiState: AiExplanationUiState,
-    val contextualSuggestionsState: AiExplanationUiState = AiExplanationUiState.Idle,
-    val contextualSuggestions: List<String> = emptyList(),
-    val contextualQaStates: Map<Int, AiExplanationUiState> = emptyMap(),
     val currentQuizId: Int? = null,
     val submitVisible: Boolean,
     val submitEnabled: Boolean,
@@ -132,8 +129,6 @@ internal data class QuizRunnerPagerCallbacks(
     val onReviewRating: (page: Int, rating: ReviewRating) -> Unit,
     val onGenerateAi: (page: Int, type: AiExplanationType, forceRefresh: Boolean) -> Unit,
     val onOpenAiSettings: () -> Unit,
-    val onRequestContextualSuggestions: (page: Int) -> Unit,
-    val onContextualSuggestionClick: (page: Int, suggestionIndex: Int, suggestionText: String) -> Unit,
     val onScrollChanged: (inProgress: Boolean) -> Unit,
     val aiTrigger: androidx.compose.runtime.MutableState<Int>,
     val renderMarkdown: (TextView, String) -> Unit
@@ -570,7 +565,11 @@ private fun AiSection(
     textSize: QuizRunnerComposeTextSize,
     callbacks: QuizRunnerPagerCallbacks
 ) {
-    Text("AI 快速复习", fontWeight = FontWeight.Bold)
+    Text(
+        text = "AI 快速复习",
+        color = MaterialTheme.colorScheme.onSurface,
+        fontWeight = FontWeight.Bold
+    )
     Spacer(Modifier.height(8.dp))
     AiStateCard(
         state = state.quickAiState,
@@ -608,182 +607,6 @@ private fun AiSection(
         },
         renderMarkdown = callbacks.renderMarkdown
     )
-
-    if (state.quickAiState is AiExplanationUiState.Success) {
-        Spacer(Modifier.height(10.dp))
-        ContextualSuggestionsSection(state, page, textSize, callbacks)
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun ContextualSuggestionsSection(
-    state: QuizRunnerPageState,
-    page: Int,
-    textSize: QuizRunnerComposeTextSize,
-    callbacks: QuizRunnerPagerCallbacks
-) {
-    Text("上下文建议", fontWeight = FontWeight.Bold)
-    Spacer(Modifier.height(8.dp))
-
-    when (val suggestionsState = state.contextualSuggestionsState) {
-        AiExplanationUiState.Idle -> {
-            Text(
-                "点击生成学习建议",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = (textSize.supportSp - 1).sp,
-                modifier = Modifier
-                    .combinedClickable(
-                        onClick = { callbacks.onRequestContextualSuggestions(page) }
-                    )
-                    .padding(vertical = 4.dp)
-            )
-        }
-        AiExplanationUiState.Loading,
-        is AiExplanationUiState.Streaming -> {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.width(18.dp).height(18.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "正在生成建议...",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = (textSize.supportSp - 1).sp
-                )
-            }
-        }
-        is AiExplanationUiState.Success -> {
-            if (state.contextualSuggestions.isEmpty()) {
-                Text(
-                    "暂无建议",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = (textSize.supportSp - 1).sp
-                )
-            } else {
-                state.contextualSuggestions.forEachIndexed { index, suggestion ->
-                    val qaState = state.contextualQaStates[index]
-                    val isExpanded = qaState != null && qaState !is AiExplanationUiState.Idle
-
-                    SuggestionChip(
-                        text = suggestion,
-                        index = index,
-                        isExpanded = isExpanded,
-                        textSizeSp = textSize.supportSp,
-                        onClick = {
-                            callbacks.onContextualSuggestionClick(page, index, suggestion)
-                        }
-                    )
-
-                    if (isExpanded) {
-                        Spacer(Modifier.height(6.dp))
-                        AiStateCard(
-                            state = qaState,
-                            textSizeSp = textSize.supportSp,
-                            configComplete = state.aiConfigComplete,
-                            idleActionLabel = "生成回答",
-                            onAction = {
-                                callbacks.onContextualSuggestionClick(page, index, suggestion)
-                            },
-                            onLongAction = {},
-                            renderMarkdown = callbacks.renderMarkdown
-                        )
-                        Spacer(Modifier.height(4.dp))
-                    }
-
-                    Spacer(Modifier.height(6.dp))
-                }
-            }
-        }
-        is AiExplanationUiState.Error -> {
-            Text(
-                "建议生成失败: ${suggestionsState.message}",
-                color = MaterialTheme.colorScheme.error,
-                fontSize = (textSize.supportSp - 1).sp
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "点击重试",
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-                fontSize = (textSize.supportSp - 1).sp,
-                modifier = Modifier
-                    .combinedClickable(
-                        onClick = { callbacks.onRequestContextualSuggestions(page) }
-                    )
-                    .padding(vertical = 4.dp)
-            )
-        }
-        AiExplanationUiState.ConfigurationRequired -> {
-            Text(
-                "请先配置 AI",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = (textSize.supportSp - 1).sp
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SuggestionChip(
-    text: String,
-    index: Int,
-    isExpanded: Boolean,
-    textSizeSp: Float,
-    onClick: () -> Unit
-) {
-    val shape = RoundedCornerShape(10.dp)
-    val backgroundColor = if (isExpanded) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHigh
-    }
-    val contentColor = if (isExpanded) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
-
-    Card(
-        colors = CardDefaults.cardColors(containerColor = backgroundColor),
-        shape = shape,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .border(
-                1.dp,
-                if (isExpanded) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.outlineVariant,
-                shape
-            )
-            .combinedClickable(onClick = onClick)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "${index + 1}.",
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-                fontSize = textSizeSp.sp,
-                modifier = Modifier.padding(end = 8.dp)
-            )
-            Text(
-                text = text,
-                color = contentColor,
-                fontSize = textSizeSp.sp,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = if (isExpanded) "▾" else "▸",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = textSizeSp.sp
-            )
-        }
-    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -808,59 +631,74 @@ private fun AiStateCard(
         AiExplanationUiState.Loading -> "正在生成..."
         AiExplanationUiState.ConfigurationRequired -> "请先配置 AI"
         is AiExplanationUiState.Streaming -> "正在生成..."
-        is AiExplanationUiState.Success -> if (state.fromCache) "已读取缓存" else "生成完成"
+        is AiExplanationUiState.Success -> "生成完成"
         is AiExplanationUiState.Error -> state.message
     }
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        ),
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (state.isAiRequestInProgress()) {
-                    CircularProgressIndicator(
-                        strokeWidth = 2.dp,
-                        modifier = Modifier
-                            .width(22.dp)
-                            .height(22.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(
-                    status,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
-                    modifier = Modifier.weight(1f)
-                )
-                if (state == AiExplanationUiState.Idle ||
-                    state == AiExplanationUiState.ConfigurationRequired ||
-                    state is AiExplanationUiState.Error
-                ) {
-                    Text(
-                        text = if (state is AiExplanationUiState.Error) {
-                            "重试"
-                        } else {
-                            idleActionLabel
-                        },
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .combinedClickable(
-                            onClick = onAction,
-                            onLongClick = onLongAction
+    val showStatusInsideCard = state !is AiExplanationUiState.Success
+    Column(Modifier.fillMaxWidth()) {
+        if (state is AiExplanationUiState.Success) {
+            Text(
+                text = if (state.fromCache) "已读取缓存" else status,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(start = 2.dp, bottom = 4.dp)
+            )
+        }
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            ),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                if (showStatusInsideCard) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (state.isAiRequestInProgress()) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                modifier = Modifier
+                                    .width(22.dp)
+                                    .height(22.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(
+                            status,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            modifier = Modifier.weight(1f)
                         )
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
+                        if (state == AiExplanationUiState.Idle ||
+                            state == AiExplanationUiState.ConfigurationRequired ||
+                            state is AiExplanationUiState.Error
+                        ) {
+                            Text(
+                                text = if (state is AiExplanationUiState.Error) {
+                                    "重试"
+                                } else {
+                                    idleActionLabel
+                                },
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .combinedClickable(
+                                        onClick = onAction,
+                                        onLongClick = onLongAction
+                                    )
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
                 }
-            }
-            if (content.isNotBlank()) {
-                Spacer(Modifier.height(10.dp))
-                MarkdownText(content, textSizeSp, renderMarkdown)
+                if (content.isNotBlank()) {
+                    if (showStatusInsideCard) {
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    MarkdownText(content, textSizeSp, renderMarkdown)
+                }
             }
         }
     }
@@ -873,19 +711,21 @@ private fun MarkdownText(
     renderMarkdown: (TextView, String) -> Unit
 ) {
     val color = MaterialTheme.colorScheme.onSurface
+    val markdownTextSizeSp = textSizeSp + 1.5f
     AndroidView(
         factory = { context ->
             TextView(context).apply {
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, markdownTextSizeSp)
                 setTextColor(android.graphics.Color.BLACK)
-                setLineSpacing(0f, 1.15f)
+                setLineSpacing(0f, 1.22f)
                 movementMethod = LinkMovementMethod.getInstance()
                 setTextIsSelectable(true)
                 typeface = Typeface.DEFAULT
             }
         },
         update = { view ->
-            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, markdownTextSizeSp)
+            view.setLineSpacing(0f, 1.22f)
             view.setTextColor(
                 android.graphics.Color.argb(
                     (color.alpha * 255).toInt(),

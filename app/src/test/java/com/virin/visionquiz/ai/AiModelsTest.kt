@@ -116,6 +116,42 @@ class AiModelsTest {
             "### 对比题",
             "### 辨析要点"
         )
+
+        val existingSimilar = AiPromptBuilder.outputFormat(AiExplanationType.EXISTING_SIMILAR_ANALYSIS)
+        assertHeadings(
+            existingSimilar,
+            "### 共同考点",
+            "### 关键差异",
+            "### 易错提醒"
+        )
+    }
+
+    @Test
+    fun existingSimilarAnalysisPromptIncludesSimilarQuestionContext() {
+        val similar = Quiz(
+            id = 3,
+            prompt = "下列哪项容易混淆？",
+            options = listOf("相似选项甲", "相似选项乙"),
+            answer = setOf(0),
+            isMultipleChoice = false,
+            questionType = "单选",
+            libraryId = 2
+        )
+        val prompt = AiPromptBuilder.buildExistingSimilarAnalysis(
+            quiz = quiz,
+            similarQuizzes = listOf(similar),
+            selectedAnswer = setOf(0)
+        )
+
+        assertTrue(prompt.user.contains("任务：相似题辨析"))
+        assertTrue(prompt.user.contains("不要构造新题"))
+        assertTrue(prompt.user.contains("### 共同考点"))
+        assertTrue(prompt.user.contains("当前题："))
+        assertTrue(prompt.user.contains("题干：下列哪项正确？"))
+        assertTrue(prompt.user.contains("相似题："))
+        assertTrue(prompt.user.contains("题干：下列哪项容易混淆？"))
+        assertTrue(prompt.user.contains("A. 相似选项甲"))
+        assertTrue(prompt.user.contains("标准答案：A"))
     }
 
     @Test

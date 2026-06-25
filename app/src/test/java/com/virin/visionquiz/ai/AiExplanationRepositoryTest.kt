@@ -110,6 +110,42 @@ class AiExplanationRepositoryTest {
     }
 
     @Test
+    fun strictFingerprintMissesStaleCache() = runBlocking {
+        val dao = FakeCacheDao().apply {
+            cache = AiExplanationCache(
+                quizId = 1,
+                libraryId = 2,
+                type = AiExplanationType.EXISTING_SIMILAR_ANALYSIS.value,
+                fingerprint = "old-fingerprint",
+                content = "旧相似题分析"
+            )
+        }
+        var requested = false
+        val repository = AiExplanationRepository(dao) { _, _, _ ->
+            requested = true
+            "新相似题分析"
+        }
+
+        val result = repository.getOrGenerate(
+            quizId = 1,
+            libraryId = 2,
+            type = AiExplanationType.EXISTING_SIMILAR_ANALYSIS,
+            config = config,
+            prompt = prompt,
+            forceRefresh = false,
+            strictFingerprint = true
+        )
+
+        assertFalse(result.fromCache)
+        assertTrue(requested)
+        assertEquals("新相似题分析", result.content)
+        assertEquals(
+            prompt.fingerprint(config, AiExplanationType.EXISTING_SIMILAR_ANALYSIS),
+            dao.cache?.fingerprint
+        )
+    }
+
+    @Test
     fun concurrentRequestsForSameContentUseOneNetworkGeneration() = runBlocking {
         val dao = FakeCacheDao()
         val generationStarted = CompletableDeferred<Unit>()

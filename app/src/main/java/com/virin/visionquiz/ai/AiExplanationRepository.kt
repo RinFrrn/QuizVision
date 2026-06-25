@@ -37,15 +37,16 @@ class AiExplanationRepository internal constructor(
         config: AiConfig,
         prompt: AiPrompt,
         forceRefresh: Boolean,
+        strictFingerprint: Boolean = false,
         onPartialContent: (String) -> Unit = {}
     ): AiExplanationResult {
         val fingerprint = prompt.fingerprint(config, type)
         if (!forceRefresh) {
-            findMatchingCache(quizId, type, fingerprint)?.let { return it }
+            findMatchingCache(quizId, type, fingerprint, strictFingerprint)?.let { return it }
         }
         return generationMutex.withLock {
             if (!forceRefresh) {
-                findMatchingCache(quizId, type, fingerprint)?.let { return@withLock it }
+                findMatchingCache(quizId, type, fingerprint, strictFingerprint)?.let { return@withLock it }
             }
             val partialContent = StringBuilder()
             var lastEmittedContent = ""
@@ -85,9 +86,11 @@ class AiExplanationRepository internal constructor(
     private suspend fun findMatchingCache(
         quizId: Int,
         type: AiExplanationType,
-        fingerprint: String
+        fingerprint: String,
+        strictFingerprint: Boolean
     ): AiExplanationResult? {
         val cached = cacheDao.getCache(quizId, type.value) ?: return null
+        if (strictFingerprint && cached.fingerprint != fingerprint) return null
         // Return cached content if fingerprint matches exactly,
         // or if a cache exists for the same quiz+type (e.g. batch-generated
         // with selectedAnswer=null, requested during study with a real answer)

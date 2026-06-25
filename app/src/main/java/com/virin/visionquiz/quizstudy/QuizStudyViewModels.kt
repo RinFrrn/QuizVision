@@ -25,6 +25,7 @@ import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.dao.isSupportedStudyType
 import com.virin.visionquiz.quizlibrarylist.QuizRepository
 import com.virin.visionquiz.quizlibrarylist.QuizRepositoryImpl
+import java.security.MessageDigest
 import java.util.Calendar
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
@@ -198,6 +199,22 @@ fun parseContextualSuggestions(content: String): List<String> {
         .filter { it.isNotBlank() }
         .take(3)
 }
+
+internal fun existingSimilarAnalysisSubKey(similarQuizzes: List<Quiz>): String {
+    val raw = similarQuizzes.take(MAX_EXISTING_SIMILAR_ANALYSIS_QUIZZES)
+        .joinToString("\u001f") { quiz ->
+            listOf(
+                quiz.id,
+                quiz.prompt,
+                quiz.answer.sorted().joinToString(",")
+            ).joinToString("\u001e")
+        }
+    return MessageDigest.getInstance("SHA-256")
+        .digest(raw.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+}
+
+internal const val MAX_EXISTING_SIMILAR_ANALYSIS_QUIZZES = 5
 
 data class AiExplanationProgress(
     val total: Int = 0,
@@ -466,6 +483,65 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
                     config = config,
                     prompt = prompt,
                     forceRefresh = false,
+                    onPartialContent = { content ->
+                        latestPartialContent = content
+                        updateAiState(key, AiExplanationUiState.Streaming(content))
+                    }
+                )
+            }
+            result.onSuccess {
+                updateAiState(key, AiExplanationUiState.Success(it.content, it.fromCache))
+            }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) return@onFailure
+                updateAiState(
+                    key,
+                    AiExplanationUiState.Error(
+                        message = it.message ?: "AI 请求失败",
+                        partialContent = latestPartialContent
+                    )
+                )
+            }
+            aiJobs.remove(key)
+        }
+    }
+
+    fun requestExistingSimilarAnalysis(
+        quiz: Quiz,
+        similarQuizzes: List<Quiz>,
+        selectedAnswer: Set<Int>?,
+        forceRefresh: Boolean = false
+    ) {
+        val limitedSimilarQuizzes = similarQuizzes.take(MAX_EXISTING_SIMILAR_ANALYSIS_QUIZZES)
+        if (limitedSimilarQuizzes.isEmpty()) return
+        val key = AiRequestKey(
+            quiz.id,
+            AiExplanationType.EXISTING_SIMILAR_ANALYSIS,
+            existingSimilarAnalysisSubKey(limitedSimilarQuizzes)
+        )
+        val config = aiConfigStore.read()
+        if (!config.isComplete()) {
+            updateAiState(key, AiExplanationUiState.ConfigurationRequired)
+            return
+        }
+        if (aiJobs[key]?.isActive == true && !forceRefresh) return
+        aiJobs.remove(key)?.cancel()
+        updateAiState(key, AiExplanationUiState.Loading)
+        aiJobs[key] = viewModelScope.launch(Dispatchers.IO) {
+            var latestPartialContent = ""
+            val prompt = AiPromptBuilder.buildExistingSimilarAnalysis(
+                quiz = quiz,
+                similarQuizzes = limitedSimilarQuizzes,
+                selectedAnswer = selectedAnswer
+            )
+            val result = runCatching {
+                aiRepository.getOrGenerate(
+                    quizId = quiz.id,
+                    libraryId = quiz.libraryId,
+                    type = AiExplanationType.EXISTING_SIMILAR_ANALYSIS,
+                    config = config,
+                    prompt = prompt,
+                    forceRefresh = forceRefresh,
+                    strictFingerprint = true,
                     onPartialContent = { content ->
                         latestPartialContent = content
                         updateAiState(key, AiExplanationUiState.Streaming(content))

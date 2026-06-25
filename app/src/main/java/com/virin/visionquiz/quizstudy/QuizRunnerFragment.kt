@@ -24,6 +24,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -213,7 +214,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
         viewModel.aiStates.observe(viewLifecycleOwner) { states ->
             val currentQuizId = quizzes.getOrNull(currentIndex)?.id ?: return@observe
             if (!states.orEmpty().keys.any { it.quizId == currentQuizId }) return@observe
-            maybeAutoRequestContextualSuggestions()
             aiTrigger.value++
         }
         viewModel.practiceReviewRatings.observe(viewLifecycleOwner) { ratings ->
@@ -262,8 +262,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
                     onReviewRating = ::onPagerReviewRating,
                     onGenerateAi = ::onPagerGenerateAi,
                     onOpenAiSettings = ::openAiSettings,
-                    onRequestContextualSuggestions = ::onPagerContextualSuggestionsRequest,
-                    onContextualSuggestionClick = ::onPagerContextualSuggestionClick,
                     onScrollChanged = ::onPagerScrollChanged,
                     aiTrigger = aiTrigger,
                     renderMarkdown = { target, content ->
@@ -663,6 +661,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
             mode == QuizStudyMode.REVIEW -> isReviewSubmitted
             else -> showAnswerSection
         }
+        configureBottomControlsLayout(isReviewSubmitted)
         if (isPracticeSubmitted || isReviewSubmitted) {
             binding.showAnswerButton.text = "相似题目"
             binding.showAnswerButton.setIconResource(R.drawable.icon_familiar_face_and_zone_24px)
@@ -683,6 +682,76 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 }
             }
         }
+    }
+
+    private fun configureBottomControlsLayout(isReviewSubmitted: Boolean) {
+        if (mode == QuizStudyMode.REVIEW) {
+            updateButtonConstraints(binding.favoriteButton) {
+                width = 0
+                marginStart = 0
+                marginEnd = 0
+                startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+                startToEnd = ConstraintLayout.LayoutParams.UNSET
+                endToStart = if (isReviewSubmitted) {
+                    binding.showAnswerButton.id
+                } else {
+                    ConstraintLayout.LayoutParams.UNSET
+                }
+                endToEnd = if (isReviewSubmitted) {
+                    ConstraintLayout.LayoutParams.UNSET
+                } else {
+                    ConstraintLayout.LayoutParams.PARENT_ID
+                }
+                horizontalChainStyle = ConstraintLayout.LayoutParams.CHAIN_SPREAD
+            }
+            updateButtonConstraints(binding.showAnswerButton) {
+                width = 0
+                marginStart = 0
+                marginEnd = 0
+                startToStart = ConstraintLayout.LayoutParams.UNSET
+                startToEnd = binding.favoriteButton.id
+                endToStart = ConstraintLayout.LayoutParams.UNSET
+                endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+            }
+            return
+        }
+
+        updateButtonConstraints(binding.favoriteButton) {
+            width = 0
+            marginStart = dpToPx(16)
+            marginEnd = 0
+            startToStart = ConstraintLayout.LayoutParams.UNSET
+            startToEnd = binding.previousButton.id
+            endToStart = binding.showAnswerButton.id
+            endToEnd = ConstraintLayout.LayoutParams.UNSET
+            horizontalChainStyle = ConstraintLayout.LayoutParams.CHAIN_SPREAD
+        }
+        updateButtonConstraints(binding.showAnswerButton) {
+            width = 0
+            marginStart = 0
+            marginEnd = 0
+            startToStart = ConstraintLayout.LayoutParams.UNSET
+            startToEnd = binding.favoriteButton.id
+            endToStart = binding.answerCardButton.id
+            endToEnd = ConstraintLayout.LayoutParams.UNSET
+        }
+    }
+
+    private fun updateButtonConstraints(
+        view: View,
+        update: ConstraintLayout.LayoutParams.() -> Unit
+    ) {
+        val params = view.layoutParams as ConstraintLayout.LayoutParams
+        params.update()
+        view.layoutParams = params
+    }
+
+    private fun dpToPx(value: Int): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            value.toFloat(),
+            resources.displayMetrics
+        ).toInt()
     }
 
     private fun shouldShowReviewRatingDock(quiz: Quiz): Boolean {
@@ -785,23 +854,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
             detailedAiState = aiStates[
                 AiRequestKey(quiz.id, AiExplanationType.DETAILED_ANALYSIS)
             ] ?: AiExplanationUiState.Idle,
-            contextualSuggestionsState = aiStates[
-                AiRequestKey(quiz.id, AiExplanationType.CONTEXTUAL_SUGGESTIONS)
-            ] ?: AiExplanationUiState.Idle,
-            contextualSuggestions = run {
-                val state = aiStates[AiRequestKey(quiz.id, AiExplanationType.CONTEXTUAL_SUGGESTIONS)]
-                if (state is AiExplanationUiState.Success) {
-                    parseContextualSuggestions(state.content)
-                } else emptyList()
-            },
-            contextualQaStates = run {
-                val result = mutableMapOf<Int, AiExplanationUiState>()
-                for (i in 0 until 3) {
-                    val state = aiStates[AiRequestKey(quiz.id, AiExplanationType.CONTEXTUAL_QA, "$i")]
-                    if (state != null) result[i] = state
-                }
-                result
-            },
             currentQuizId = quiz.id,
             submitVisible = when {
                 reviewMode -> false
@@ -1074,43 +1126,8 @@ class QuizRunnerFragment : BaseQuizFragment() {
 
     private val REQUIRED_DETAIL_AI_TYPES = setOf(
         AiExplanationType.QUICK_REVIEW,
-        AiExplanationType.DETAILED_ANALYSIS,
-        AiExplanationType.CONTEXTUAL_SUGGESTIONS
+        AiExplanationType.DETAILED_ANALYSIS
     )
-
-    private fun maybeAutoRequestContextualSuggestions() {
-        val quiz = quizzes.getOrNull(currentIndex) ?: return
-        val config = readCachedAiConfig()
-        if (!config.isComplete()) return
-        val aiStates = viewModel.aiStates.value.orEmpty()
-        val quickState = aiStates[AiRequestKey(quiz.id, AiExplanationType.QUICK_REVIEW)]
-        if (quickState !is AiExplanationUiState.Success) return
-        val suggestionsState = aiStates[AiRequestKey(quiz.id, AiExplanationType.CONTEXTUAL_SUGGESTIONS)]
-        if (suggestionsState != null && suggestionsState !is AiExplanationUiState.Idle) return
-        viewModel.requestContextualSuggestions(
-            quiz = quiz,
-            selectedAnswer = currentSelection.takeIf { it.isNotEmpty() }
-        )
-    }
-    private fun onPagerContextualSuggestionsRequest(page: Int) {
-        if (!moveToPagerPage(page)) return
-        val quiz = quizzes.getOrNull(page) ?: return
-        viewModel.requestContextualSuggestions(
-            quiz = quiz,
-            selectedAnswer = currentSelection.takeIf { it.isNotEmpty() }
-        )
-    }
-
-    private fun onPagerContextualSuggestionClick(page: Int, suggestionIndex: Int, suggestionText: String) {
-        if (!moveToPagerPage(page)) return
-        val quiz = quizzes.getOrNull(page) ?: return
-        viewModel.requestContextualQa(
-            quiz = quiz,
-            suggestionIndex = suggestionIndex,
-            suggestionText = suggestionText,
-            selectedAnswer = currentSelection.takeIf { it.isNotEmpty() }
-        )
-    }
 
     private fun onPagerScrollChanged(inProgress: Boolean) {
         pagerScrollInProgress = inProgress
@@ -1658,6 +1675,20 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 originQuiz = quiz,
                 similarQuizzes = storedSimilarQuizzes,
                 allQuizzes = allQuizzes,
+                aiStates = viewModel.aiStates,
+                aiConfigComplete = readCachedAiConfig().isComplete(),
+                onGenerateExistingSimilarAnalysis = { visibleSimilarQuizzes, forceRefresh ->
+                    viewModel.requestExistingSimilarAnalysis(
+                        quiz = quiz,
+                        similarQuizzes = visibleSimilarQuizzes,
+                        selectedAnswer = currentSelection.takeIf { it.isNotEmpty() },
+                        forceRefresh = forceRefresh
+                    )
+                },
+                onOpenAiSettings = ::openAiSettings,
+                renderMarkdown = { target, content ->
+                    markdownRenderer().render(target, content)
+                },
                 onQuizClick = { selectedQuiz ->
                     val targetIndex = quizzes.indexOfFirst { it.id == selectedQuiz.id }
                     if (targetIndex >= 0) {
