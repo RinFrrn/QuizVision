@@ -21,6 +21,7 @@ import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LiveData
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.checkbox.MaterialCheckBox
@@ -59,6 +60,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
     private var pendingPermissionPrompt: PendingPermissionPrompt? = null
     private var permissionHostActivity: FragmentActivity? = null
     private var accessibilityDialog: Dialog? = null
+    private var startAccessibilityAfterPermissionGrant = false
     private var assistanceEnabled = false
     private var assistanceBusy = false
     private var accessibilityFloatingWindowEnabled = true
@@ -93,6 +95,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         quizzes: LiveData<List<Quiz>>
     ) {
         pendingPermissionPrompt = null
+        startAccessibilityAfterPermissionGrant = false
         accessibilityFloatingWindowEnabled =
             PreferenceUtils.shouldShowAccessibilityFloatingControl(activity)
         accessibilityAnswerDotsOnlyEnabled =
@@ -121,6 +124,13 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         }
         if (request.requiresAccessibility) {
             permissionHostActivity = activity
+            if (
+                startAccessibilityAfterPermissionGrant &&
+                    AccessibilityPermissionHelper.isServiceEnabled(activity)
+            ) {
+                startPendingAccessibilityRequest(activity, returnToHome = true)
+                return
+            }
             pendingPermissionPrompt = PendingPermissionPrompt.ACCESSIBILITY
             showAccessibilityPermissionDialog(activity)
             return
@@ -139,6 +149,13 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         if (pendingStartRequest?.requiresAccessibility != true ||
             pendingPermissionPrompt != PendingPermissionPrompt.ACCESSIBILITY
         ) {
+            return
+        }
+        if (
+            startAccessibilityAfterPermissionGrant &&
+                activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        ) {
+            startPendingAccessibilityRequest(activity, returnToHome = true)
             return
         }
         QuizAccessibilityService.instance?.returnFromAccessibilitySettings(
@@ -311,6 +328,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         if (release) {
             accessibilitySource = null
         }
+        startAccessibilityAfterPermissionGrant = false
         isDetectionRunning = false
         isDetectionPaused = false
         ScreenDetectorSession.setState(ScreenDetectorSession.DetectionState.STOPPED)
@@ -1384,15 +1402,12 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         }
         if (!AccessibilityPermissionHelper.isServiceEnabled(activity)) {
             dialog.dismiss()
+            startAccessibilityAfterPermissionGrant = true
             AccessibilityPermissionHelper.openAccessibilitySettings(activity)
             return
         }
-        val request = pendingStartRequest ?: return
-        pendingStartRequest = null
-        pendingPermissionPrompt = null
-        permissionHostActivity = null
         dialog.dismiss()
-        startInternal(activity, request)
+        startPendingAccessibilityRequest(activity, returnToHome = true)
     }
 
     private fun clearPendingAccessibilityStart() {
@@ -1400,6 +1415,37 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             pendingStartRequest = null
             pendingPermissionPrompt = null
             permissionHostActivity = null
+            startAccessibilityAfterPermissionGrant = false
+        }
+    }
+
+    private fun startPendingAccessibilityRequest(
+        activity: FragmentActivity,
+        returnToHome: Boolean
+    ) {
+        val request = pendingStartRequest ?: return
+        if (!request.requiresAccessibility) {
+            return
+        }
+        pendingStartRequest = null
+        pendingPermissionPrompt = null
+        permissionHostActivity = null
+        startAccessibilityAfterPermissionGrant = false
+        accessibilityDialog?.dismiss()
+        startInternal(activity, request)
+        if (returnToHome) {
+            returnToHomeScreen(activity)
+        }
+    }
+
+    private fun returnToHomeScreen(activity: FragmentActivity) {
+        runCatching {
+            activity.startActivity(
+                Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+            )
         }
     }
 
