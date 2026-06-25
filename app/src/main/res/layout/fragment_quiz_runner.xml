@@ -105,6 +105,12 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
+        <androidx.compose.ui.platform.ComposeView
+            android:id="@+id/review_rating_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
         <com.google.android.material.divider.MaterialDivider
             android:id="@+id/bottom_controls_divider"
             android:layout_width="match_parent"

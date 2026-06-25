@@ -716,6 +716,10 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
         return repository.getQuizListByIds(ids)
     }
 
+    suspend fun getAllQuizzes(): List<Quiz> {
+        return repository.getQuizListByLibraryIdOnce(libraryId)
+    }
+
     suspend fun loadReviewCardsForQuizIds(quizIds: List<Int>) {
         quizIds.forEach { quizId ->
             val card = repository.getReviewCardByQuizId(quizId)

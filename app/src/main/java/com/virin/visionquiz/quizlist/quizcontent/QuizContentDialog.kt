@@ -128,6 +128,46 @@ fun showQuizContentDialog(
     decorView.addView(overlay)
 }
 
+fun showSimilarQuizContentDialog(
+    context: Context,
+    originQuiz: Quiz,
+    similarQuizzes: List<Quiz>,
+    allQuizzes: List<Quiz>,
+    onQuizClick: (Quiz) -> Unit
+) {
+    val activity = context as? Activity ?: return
+    val decorView = activity.window.decorView as? ViewGroup ?: return
+
+    val overlay = FrameLayout(context).apply {
+        layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
+    }
+
+    val composeView = ComposeView(context).apply {
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        (context as? LifecycleOwner)?.let(::setViewTreeLifecycleOwner)
+        (context as? ViewModelStoreOwner)?.let(::setViewTreeViewModelStoreOwner)
+        (context as? SavedStateRegistryOwner)?.let(::setViewTreeSavedStateRegistryOwner)
+        setContent {
+            QuizContentTheme(context) {
+                SimilarQuizContentBottomSheet(
+                    context = context,
+                    originQuiz = originQuiz,
+                    initialSimilarQuizzes = similarQuizzes,
+                    allQuizzes = allQuizzes,
+                    onQuizClick = onQuizClick,
+                    onDismiss = { (overlay.parent as? ViewGroup)?.removeView(overlay) }
+                )
+            }
+        }
+    }
+
+    overlay.addView(composeView)
+    decorView.addView(overlay)
+}
+
 // ---------------------------------------------------------------------------
 // Bottom sheet shell
 // ---------------------------------------------------------------------------
@@ -177,6 +217,66 @@ private fun QuizContentBottomSheet(
                 quizzes = quizzes,
                 allQuizzes = allQuizzes,
                 initialIndex = initialIndex,
+                onDismiss = {
+                    visible = false
+                    onDismiss()
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SimilarQuizContentBottomSheet(
+    context: Context,
+    originQuiz: Quiz,
+    initialSimilarQuizzes: List<Quiz>,
+    allQuizzes: List<Quiz>,
+    onQuizClick: (Quiz) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var visible by remember { mutableStateOf(true) }
+
+    if (visible) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                visible = false
+                onDismiss()
+            },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            tonalElevation = 6.dp,
+            dragHandle = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Spacer(Modifier.height(12.dp))
+                    Surface(
+                        modifier = Modifier.height(4.dp),
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    ) {
+                        Box(Modifier.fillMaxWidth(0.1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            },
+            contentWindowInsets = { WindowInsets(0) }
+        ) {
+            SimilarQuizContentCard(
+                context = context,
+                originQuiz = originQuiz,
+                initialSimilarQuizzes = initialSimilarQuizzes,
+                allQuizzes = allQuizzes,
+                onQuizClick = { quiz ->
+                    visible = false
+                    onDismiss()
+                    onQuizClick(quiz)
+                },
                 onDismiss = {
                     visible = false
                     onDismiss()
@@ -399,6 +499,94 @@ private fun QuizContentCard(
             ) {
                 Text("下一题")
             }
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SimilarQuizContentCard(
+    context: Context,
+    originQuiz: Quiz,
+    initialSimilarQuizzes: List<Quiz>,
+    allQuizzes: List<Quiz>,
+    onQuizClick: (Quiz) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val scrollState = rememberScrollState()
+    var similarKeywordQuery by remember(originQuiz.id) { mutableStateOf("") }
+    var similarityIndex by remember { mutableStateOf<QuizSimilarityIndex?>(null) }
+    var similarQuizzes by remember(originQuiz.id) { mutableStateOf(initialSimilarQuizzes) }
+    var hasAnalysis by remember(originQuiz.id) {
+        mutableStateOf(SimilarQuizStore.hasAnalysis(context, originQuiz.libraryId))
+    }
+
+    LaunchedEffect(originQuiz.id, similarKeywordQuery, initialSimilarQuizzes, allQuizzes) {
+        val query = similarKeywordQuery
+        similarQuizzes = if (query.isBlank()) {
+            initialSimilarQuizzes
+        } else {
+            val index = similarityIndex ?: withContext(Dispatchers.Default) {
+                QuizSimilarityIndex(allQuizzes)
+            }.also { similarityIndex = it }
+            withContext(Dispatchers.Default) {
+                index.findSimilar(
+                    currentQuiz = originQuiz,
+                    requiredKeywords = query,
+                    maxResults = MAX_SIMILAR_QUIZ_RESULTS
+                ).map { it.quiz }
+            }
+        }
+    }
+
+    LaunchedEffect(originQuiz.id) {
+        hasAnalysis = SimilarQuizStore.hasAnalysis(context, originQuiz.libraryId)
+        scrollState.scrollTo(0)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 720.dp)
+            .windowInsetsPadding(WindowInsets.navigationBars)
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .verticalScroll(scrollState)
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+        ) {
+            QuizHeader(
+                quiz = originQuiz,
+                positionText = "相似题目"
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = originQuiz.prompt,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 18.sp,
+                lineHeight = 26.sp,
+                fontWeight = FontWeight.Bold
+            )
+            SimilarQuizSection(
+                quizzes = similarQuizzes,
+                hasAnalysis = hasAnalysis,
+                keywordQuery = similarKeywordQuery,
+                onKeywordQueryChange = { similarKeywordQuery = it },
+                onQuizClick = onQuizClick
+            )
+        }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             TextButton(onClick = onDismiss) {
                 Text("关闭")
             }

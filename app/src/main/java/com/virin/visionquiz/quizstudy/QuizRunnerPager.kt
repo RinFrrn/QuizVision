@@ -4,14 +4,6 @@ import android.graphics.Typeface
 import android.text.method.LinkMovementMethod
 import android.util.TypedValue
 import android.widget.TextView
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
@@ -26,7 +18,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
@@ -38,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -66,9 +58,6 @@ import com.virin.visionquiz.dao.ReviewRating
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.util.convertNumToChar
 import kotlinx.coroutines.flow.distinctUntilChanged
-
-private val IosEaseOut = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
-private val IosEaseIn = CubicBezierEasing(0.32f, 0f, 0.67f, 0f)
 
 internal data class QuizRunnerPagerState(
     val currentPage: Int = 0,
@@ -150,32 +139,36 @@ internal data class QuizRunnerPagerCallbacks(
     val renderMarkdown: (TextView, String) -> Unit
 )
 
+private fun runnerLightColorScheme(colors: QuizRunnerComposeColors): ColorScheme {
+    return lightColorScheme(
+        primary = colors.primary,
+        onPrimary = colors.onPrimary,
+        primaryContainer = colors.primaryContainer,
+        onPrimaryContainer = colors.onPrimaryContainer,
+        secondaryContainer = colors.secondaryContainer,
+        onSecondaryContainer = colors.onSecondaryContainer,
+        tertiaryContainer = colors.tertiaryContainer,
+        onTertiaryContainer = colors.onTertiaryContainer,
+        error = colors.error,
+        errorContainer = colors.errorContainer,
+        onErrorContainer = colors.onErrorContainer,
+        surface = colors.surface,
+        onSurface = colors.onSurface,
+        surfaceContainer = colors.surfaceContainer,
+        surfaceContainerHigh = colors.surfaceContainerHigh,
+        surfaceContainerLow = colors.surfaceContainerLow,
+        onSurfaceVariant = colors.onSurfaceVariant,
+        outline = colors.outline,
+        outlineVariant = colors.outlineVariant
+    )
+}
+
 @Composable
 internal fun QuizRunnerPager(
     state: QuizRunnerPagerState,
     callbacks: QuizRunnerPagerCallbacks
 ) {
-    val scheme = lightColorScheme(
-        primary = state.colors.primary,
-        onPrimary = state.colors.onPrimary,
-        primaryContainer = state.colors.primaryContainer,
-        onPrimaryContainer = state.colors.onPrimaryContainer,
-        secondaryContainer = state.colors.secondaryContainer,
-        onSecondaryContainer = state.colors.onSecondaryContainer,
-        tertiaryContainer = state.colors.tertiaryContainer,
-        onTertiaryContainer = state.colors.onTertiaryContainer,
-        error = state.colors.error,
-        errorContainer = state.colors.errorContainer,
-        onErrorContainer = state.colors.onErrorContainer,
-        surface = state.colors.surface,
-        onSurface = state.colors.onSurface,
-        surfaceContainer = state.colors.surfaceContainer,
-        surfaceContainerHigh = state.colors.surfaceContainerHigh,
-        surfaceContainerLow = state.colors.surfaceContainerLow,
-        onSurfaceVariant = state.colors.onSurfaceVariant,
-        outline = state.colors.outline,
-        outlineVariant = state.colors.outlineVariant
-    )
+    val scheme = runnerLightColorScheme(state.colors)
     MaterialTheme(colorScheme = scheme) {
         if (state.quizIds.isEmpty()) return@MaterialTheme
         val pagerState = rememberPagerState(
@@ -229,15 +222,6 @@ private fun QuizRunnerPage(
     textSize: QuizRunnerComposeTextSize,
     callbacks: QuizRunnerPagerCallbacks
 ) {
-    val animationSpec = tween<androidx.compose.ui.unit.Dp>(
-        durationMillis = if (state.showReviewRating) 260 else 190,
-        easing = if (state.showReviewRating) IosEaseOut else IosEaseIn
-    )
-    val bottomContentPadding by animateDpAsState(
-        targetValue = if (state.showReviewRating) 190.dp else 12.dp,
-        animationSpec = animationSpec,
-        label = "review_rating_bottom_padding"
-    )
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -250,7 +234,7 @@ private fun QuizRunnerPage(
                     start = 16.dp,
                     top = 12.dp,
                     end = 16.dp,
-                    bottom = bottomContentPadding
+                    bottom = 12.dp
                 )
         ) {
             state.examSummary?.let {
@@ -321,7 +305,7 @@ private fun QuizRunnerPage(
                     Spacer(Modifier.height(8.dp))
                     ReviewRatingBar(
                         page = page,
-                        callbacks = callbacks,
+                        onReviewRating = callbacks.onReviewRating,
                         selectedRating = rating
                     )
                 }
@@ -383,31 +367,22 @@ private fun QuizRunnerPage(
             }
             Spacer(Modifier.height(16.dp))
         }
+    }
+}
 
-        AnimatedVisibility(
-            visible = state.showReviewRating,
-            enter = fadeIn(
-                animationSpec = tween(durationMillis = 220, easing = IosEaseOut)
-            ) +
-                slideInVertically(
-                    animationSpec = tween(durationMillis = 260, easing = IosEaseOut),
-                    initialOffsetY = { it / 2 }
-                ),
-            exit = fadeOut(
-                animationSpec = tween(durationMillis = 150, easing = IosEaseIn)
-            ) +
-                slideOutVertically(
-                    animationSpec = tween(durationMillis = 190, easing = IosEaseIn),
-                    targetOffsetY = { it / 2 }
-                ),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            ReviewRatingDock(
-                page = page,
-                reviewCard = state.currentReviewCard,
-                callbacks = callbacks
-            )
-        }
+@Composable
+internal fun QuizRunnerReviewRatingDock(
+    page: Int,
+    reviewCard: ReviewCard?,
+    colors: QuizRunnerComposeColors,
+    onReviewRating: (page: Int, rating: ReviewRating) -> Unit
+) {
+    MaterialTheme(colorScheme = runnerLightColorScheme(colors)) {
+        ReviewRatingDock(
+            page = page,
+            reviewCard = reviewCard,
+            onReviewRating = onReviewRating
+        )
     }
 }
 
@@ -415,7 +390,7 @@ private fun QuizRunnerPage(
 private fun ReviewRatingDock(
     page: Int,
     reviewCard: ReviewCard?,
-    callbacks: QuizRunnerPagerCallbacks,
+    onReviewRating: (page: Int, rating: ReviewRating) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -427,7 +402,6 @@ private fun ReviewRatingDock(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 12.dp)
     ) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
@@ -446,7 +420,7 @@ private fun ReviewRatingDock(
             ReviewRatingBar(
                 page = page,
                 reviewCard = reviewCard,
-                callbacks = callbacks
+                onReviewRating = onReviewRating
             )
         }
     }
@@ -455,7 +429,7 @@ private fun ReviewRatingDock(
 @Composable
 private fun ReviewRatingBar(
     page: Int,
-    callbacks: QuizRunnerPagerCallbacks,
+    onReviewRating: (page: Int, rating: ReviewRating) -> Unit,
     reviewCard: ReviewCard? = null,
     selectedRating: ReviewRating? = null
 ) {
@@ -482,7 +456,7 @@ private fun ReviewRatingBar(
                     MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
             }
             Button(
-                onClick = { callbacks.onReviewRating(page, rating) },
+                onClick = { onReviewRating(page, rating) },
                 shape = RoundedCornerShape(12.dp),
                 border = if (selectedRating == rating) {
                     BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
