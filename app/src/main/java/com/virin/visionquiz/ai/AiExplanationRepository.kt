@@ -4,6 +4,7 @@ import android.content.Context
 import com.virin.visionquiz.dao.AiExplanationCache
 import com.virin.visionquiz.dao.AiExplanationCacheDao
 import com.virin.visionquiz.dao.QuizDatabase
+import java.io.IOException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -51,7 +52,8 @@ class AiExplanationRepository internal constructor(
             val partialContent = StringBuilder()
             var lastEmittedContent = ""
             var lastEmissionNanos = 0L
-            val content = completeStreaming(config, prompt) { delta ->
+
+            fun emitDelta(delta: String) {
                 partialContent.append(delta)
                 val now = System.nanoTime()
                 if (lastEmittedContent.isEmpty() ||
@@ -61,9 +63,42 @@ class AiExplanationRepository internal constructor(
                     lastEmissionNanos = now
                     onPartialContent(lastEmittedContent)
                 }
-            }.trim()
+            }
+
+            fun emitContent(content: String) {
+                if (content != lastEmittedContent) {
+                    lastEmittedContent = content
+                    onPartialContent(content)
+                }
+            }
+
+            suspend fun requestContent(requestPrompt: AiPrompt): String {
+                return completeStreaming(config, requestPrompt, ::emitDelta).trim()
+            }
+
+            var content = requestContent(prompt)
+            if (type == AiExplanationType.EXISTING_SIMILAR_ANALYSIS) {
+                var continuationAttempts = 0
+                while (
+                    existingSimilarAnalysisNeedsContinuation(content) &&
+                    continuationAttempts < MAX_EXISTING_SIMILAR_CONTINUATIONS
+                ) {
+                    continuationAttempts++
+                    val continuation = requestContent(
+                        buildExistingSimilarAnalysisContinuationPrompt(prompt, content)
+                    )
+                    content = listOf(content, continuation)
+                        .filter(String::isNotBlank)
+                        .joinToString("\n")
+                        .trim()
+                    emitContent(content)
+                }
+                if (existingSimilarAnalysisNeedsContinuation(content)) {
+                    throw IOException("相似题解析生成不完整，请重试")
+                }
+            }
             if (content != lastEmittedContent) {
-                onPartialContent(content)
+                emitContent(content)
             }
             val now = System.currentTimeMillis()
             val existing = cacheDao.getCache(quizId, type.value)
@@ -101,5 +136,45 @@ class AiExplanationRepository internal constructor(
 
     companion object {
         private const val PARTIAL_UPDATE_INTERVAL_NANOS = 80_000_000L
+        private const val MAX_EXISTING_SIMILAR_CONTINUATIONS = 1
+        private val EXISTING_SIMILAR_ANALYSIS_REQUIRED_HEADINGS = listOf(
+            "### 考点关系",
+            "### 题目对照",
+            "### 混淆点",
+            "### 做题抓手"
+        )
+        private val COMPLETE_END_CHARS = setOf(
+            '。', '！', '？', '.', '!', '?', '）', ')', '”', '"', '】', '」', '》'
+        )
+
+        private fun existingSimilarAnalysisNeedsContinuation(content: String): Boolean {
+            val trimmed = content.trim()
+            if (trimmed.isBlank()) return true
+            if (EXISTING_SIMILAR_ANALYSIS_REQUIRED_HEADINGS.any { it !in trimmed }) return true
+            return trimmed.lastOrNull() !in COMPLETE_END_CHARS
+        }
+
+        private fun buildExistingSimilarAnalysisContinuationPrompt(
+            originalPrompt: AiPrompt,
+            partialContent: String
+        ): AiPrompt {
+            return AiPrompt(
+                system = originalPrompt.system,
+                user = buildString {
+                    appendLine("以下相似题辨析内容生成中断，请从中断处继续补全。")
+                    appendLine("不要重复已完整写出的段落，不要重新开始，不要输出说明性开场。")
+                    appendLine("必须补齐并完整写完以下四个标题：")
+                    EXISTING_SIMILAR_ANALYSIS_REQUIRED_HEADINGS.forEach(::appendLine)
+                    appendLine()
+                    appendLine("原任务：")
+                    appendLine(originalPrompt.user)
+                    appendLine()
+                    appendLine("已生成内容：")
+                    appendLine(partialContent.trim())
+                    appendLine()
+                    appendLine("请只输出剩余内容，保持同一 Markdown 格式，并以完整句子收尾。")
+                }
+            )
+        }
     }
 }

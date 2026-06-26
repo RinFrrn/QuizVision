@@ -25,6 +25,18 @@ class ExistingSimilarAnalysisKeyTest {
 
         assertNotEquals(firstKey, secondKey)
         assertEquals(firstKey.subKey, existingSimilarAnalysisSubKey(listOf(first)))
+        assertEquals(true, firstKey.subKey?.startsWith("v2:"))
+    }
+
+    @Test
+    fun aiRequestKeyIncludesCandidatesAfterTheFifthQuestion() {
+        val firstSix = (1..6).map { quiz(it, "第 $it 道相似题") }
+        val changedSixth = firstSix.take(5) + quiz(6, "第 6 道相似题已变化")
+
+        assertNotEquals(
+            existingSimilarAnalysisSubKey(firstSix),
+            existingSimilarAnalysisSubKey(changedSixth)
+        )
     }
 
     private fun quiz(id: Int, prompt: String): Quiz {

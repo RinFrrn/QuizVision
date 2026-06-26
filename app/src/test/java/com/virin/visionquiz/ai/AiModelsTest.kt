@@ -120,10 +120,13 @@ class AiModelsTest {
         val existingSimilar = AiPromptBuilder.outputFormat(AiExplanationType.EXISTING_SIMILAR_ANALYSIS)
         assertHeadings(
             existingSimilar,
-            "### 共同考点",
-            "### 关键差异",
-            "### 易错提醒"
+            "### 考点关系",
+            "### 题目对照",
+            "### 混淆点",
+            "### 做题抓手"
         )
+        assertTrue(existingSimilar.contains("**关键差异**"))
+        assertTrue(existingSimilar.contains("**答案影响**"))
     }
 
     @Test
@@ -145,7 +148,13 @@ class AiModelsTest {
 
         assertTrue(prompt.user.contains("任务：相似题辨析"))
         assertTrue(prompt.user.contains("不要构造新题"))
-        assertTrue(prompt.user.contains("### 共同考点"))
+        assertTrue(prompt.user.contains("候选相似题会以压缩摘要形式全部给出"))
+        assertTrue(prompt.user.contains("自行选择最能体现考点关系和差异的题目"))
+        assertTrue(prompt.user.contains("相同点、关键差异、答案影响"))
+        assertTrue(prompt.system.contains("必须用 Markdown 粗体标记"))
+        assertTrue(prompt.user.contains("**关键差异**"))
+        assertTrue(prompt.user.contains("### 考点关系"))
+        assertTrue(prompt.user.contains("### 题目对照"))
         assertTrue(prompt.user.contains("当前题："))
         assertTrue(prompt.user.contains("题干：下列哪项正确？"))
         assertTrue(prompt.user.contains("相似题："))
@@ -179,7 +188,7 @@ class AiModelsTest {
         val current = prompt.fingerprint(config, AiExplanationType.ANALYSIS)
         val legacy = legacyFingerprint(prompt, config, AiExplanationType.ANALYSIS)
 
-        assertEquals("v3", AiPrompt.FINGERPRINT_VERSION)
+        assertEquals("v4", AiPrompt.FINGERPRINT_VERSION)
         assertNotEquals(legacy, current)
     }
 
@@ -195,7 +204,9 @@ class AiModelsTest {
         assertTrue(prompt.user.contains("任务：快速复盘"))
         assertTrue(prompt.user.contains("### 关键区分"))
         assertTrue(prompt.user.contains("### 记忆点"))
+        assertTrue(prompt.user.contains("**粗体**"))
         assertTrue(AiPromptBuilder.DEFAULT_QUICK_REVIEW_PROMPT.contains("80–180 字"))
+        assertTrue(AiPromptBuilder.DEFAULT_QUICK_REVIEW_PROMPT.contains("**粗体**"))
         assertTrue(AiPromptBuilder.DEFAULT_QUICK_REVIEW_PROMPT.contains("不要逐项展开全部选项"))
     }
 

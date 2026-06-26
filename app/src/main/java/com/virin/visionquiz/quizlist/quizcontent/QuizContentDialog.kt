@@ -708,7 +708,7 @@ private fun ExistingSimilarAnalysisSection(
     onOpenAiSettings: (() -> Unit)?,
     renderMarkdown: ((TextView, String) -> Unit)?
 ) {
-    val analysisQuizzes = remember(similarQuizzes) { similarQuizzes.take(5) }
+    val analysisQuizzes = remember(similarQuizzes) { similarQuizzes }
     Spacer(Modifier.height(18.dp))
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     SectionLabel("AI 相似题辨析")
@@ -742,10 +742,16 @@ private fun ExistingSimilarAnalysisSection(
     }
     val state = observedAiStates.value[key] ?: AiExplanationUiState.Idle
 
+    Text(
+        text = "AI 将从 ${analysisQuizzes.size} 道相似题中选择对比对象",
+        modifier = Modifier.padding(start = 2.dp, top = 6.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.labelSmall
+    )
     if (state is AiExplanationUiState.Success && state.fromCache) {
         Text(
             text = "已读取缓存",
-            modifier = Modifier.padding(start = 2.dp, top = 6.dp),
+            modifier = Modifier.padding(start = 2.dp, top = 3.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall
         )
@@ -913,7 +919,7 @@ private fun SimilarQuizSection(
                 .fillMaxWidth()
                 .padding(top = 8.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
             )
         ) {
             Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {

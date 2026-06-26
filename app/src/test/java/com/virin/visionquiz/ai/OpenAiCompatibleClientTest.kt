@@ -110,7 +110,9 @@ class OpenAiCompatibleClientTest {
         assertEquals(listOf("### 结论\n", "**正确**"), deltas)
         assertEquals("### 结论\n**正确**", result)
         val request = server.takeRequest()
-        assertTrue(request.body.readUtf8().contains("\"stream\":true"))
+        val requestBody = request.body.readUtf8()
+        assertTrue(requestBody.contains("\"stream\":true"))
+        assertTrue(requestBody.contains("\"max_tokens\":1800"))
         assertEquals("text/event-stream", request.getHeader("Accept"))
     }
 
@@ -133,6 +135,28 @@ class OpenAiCompatibleClientTest {
         ) {}
 
         assertEquals("完成", result)
+    }
+
+    @Test(timeout = 10_000)
+    fun acceptsStreamMessageContentFromCompatibleProviders() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody(
+                    """
+                    data: {"choices":[{"message":{"content":"兼容内容"}}]}
+
+                    data: [DONE]
+                    """.trimIndent()
+                )
+        )
+
+        val result = OpenAiCompatibleClient().completeStreaming(
+            config,
+            AiPrompt("system", "user")
+        ) {}
+
+        assertEquals("兼容内容", result)
     }
 
     @Test(timeout = 10_000)

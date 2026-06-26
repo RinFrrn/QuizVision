@@ -18,9 +18,9 @@ import okhttp3.Response
 class OpenAiCompatibleClient(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .callTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(120, TimeUnit.SECONDS)
+        .callTimeout(120, TimeUnit.SECONDS)
         .build(),
     private val gson: Gson = Gson()
 ) {
@@ -131,14 +131,24 @@ class OpenAiCompatibleClient(
             ?.asString
             ?.let { throw IOException(it.take(240)) }
         return runCatching {
-            root.getAsJsonArray("choices")
+            val choice = root.getAsJsonArray("choices")
                 ?.get(0)
                 ?.asJsonObject
-                ?.getAsJsonObject("delta")
-                ?.get("content")
-                ?.takeIf { it.isJsonPrimitive }
-                ?.asString
+            choice?.getAsJsonObject("delta")
+                ?.contentLikeString()
+                ?: choice?.getAsJsonObject("message")
+                    ?.contentLikeString()
+                ?: choice?.get("text")
+                    ?.takeIf { it.isJsonPrimitive }
+                    ?.asString
         }.getOrNull().orEmpty()
+    }
+
+    private fun JsonObject.contentLikeString(): String? {
+        return get("content")
+            ?.takeIf { it.isJsonPrimitive }
+            ?.asString
+            ?.takeIf(String::isNotEmpty)
     }
 
     private fun parseModelsResponse(response: Response): List<String> {
@@ -217,7 +227,7 @@ class OpenAiCompatibleClient(
             addProperty("model", config.model.trim())
             addProperty("temperature", 0.3)
             addProperty("stream", stream)
-            addProperty("max_tokens", 1000)
+            addProperty("max_tokens", 1800)
             add("messages", JsonArray().apply {
                 add(message("system", prompt.system))
                 add(message("user", prompt.user))

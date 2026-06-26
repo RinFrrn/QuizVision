@@ -201,7 +201,7 @@ fun parseContextualSuggestions(content: String): List<String> {
 }
 
 internal fun existingSimilarAnalysisSubKey(similarQuizzes: List<Quiz>): String {
-    val raw = similarQuizzes.take(MAX_EXISTING_SIMILAR_ANALYSIS_QUIZZES)
+    val raw = similarQuizzes
         .joinToString("\u001f") { quiz ->
             listOf(
                 quiz.id,
@@ -212,9 +212,10 @@ internal fun existingSimilarAnalysisSubKey(similarQuizzes: List<Quiz>): String {
     return MessageDigest.getInstance("SHA-256")
         .digest(raw.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it) }
+        .let { "$EXISTING_SIMILAR_ANALYSIS_FORMAT_VERSION:$it" }
 }
 
-internal const val MAX_EXISTING_SIMILAR_ANALYSIS_QUIZZES = 5
+private const val EXISTING_SIMILAR_ANALYSIS_FORMAT_VERSION = "v2"
 
 data class AiExplanationProgress(
     val total: Int = 0,
@@ -511,12 +512,11 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
         selectedAnswer: Set<Int>?,
         forceRefresh: Boolean = false
     ) {
-        val limitedSimilarQuizzes = similarQuizzes.take(MAX_EXISTING_SIMILAR_ANALYSIS_QUIZZES)
-        if (limitedSimilarQuizzes.isEmpty()) return
+        if (similarQuizzes.isEmpty()) return
         val key = AiRequestKey(
             quiz.id,
             AiExplanationType.EXISTING_SIMILAR_ANALYSIS,
-            existingSimilarAnalysisSubKey(limitedSimilarQuizzes)
+            existingSimilarAnalysisSubKey(similarQuizzes)
         )
         val config = aiConfigStore.read()
         if (!config.isComplete()) {
@@ -530,7 +530,7 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
             var latestPartialContent = ""
             val prompt = AiPromptBuilder.buildExistingSimilarAnalysis(
                 quiz = quiz,
-                similarQuizzes = limitedSimilarQuizzes,
+                similarQuizzes = similarQuizzes,
                 selectedAnswer = selectedAnswer
             )
             val result = runCatching {

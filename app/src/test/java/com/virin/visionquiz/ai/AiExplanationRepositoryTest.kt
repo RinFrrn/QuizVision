@@ -123,7 +123,7 @@ class AiExplanationRepositoryTest {
         var requested = false
         val repository = AiExplanationRepository(dao) { _, _, _ ->
             requested = true
-            "新相似题分析"
+            COMPLETE_EXISTING_SIMILAR_ANALYSIS
         }
 
         val result = repository.getOrGenerate(
@@ -138,11 +138,46 @@ class AiExplanationRepositoryTest {
 
         assertFalse(result.fromCache)
         assertTrue(requested)
-        assertEquals("新相似题分析", result.content)
+        assertEquals(COMPLETE_EXISTING_SIMILAR_ANALYSIS, result.content)
         assertEquals(
             prompt.fingerprint(config, AiExplanationType.EXISTING_SIMILAR_ANALYSIS),
             dao.cache?.fingerprint
         )
+    }
+
+    @Test
+    fun existingSimilarAnalysisContinuesWhenRequiredSectionsAreMissing() = runBlocking {
+        val dao = FakeCacheDao()
+        var requestCount = 0
+        val repository = AiExplanationRepository(dao) { _, _, onDelta ->
+            requestCount++
+            if (requestCount == 1) {
+                val partial = "### 考点关系\n**共同考点**\n### 题目对照\n相似题 1：**相同点**"
+                onDelta(partial)
+                partial
+            } else {
+                val continuation = "\n### 混淆点\n注意**限定条件**。\n### 做题抓手\n核验**答案依据**。"
+                onDelta(continuation)
+                continuation
+            }
+        }
+
+        val result = repository.getOrGenerate(
+            quizId = 1,
+            libraryId = 2,
+            type = AiExplanationType.EXISTING_SIMILAR_ANALYSIS,
+            config = config,
+            prompt = prompt,
+            forceRefresh = false,
+            strictFingerprint = true
+        )
+
+        assertEquals(2, requestCount)
+        assertTrue(result.content.contains("### 考点关系"))
+        assertTrue(result.content.contains("### 题目对照"))
+        assertTrue(result.content.contains("### 混淆点"))
+        assertTrue(result.content.contains("### 做题抓手"))
+        assertEquals(result.content, dao.cache?.content)
     }
 
     @Test
@@ -235,6 +270,14 @@ class AiExplanationRepositoryTest {
         releaseGeneration.complete(Unit)
         activeRequest.await()
         Unit
+    }
+
+    private companion object {
+        private const val COMPLETE_EXISTING_SIMILAR_ANALYSIS =
+            "### 考点关系\n**共同考点**。\n" +
+                "### 题目对照\n相似题 1：**相同点** / **关键差异** / **答案影响**。\n" +
+                "### 混淆点\n注意**限定条件**。\n" +
+                "### 做题抓手\n核验**答案依据**。"
     }
 
     private class FakeCacheDao : AiExplanationCacheDao {
