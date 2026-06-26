@@ -46,8 +46,6 @@
     <string name="select_excel_format_to_export">选择要导出的 Excel 格式</string>
     <string name="import_settings_title">导入设置</string>
     <string name="import_settings_menu_title">导入设置</string>
-    <string name="import_settings_save">保存</string>
-    <string name="import_settings_saved">已保存</string>
     <string name="import_settings_reset">恢复默认</string>
     <string name="import_settings_reset_title">恢复默认候选词？</string>
     <string name="import_settings_reset_message">这会还原默认的表头和题型候选词。</string>

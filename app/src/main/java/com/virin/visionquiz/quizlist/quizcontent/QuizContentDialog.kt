@@ -7,6 +7,7 @@ import android.util.TypedValue
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,21 +19,28 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -152,6 +160,7 @@ fun showSimilarQuizContentDialog(
     onGenerateExistingSimilarAnalysis: ((List<Quiz>, Boolean) -> Unit)? = null,
     onOpenAiSettings: (() -> Unit)? = null,
     renderMarkdown: ((TextView, String) -> Unit)? = null,
+    dismissOnQuizClick: Boolean = true,
     onQuizClick: (Quiz) -> Unit
 ) {
     val activity = context as? Activity ?: return
@@ -181,6 +190,7 @@ fun showSimilarQuizContentDialog(
                     onGenerateExistingSimilarAnalysis = onGenerateExistingSimilarAnalysis,
                     onOpenAiSettings = onOpenAiSettings,
                     renderMarkdown = renderMarkdown,
+                    dismissOnQuizClick = dismissOnQuizClick,
                     onQuizClick = onQuizClick,
                     onDismiss = { (overlay.parent as? ViewGroup)?.removeView(overlay) }
                 )
@@ -262,10 +272,14 @@ private fun SimilarQuizContentBottomSheet(
     onGenerateExistingSimilarAnalysis: ((List<Quiz>, Boolean) -> Unit)?,
     onOpenAiSettings: (() -> Unit)?,
     renderMarkdown: ((TextView, String) -> Unit)?,
+    dismissOnQuizClick: Boolean,
     onQuizClick: (Quiz) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { it != SheetValue.Hidden }
+    )
     var visible by remember { mutableStateOf(true) }
 
     if (visible) {
@@ -275,12 +289,18 @@ private fun SimilarQuizContentBottomSheet(
                 onDismiss()
             },
             sheetState = sheetState,
+            sheetGesturesEnabled = false,
             containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             tonalElevation = 6.dp,
             dragHandle = {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            visible = false
+                            onDismiss()
+                        },
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Spacer(Modifier.height(12.dp))
@@ -294,7 +314,11 @@ private fun SimilarQuizContentBottomSheet(
                     Spacer(Modifier.height(8.dp))
                 }
             },
-            contentWindowInsets = { WindowInsets(0) }
+            contentWindowInsets = { WindowInsets(0) },
+            properties = ModalBottomSheetProperties(
+                shouldDismissOnBackPress = true,
+                shouldDismissOnClickOutside = true
+            )
         ) {
             SimilarQuizContentCard(
                 context = context,
@@ -307,8 +331,10 @@ private fun SimilarQuizContentBottomSheet(
                 onOpenAiSettings = onOpenAiSettings,
                 renderMarkdown = renderMarkdown,
                 onQuizClick = { quiz ->
-                    visible = false
-                    onDismiss()
+                    if (dismissOnQuizClick) {
+                        visible = false
+                        onDismiss()
+                    }
                     onQuizClick(quiz)
                 },
                 onDismiss = {
@@ -711,9 +737,9 @@ private fun ExistingSimilarAnalysisSection(
     val analysisQuizzes = remember(similarQuizzes) { similarQuizzes }
     Spacer(Modifier.height(18.dp))
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    SectionLabel("AI 相似题辨析")
 
     if (analysisQuizzes.isEmpty()) {
+        SectionLabel("AI 相似题辨析")
         Text(
             text = "暂无可分析的相似题",
             modifier = Modifier.padding(top = 8.dp),
@@ -723,6 +749,7 @@ private fun ExistingSimilarAnalysisSection(
         return
     }
     if (aiStates == null || onGenerate == null) {
+        SectionLabel("AI 相似题辨析")
         Text(
             text = "当前入口暂不支持 AI 辨析",
             modifier = Modifier.padding(top = 8.dp),
@@ -742,24 +769,21 @@ private fun ExistingSimilarAnalysisSection(
     }
     val state = observedAiStates.value[key] ?: AiExplanationUiState.Idle
 
-    Text(
-        text = "AI 将从 ${analysisQuizzes.size} 道相似题中选择对比对象",
-        modifier = Modifier.padding(start = 2.dp, top = 6.dp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.labelSmall
+    SimilarAnalysisTitleRow(
+        status = buildString {
+            append("AI 将从 ${analysisQuizzes.size} 道相似题中选择对比对象")
+            if (state is AiExplanationUiState.Success && state.fromCache) {
+                append(" · 已读取缓存")
+            }
+        },
+        showRefresh = state is AiExplanationUiState.Success,
+        onRefresh = { onGenerate(analysisQuizzes, true) }
     )
-    if (state is AiExplanationUiState.Success && state.fromCache) {
-        Text(
-            text = "已读取缓存",
-            modifier = Modifier.padding(start = 2.dp, top = 3.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall
-        )
-    }
-    Card(
+    OutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 8.dp),
+        border = CardDefaults.outlinedCardBorder(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
@@ -801,12 +825,6 @@ private fun ExistingSimilarAnalysisSection(
                 }
                 is AiExplanationUiState.Success -> {
                     AiMarkdownContent(state.content, renderMarkdown)
-                    FilledTonalButton(
-                        onClick = { onGenerate(analysisQuizzes, true) },
-                        modifier = Modifier.padding(top = 6.dp)
-                    ) {
-                        Text("重新生成")
-                    }
                 }
                 is AiExplanationUiState.Error -> {
                     Text(
@@ -825,6 +843,51 @@ private fun ExistingSimilarAnalysisSection(
                         Text("重试")
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SimilarAnalysisTitleRow(
+    status: String,
+    showRefresh: Boolean,
+    onRefresh: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 18.dp, bottom = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "AI 相似题辨析",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = status,
+                modifier = Modifier.padding(top = 2.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+        if (showRefresh) {
+            FilledTonalIconButton(
+                onClick = onRefresh,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "重新生成",
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }
@@ -913,11 +976,12 @@ private fun SimilarQuizSection(
     }
 
     quizzes.forEachIndexed { index, quiz ->
-        Card(
+        OutlinedCard(
             onClick = { onQuizClick(quiz) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),
+            border = CardDefaults.outlinedCardBorder(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer
             )

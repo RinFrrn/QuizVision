@@ -29,7 +29,7 @@
 
         <TextView
             android:id="@+id/feature_title"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
             android:ellipsize="end"
@@ -37,9 +37,24 @@
             android:textSize="16sp"
             android:textStyle="bold"
             android:textColor="?attr/colorOnSurface"
+            app:layout_constrainedWidth="true"
             app:layout_constraintStart_toEndOf="@id/feature_icon"
-            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/feature_end_chevron"
+            app:layout_constraintHorizontal_bias="0"
             app:layout_constraintTop_toTopOf="parent" />
+
+        <ImageView
+            android:id="@+id/feature_end_chevron"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/feature_title"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/feature_title"
+            app:srcCompat="@drawable/icon_chevron_forward_24px"
+            app:tint="?attr/colorOnSurfaceVariant" />
 
         <TextView
             android:id="@+id/feature_description"

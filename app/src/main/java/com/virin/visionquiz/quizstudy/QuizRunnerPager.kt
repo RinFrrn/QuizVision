@@ -19,19 +19,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
@@ -565,13 +570,8 @@ private fun AiSection(
     textSize: QuizRunnerComposeTextSize,
     callbacks: QuizRunnerPagerCallbacks
 ) {
-    Text(
-        text = "AI 快速复习",
-        color = MaterialTheme.colorScheme.onSurface,
-        fontWeight = FontWeight.Bold
-    )
-    Spacer(Modifier.height(8.dp))
     AiStateCard(
+        title = "快速复习",
         state = state.quickAiState,
         textSizeSp = textSize.supportSp,
         configComplete = state.aiConfigComplete,
@@ -591,6 +591,7 @@ private fun AiSection(
 
     Spacer(Modifier.height(10.dp))
     AiStateCard(
+        title = "详细解析",
         state = state.detailedAiState,
         textSizeSp = textSize.supportSp,
         configComplete = state.aiConfigComplete,
@@ -612,6 +613,7 @@ private fun AiSection(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AiStateCard(
+    title: String,
     state: AiExplanationUiState,
     textSizeSp: Float,
     configComplete: Boolean,
@@ -636,14 +638,14 @@ private fun AiStateCard(
     }
     val showStatusInsideCard = state !is AiExplanationUiState.Success
     Column(Modifier.fillMaxWidth()) {
-        if (state is AiExplanationUiState.Success) {
-            Text(
-                text = if (state.fromCache) "已读取缓存" else status,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(start = 2.dp, bottom = 4.dp)
-            )
-        }
+        AiStateTitleRow(
+            title = title,
+            status = (state as? AiExplanationUiState.Success)?.let {
+                if (it.fromCache) "已读取缓存" else status
+            },
+            showRefresh = state is AiExplanationUiState.Success,
+            onRefresh = onLongAction
+        )
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow
@@ -699,6 +701,54 @@ private fun AiStateCard(
                     }
                     MarkdownText(content, textSizeSp, renderMarkdown)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiStateTitleRow(
+    title: String,
+    status: String?,
+    showRefresh: Boolean,
+    onRefresh: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 2.dp, bottom = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+            if (status != null) {
+                Text(
+                    text = status,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+        if (showRefresh) {
+            FilledTonalIconButton(
+                onClick = onRefresh,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "重新生成",
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

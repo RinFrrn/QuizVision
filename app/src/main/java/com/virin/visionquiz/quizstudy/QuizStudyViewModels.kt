@@ -16,6 +16,7 @@ import com.virin.visionquiz.dao.ExamSession
 import com.virin.visionquiz.dao.PracticeSession
 import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizAnswerRecord
+import com.virin.visionquiz.dao.QuizDatabase
 import com.virin.visionquiz.dao.QuizLibrary
 import com.virin.visionquiz.dao.QuizStudyMode
 import com.virin.visionquiz.dao.QuizUiType
@@ -32,6 +33,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class SupportedQuizStats(
     val total: Int = 0,
@@ -385,6 +387,7 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
 
     private val repository: QuizRepository = QuizRepositoryImpl(application)
     private val aiRepository = AiExplanationRepository(application)
+    private val aiCacheDao = QuizDatabase.getInstance(application).aiExplanationCacheDao()
     private val aiConfigStore = AiConfigStore(application)
     private val aiJobs = ConcurrentHashMap<AiRequestKey, Job>()
     private val aiStateLock = Any()
@@ -561,6 +564,45 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
                 )
             }
             aiJobs.remove(key)
+        }
+    }
+
+    suspend fun preloadExistingSimilarAnalysisCache(
+        quiz: Quiz,
+        similarQuizzes: List<Quiz>,
+        selectedAnswer: Set<Int>?
+    ) {
+        if (similarQuizzes.isEmpty()) return
+        val key = AiRequestKey(
+            quiz.id,
+            AiExplanationType.EXISTING_SIMILAR_ANALYSIS,
+            existingSimilarAnalysisSubKey(similarQuizzes)
+        )
+        withContext(Dispatchers.IO) {
+            val config = aiConfigStore.read()
+            if (!config.isComplete()) return@withContext
+            val prompt = AiPromptBuilder.buildExistingSimilarAnalysis(
+                quiz = quiz,
+                similarQuizzes = similarQuizzes,
+                selectedAnswer = selectedAnswer
+            )
+            val fingerprint = prompt.fingerprint(
+                config,
+                AiExplanationType.EXISTING_SIMILAR_ANALYSIS
+            )
+            val cached = aiCacheDao.getCache(
+                quiz.id,
+                AiExplanationType.EXISTING_SIMILAR_ANALYSIS.value
+            )
+            if (cached?.fingerprint == fingerprint && cached.content.isNotBlank()) {
+                updateAiState(
+                    key,
+                    AiExplanationUiState.Success(
+                        content = cached.content,
+                        fromCache = true
+                    )
+                )
+            }
         }
     }
 

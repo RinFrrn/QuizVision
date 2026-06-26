@@ -50,6 +50,7 @@ import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.databinding.FragmentQuizRunnerBinding
 import com.virin.visionquiz.preference.SettingsActivity
 import com.virin.visionquiz.quizlibraryfeatures.QuizLibraryFeaturesFragment
+import com.virin.visionquiz.quizlist.quizcontent.showQuizContentDialog
 import com.virin.visionquiz.quizlist.quizcontent.showSimilarQuizContentDialog
 import com.virin.visionquiz.util.BaseQuizFragment
 import com.virin.visionquiz.util.SimilarQuizStore
@@ -1670,6 +1671,11 @@ class QuizRunnerFragment : BaseQuizFragment() {
             if (_binding == null || !isAdded) return@launch
             val allQuizById = allQuizzes.associateBy(Quiz::id)
             val storedSimilarQuizzes = similarIds.mapNotNull(allQuizById::get)
+            viewModel.preloadExistingSimilarAnalysisCache(
+                quiz = quiz,
+                similarQuizzes = storedSimilarQuizzes,
+                selectedAnswer = currentSelection.takeIf { it.isNotEmpty() }
+            )
             showSimilarQuizContentDialog(
                 context = requireContext(),
                 originQuiz = quiz,
@@ -1689,16 +1695,17 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 renderMarkdown = { target, content ->
                     markdownRenderer().render(target, content)
                 },
+                dismissOnQuizClick = false,
                 onQuizClick = { selectedQuiz ->
                     val targetIndex = quizzes.indexOfFirst { it.id == selectedQuiz.id }
                     if (targetIndex >= 0) {
                         navigateToSimilarQuiz(targetIndex, originIndex)
                     } else {
-                        Toast.makeText(
-                            requireContext(),
-                            "相似题不在本次今日学习中",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        showQuizContentDialog(
+                            context = requireContext(),
+                            quiz = selectedQuiz,
+                            allQuizzes = allQuizzes
+                        )
                     }
                 }
             )

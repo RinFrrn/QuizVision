@@ -23,6 +23,7 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.graphics.ColorUtils
+import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.bundleOf
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
@@ -889,7 +890,7 @@ internal fun buildLibraryStudyFeatures(): List<QuizLibraryFeaturesFragment.Study
             QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST
         ),
         QuizLibraryFeaturesFragment.StudyFeature(
-            "生成 AI 解析",
+            "批量生成解析",
             "批量为题库生成快速复盘解析",
             R.drawable.icon_science_24px,
             QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN
@@ -971,6 +972,8 @@ class QuizLibFeaturesAdapter(
         val titleText: TextView = itemView.findViewById(R.id.feature_title)
         val descriptionText: TextView = itemView.findViewById(R.id.feature_description)
         val iconView: ImageView = itemView.findViewById(R.id.feature_icon)
+        val endChevron: ImageView? = itemView.findViewById(R.id.feature_end_chevron)
+        var showInlineTitleChevron: Boolean = false
         val accuracyGroup: View? = itemView.findViewById(R.id.feature_accuracy_group)
         val accuracyValue: TextView? = itemView.findViewById(R.id.feature_accuracy_value)
         val accuracyProgress: LinearProgressIndicator? =
@@ -1081,7 +1084,7 @@ class QuizLibFeaturesAdapter(
                 (holder as SectionViewHolder).titleText.text = item.title
             }
             is QuizLibraryFeatureListItem.FeatureItem -> {
-                bindFeature(holder as FeatureViewHolder, item.feature, item.fullSpan)
+                bindFeature(holder as FeatureViewHolder, item.feature, item.fullSpan, item.compact)
             }
             QuizLibraryFeatureListItem.Stats -> {
                 holder as StatsViewHolder
@@ -1102,12 +1105,15 @@ class QuizLibFeaturesAdapter(
     private fun bindFeature(
         holder: FeatureViewHolder,
         feature: QuizLibraryFeaturesFragment.StudyFeature,
-        fullSpan: Boolean
+        fullSpan: Boolean,
+        compact: Boolean
     ) {
         holder.titleText.text = feature.title
         holder.descriptionText.text = feature.description
         holder.iconView.setImageResource(feature.iconResId)
         holder.cardView.setOnClickListener { onItemClick(feature) }
+        holder.showInlineTitleChevron = feature.showsInlineTitleChevron()
+        holder.endChevron?.isVisible = feature.action == QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST
         bindFeatureAccuracy(holder, feature)
         if (
             fullSpan &&
@@ -1115,6 +1121,8 @@ class QuizLibFeaturesAdapter(
             reviewEntryState.hasPendingWork
         ) {
             applyPrimaryFeatureStyle(holder)
+        } else if (compact && feature.isSelfPracticeAction()) {
+            applyTonalFeatureStyle(holder)
         } else {
             applyDefaultFeatureStyle(holder)
         }
@@ -1165,6 +1173,10 @@ class QuizLibFeaturesAdapter(
         holder.titleText.setTextColor(contentColor)
         holder.descriptionText.setTextColor(contentColor)
         ImageViewCompat.setImageTintList(holder.iconView, ColorStateList.valueOf(contentColor))
+        holder.endChevron?.let {
+            ImageViewCompat.setImageTintList(it, ColorStateList.valueOf(contentColor))
+        }
+        bindTitleChevron(holder, contentColor)
     }
 
     private fun applyDefaultFeatureStyle(holder: FeatureViewHolder) {
@@ -1180,6 +1192,58 @@ class QuizLibFeaturesAdapter(
         holder.titleText.setTextColor(titleColor)
         holder.descriptionText.setTextColor(descriptionColor)
         ImageViewCompat.setImageTintList(holder.iconView, ColorStateList.valueOf(iconColor))
+        holder.endChevron?.let {
+            ImageViewCompat.setImageTintList(it, ColorStateList.valueOf(descriptionColor))
+        }
+        bindTitleChevron(holder, descriptionColor)
+    }
+
+    private fun applyTonalFeatureStyle(holder: FeatureViewHolder) {
+        val backgroundColor = MaterialColors.getColor(holder.itemView, R.attr.colorSecondaryContainer)
+        val contentColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnSecondaryContainer)
+        holder.cardView.setCardBackgroundColor(backgroundColor)
+        holder.cardView.strokeWidth = 0
+        holder.cardView.cardElevation = 0f
+        holder.titleText.setTextColor(contentColor)
+        holder.descriptionText.setTextColor(contentColor)
+        ImageViewCompat.setImageTintList(holder.iconView, ColorStateList.valueOf(contentColor))
+        holder.endChevron?.let {
+            ImageViewCompat.setImageTintList(it, ColorStateList.valueOf(contentColor))
+        }
+        bindTitleChevron(holder, contentColor)
+    }
+
+    private fun QuizLibraryFeaturesFragment.StudyFeature.isSelfPracticeAction(): Boolean {
+        return action == QuizLibraryFeaturesFragment.FeatureAction.ORDERED_PRACTICE ||
+            action == QuizLibraryFeaturesFragment.FeatureAction.RANDOM_PRACTICE ||
+            action == QuizLibraryFeaturesFragment.FeatureAction.EXAM
+    }
+
+    private fun QuizLibraryFeaturesFragment.StudyFeature.showsInlineTitleChevron(): Boolean {
+        return action == QuizLibraryFeaturesFragment.FeatureAction.FAVORITES ||
+            action == QuizLibraryFeaturesFragment.FeatureAction.WRONG ||
+            action == QuizLibraryFeaturesFragment.FeatureAction.HISTORY ||
+            action == QuizLibraryFeaturesFragment.FeatureAction.EXAM_HISTORY
+    }
+
+    private fun bindTitleChevron(holder: FeatureViewHolder, tintColor: Int) {
+        if (!holder.showInlineTitleChevron) {
+            holder.titleText.setCompoundDrawablesRelative(null, null, null, null)
+            return
+        }
+        val chevron = ContextCompat.getDrawable(
+            holder.itemView.context,
+            R.drawable.icon_chevron_forward_24px
+        )?.mutate()?.let(DrawableCompat::wrap)
+        if (chevron == null) {
+            holder.titleText.setCompoundDrawablesRelative(null, null, null, null)
+            return
+        }
+        val iconSize = holder.itemView.dp(18)
+        DrawableCompat.setTint(chevron, tintColor)
+        chevron.setBounds(0, 0, iconSize, iconSize)
+        holder.titleText.compoundDrawablePadding = holder.itemView.dp(2)
+        holder.titleText.setCompoundDrawablesRelative(null, null, chevron, null)
     }
 
     private fun notifyStatsChanged() {

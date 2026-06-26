@@ -54,7 +54,7 @@ class ImportCandidateSettingsFragment : BaseQuizFragment() {
     }
 
     override fun onPause() {
-        saveSettings(showMessage = false)
+        saveSettings()
         super.onPause()
     }
 
@@ -65,10 +65,6 @@ class ImportCandidateSettingsFragment : BaseQuizFragment() {
 
     private fun onTopBarMenuItemSelected(menuItem: MenuItem): Boolean {
         return when (menuItem.itemId) {
-            R.id.save_import_candidates -> {
-                saveSettings(showMessage = true)
-                true
-            }
             R.id.reset_import_candidates -> {
                 confirmReset()
                 true
@@ -169,17 +165,20 @@ class ImportCandidateSettingsFragment : BaseQuizFragment() {
             isCheckable = false
             setOnCloseIconClickListener {
                 group.items.removeAt(index)
+                saveSettings()
                 renderGroups()
             }
             setOnClickListener {
                 if (index > 0) {
                     java.util.Collections.swap(group.items, index, index - 1)
+                    saveSettings()
                     renderGroups()
                 }
             }
             setOnLongClickListener {
                 if (index < group.items.lastIndex) {
                     java.util.Collections.swap(group.items, index, index + 1)
+                    saveSettings()
                     renderGroups()
                 }
                 true
@@ -192,6 +191,7 @@ class ImportCandidateSettingsFragment : BaseQuizFragment() {
         if (value.isBlank()) return
         if (group.items.none { it == value }) {
             group.items += value
+            saveSettings()
             renderGroups()
         }
     }
@@ -210,7 +210,7 @@ class ImportCandidateSettingsFragment : BaseQuizFragment() {
             .show()
     }
 
-    private fun saveSettings(showMessage: Boolean) {
+    private fun saveSettings() {
         if (_binding == null) return
         ImportCandidateSettings.save(
             requireContext(),
@@ -227,9 +227,6 @@ class ImportCandidateSettingsFragment : BaseQuizFragment() {
                 subjectiveTypes = groups[9].items
             )
         )
-        if (showMessage) {
-            Snackbar.make(binding.root, R.string.import_settings_saved, Snackbar.LENGTH_SHORT).show()
-        }
     }
 
     private data class CandidateGroup(

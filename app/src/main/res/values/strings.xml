@@ -20,8 +20,6 @@
     <string name="menu_item_settings" translatable="false">Settings</string>
     <string name="import_settings_title">Import settings</string>
     <string name="import_settings_menu_title">Import settings</string>
-    <string name="import_settings_save">Save</string>
-    <string name="import_settings_saved">Saved</string>
     <string name="import_settings_reset">Reset</string>
     <string name="import_settings_reset_title">Reset import candidates?</string>
     <string name="import_settings_reset_message">This will restore the default header and question type candidates.</string>
