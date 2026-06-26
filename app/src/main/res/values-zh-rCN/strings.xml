@@ -195,12 +195,15 @@
 
     <!-- Strings for text recognition preference. -->
     <string name="pref_title_group_recognized_text_in_blocks">将识别的文本分组成段落</string>
+    <string name="pref_summary_group_recognized_text_in_blocks">优先按段落块匹配 OCR 文本；关闭后更偏向逐行匹配。</string>
     <string name="pref_key_group_recognized_text_in_blocks">grtib</string>
     <string name="pref_title_show_language_tag">显示识别的语言</string>
     <string name="pref_key_show_language_tag">slt</string>
     <string name="pref_title_show_text_confidence">显示置信度分数</string>
+    <string name="pref_summary_show_text_confidence">在搜题覆盖层显示匹配分数和 OCR 调试面板。</string>
     <string name="pref_key_show_text_confidence">stc</string>
     <string name="pref_title_brief_answer_display">简略显示答案</string>
+    <string name="pref_summary_brief_answer_display">在搜题覆盖层缩短较长答案，减少遮挡。</string>
     <string name="pref_title_quiz_overlay_text_size">题目悬浮窗文字大小</string>
     <string name="screen_button_description">OCR按钮</string>
 

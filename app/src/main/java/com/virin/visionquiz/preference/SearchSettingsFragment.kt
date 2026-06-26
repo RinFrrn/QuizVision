@@ -115,6 +115,7 @@ class SearchSettingsFragment : Fragment() {
                 context = context,
                 keyResId = R.string.pref_key_brief_answer_display,
                 titleResId = R.string.pref_title_brief_answer_display,
+                summary = getString(R.string.pref_summary_brief_answer_display),
                 defaultValue = false
             ),
             createArrayListRow(
@@ -129,12 +130,14 @@ class SearchSettingsFragment : Fragment() {
                 context = context,
                 keyResId = R.string.pref_key_show_text_confidence,
                 titleResId = R.string.pref_title_show_text_confidence,
+                summary = getString(R.string.pref_summary_show_text_confidence),
                 defaultValue = false
             ),
             createSwitchRow(
                 context = context,
                 keyResId = R.string.pref_key_group_recognized_text_in_blocks,
                 titleResId = R.string.pref_title_group_recognized_text_in_blocks,
+                summary = getString(R.string.pref_summary_group_recognized_text_in_blocks),
                 defaultValue = true
             )
         )

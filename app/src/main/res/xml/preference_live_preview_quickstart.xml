@@ -51,6 +51,7 @@
         android:defaultValue="true"
         android:key="@string/pref_key_group_recognized_text_in_blocks"
         android:persistent="true"
+        android:summary="@string/pref_summary_group_recognized_text_in_blocks"
         android:title="@string/pref_title_group_recognized_text_in_blocks"/>
 
     <SwitchPreference
@@ -63,6 +64,7 @@
         android:defaultValue="false"
         android:key="@string/pref_key_show_text_confidence"
         android:persistent="true"
+        android:summary="@string/pref_summary_show_text_confidence"
         android:title="@string/pref_title_show_text_confidence"/>
 
   </PreferenceCategory>
