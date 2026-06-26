@@ -29,6 +29,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.RadioGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.addCallback
@@ -45,8 +46,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.SimpleItemAnimator
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
@@ -57,13 +58,11 @@ import com.virin.visionquiz.R
 import com.virin.visionquiz.dao.QuizLibrary
 import com.virin.visionquiz.dao.QuizManager
 import com.virin.visionquiz.databinding.FragmentQuizLibraryListBinding
-import com.virin.visionquiz.preference.SettingsActivity
 import com.virin.visionquiz.quizdetector.CameraXDetectorActivity
 import com.virin.visionquiz.quizlibraryfeatures.QuizLibraryFeaturesFragment
 import com.virin.visionquiz.screendetector.ScreenDetectorController
 import com.virin.visionquiz.util.MdcThemeBridge
 import com.virin.visionquiz.util.BaseQuizFragment
-import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import com.virin.visionquiz.ai.BatchAiExplanationService
 import com.virin.visionquiz.quizlibrarylist.QuizLibraryListScreen
@@ -136,10 +135,6 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 
     override fun onPause() {
         super.onPause()
-
-        if (_binding != null) {
-            hideImportMenu(animated = false)
-        }
         viewModel.exitSelectionMode()
     }
 
@@ -182,12 +177,10 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         configureQuizTopBar(binding.toolbar, TITLE, showNavigation = false)
         refreshTopBarMenu()
         setupPermissionNotice()
-        setupImportMenu()
 
         // Observe selection state to update toolbar and FAB
         viewModel.isSelectionMode.observe(viewLifecycleOwner) { isSelecting ->
             if (isSelecting) {
-                hideImportMenu(animated = false)
                 configureQuizTopBar(
                     binding.toolbar,
                     "选择项目",
@@ -213,45 +206,32 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         binding.recyclerView.visibility = View.GONE
         binding.emptyLl.visibility = View.GONE
         
-        // Add ComposeView for the library list
-        val composeView = ComposeView(requireContext()).apply {
+        // Set up the Compose library list in XML so ConstraintLayout provides bounded height.
+        binding.libraryListCompose.apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 MdcThemeBridge {
-                QuizLibraryListScreen(
-                    viewModel = viewModel,
-                    onLibraryClick = { library ->
-                        onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.ROOT_VIEW)
-                    },
-                    onLibraryLongClick = { library ->
-                        // handled by original adapter
-                    },
-                    onCameraClick = { library ->
-                        onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.CAMERA_BUTTON)
-                    },
-                    onScreenRecordClick = { library ->
-                        onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.SCREEN_RECORD_BUTTON)
-                    },
-                    onRename = { library ->
-                        onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.RENAME_BUTTON)
-                    },
-                    onDelete = { library ->
-                        onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.DELETE_BUTTON)
-                    }
-                )
+                    QuizLibraryListScreen(
+                        viewModel = viewModel,
+                        onLibraryClick = { library ->
+                            onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.ROOT_VIEW)
+                        },
+                        onLibraryLongClick = { library ->
+                            // handled by original adapter
+                        },
+                        onCameraClick = { library ->
+                            onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.CAMERA_BUTTON)
+                        },
+                        onScreenRecordClick = { library ->
+                            onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.SCREEN_RECORD_BUTTON)
+                        },
+                        onAccessibilitySearchClick = { library ->
+                            onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.ACCESSIBILITY_SEARCH_BUTTON)
+                        }
+                    )
                 }
             }
         }
-        val constraintLayout = binding.root as androidx.constraintlayout.widget.ConstraintLayout
-        constraintLayout.addView(composeView, androidx.constraintlayout.widget.ConstraintLayout.LayoutParams(
-            androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.MATCH_CONSTRAINT,
-            androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.MATCH_CONSTRAINT
-        ).apply {
-            topToBottom = binding.toolbar.id
-            bottomToBottom = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
-            startToStart = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
-            endToEnd = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
-        })
 //        // Observe the quiz library list from the ViewModel
 //        viewModel.quizLibraryList.observe(viewLifecycleOwner, { quizLibraries ->
 //            // Set the data for the adapter
@@ -267,7 +247,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 //            }
 //        })
         binding.fabAddQuizLibrary.setOnClickListener {
-            showImportMenu()
+            showImportBottomSheet()
         }
 
 //        binding.recyclerView.addOnItemTouchListener(object : RecyclerView.OnItemTouchListener {
@@ -376,28 +356,37 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         binding.recyclerView.layoutManager = GridLayoutManager(requireContext(), span)
     }
 
-    private fun showImportMenu() {
-        if (binding.importActionMenu.visibility == View.VISIBLE) {
-            hideImportMenu(animated = true)
-        } else {
-            showImportMenuAnimated()
+    private fun showImportBottomSheet() {
+        val dialog = BottomSheetDialog(requireContext())
+        val content = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24.dp, 12.dp, 24.dp, 24.dp + systemBottomInset)
         }
-    }
-
-    private fun setupImportMenu() {
-        binding.importMenuScrim.setOnClickListener {
-            hideImportMenu(animated = true)
-        }
-        binding.importChooseFileButton.setOnClickListener {
-            hideImportMenu(animated = true)
+        content.addView(TextView(requireContext()).apply {
+            text = getString(R.string.import_library_title)
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleLarge)
+            setTextColor(MaterialColors.getColor(this, R.attr.colorOnSurface))
+            setPadding(0, 8.dp, 0, 8.dp)
+        })
+        content.addView(createImportSheetButton(
+            text = getString(R.string.import_choose_file),
+            iconRes = R.drawable.icon_document_search_24px
+        ) {
+            dialog.dismiss()
             startChooseFileIntentForResult()
-        }
-        binding.importInputTextButton.setOnClickListener {
-            hideImportMenu(animated = true)
+        })
+        content.addView(createImportSheetButton(
+            text = getString(R.string.import_text_input),
+            iconRes = R.drawable.icon_edit_square_24px
+        ) {
+            dialog.dismiss()
             showImportDialog()
-        }
-        binding.importClipboardButton.setOnClickListener {
-            hideImportMenu(animated = true)
+        })
+        content.addView(createImportSheetButton(
+            text = getString(R.string.import_text_from_clipboard),
+            iconRes = R.drawable.icon_content_paste_24px
+        ) {
+            dialog.dismiss()
             val clipText = readClipboardText()
             if (clipText.isBlank()) {
                 Snackbar.make(
@@ -408,63 +397,56 @@ class QuizLibraryListFragment : BaseQuizFragment() {
             } else {
                 showImportDialog(clipText)
             }
-        }
+        })
+        content.addView(View(requireContext()).apply {
+            setBackgroundColor(MaterialColors.getColor(this, R.attr.colorOutlineVariant))
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            1
+        ).apply {
+            topMargin = 8.dp
+            bottomMargin = 8.dp
+        })
+        content.addView(createImportSheetButton(
+            text = getString(R.string.import_settings_menu_title),
+            iconRes = R.drawable.round_settings_24
+        ) {
+            dialog.dismiss()
+            openImportSettings()
+        })
+        dialog.setContentView(content)
+        dialog.show()
     }
 
-    private fun showImportMenuAnimated() {
-        binding.importMenuScrim.visibility = View.VISIBLE
-        binding.importActionMenu.apply {
-            visibility = View.VISIBLE
-            alpha = 0f
-            scaleX = 0.92f
-            scaleY = 0.92f
-            translationY = 12.dp.toFloat()
-            post {
-                if (_binding == null || visibility != View.VISIBLE) {
-                    return@post
-                }
-                pivotX = width.toFloat()
-                pivotY = height.toFloat()
-                animate()
-                    .alpha(1f)
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .translationY(0f)
-                    .setDuration(180L)
-                    .setInterpolator(com.google.android.material.animation.AnimationUtils.FAST_OUT_SLOW_IN_INTERPOLATOR)
-                    .start()
-            }
+    private fun createImportSheetButton(
+        text: String,
+        iconRes: Int,
+        onClick: () -> Unit
+    ): MaterialButton {
+        return MaterialButton(
+            requireContext(),
+            null,
+            com.google.android.material.R.attr.borderlessButtonStyle
+        ).apply {
+            this.text = text
+            icon = ContextCompat.getDrawable(requireContext(), iconRes)
+            iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+            iconPadding = 16.dp
+            gravity = Gravity.CENTER_VERTICAL
+            minHeight = 56.dp
+            minimumHeight = 56.dp
+            insetTop = 0
+            insetBottom = 0
+            setTextColor(MaterialColors.getColor(this, R.attr.colorOnSurface))
+            iconTint = ColorStateList.valueOf(
+                MaterialColors.getColor(this, R.attr.colorOnSurfaceVariant)
+            )
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                56.dp
+            )
         }
-    }
-
-    private fun hideImportMenu(animated: Boolean) {
-        if (binding.importActionMenu.visibility != View.VISIBLE) {
-            binding.importMenuScrim.visibility = View.GONE
-            return
-        }
-        if (!animated) {
-            binding.importActionMenu.visibility = View.GONE
-            binding.importMenuScrim.visibility = View.GONE
-            return
-        }
-        binding.importActionMenu.animate()
-            .alpha(0f)
-            .scaleX(0.96f)
-            .scaleY(0.96f)
-            .translationY(8.dp.toFloat())
-            .setDuration(120L)
-            .setInterpolator(com.google.android.material.animation.AnimationUtils.FAST_OUT_SLOW_IN_INTERPOLATOR)
-            .withEndAction {
-                if (_binding != null) {
-                    binding.importActionMenu.visibility = View.GONE
-                    binding.importActionMenu.alpha = 1f
-                    binding.importActionMenu.scaleX = 1f
-                    binding.importActionMenu.scaleY = 1f
-                    binding.importActionMenu.translationY = 0f
-                    binding.importMenuScrim.visibility = View.GONE
-                }
-            }
-            .start()
     }
 
     private fun showImportDialog(initialText: String = "") {
@@ -656,7 +638,6 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 
     private val onSelectionListener = object : QuizLibraryListAdapter.SelectionListener {
         override fun onEnterSelection() {
-            hideImportMenu(animated = false)
             configureQuizTopBar(
                 binding.toolbar,
                 "选择项目",
@@ -796,10 +777,8 @@ class QuizLibraryListFragment : BaseQuizFragment() {
             )
         else listOf<MenuItem>(
             menu.findItem(R.id.sort),
+            menu.findItem(R.id.settings_hub),
             menu.findItem(R.id.more),
-            menu.findItem(R.id.search_settings),
-            menu.findItem(R.id.import_settings),
-            menu.findItem(R.id.ai_settings),
             menu.findItem(R.id.select),
             menu.findItem(R.id.about),
             menu.findItem(R.id.camera_test),
@@ -828,27 +807,11 @@ class QuizLibraryListFragment : BaseQuizFragment() {
             R.id.sort -> {
                 showSortDialog()
             }
+            R.id.settings_hub -> {
+                findNavController().navigate(R.id.action_QuizLibListFragment_to_SettingsHubFragment)
+            }
             R.id.select -> {
                 viewModel.enterSelectionMode()
-            }
-            R.id.import_settings -> {
-                findNavController().navigate(R.id.action_QuizLibListFragment_to_ImportCandidateSettingsFragment)
-            }
-            R.id.search_settings -> {
-                val intent = Intent(requireContext(), SettingsActivity::class.java)
-                intent.putExtra(
-                    SettingsActivity.EXTRA_LAUNCH_SOURCE,
-                    SettingsActivity.LaunchSource.QUIZ_CAMERAX
-                )
-                startActivity(intent)
-            }
-            R.id.ai_settings -> {
-                val intent = Intent(requireContext(), SettingsActivity::class.java)
-                intent.putExtra(
-                    SettingsActivity.EXTRA_LAUNCH_SOURCE,
-                    SettingsActivity.LaunchSource.AI_SETTINGS
-                )
-                startActivity(intent)
             }
             R.id.about -> {
                 showAboutDialog()
@@ -931,6 +894,10 @@ class QuizLibraryListFragment : BaseQuizFragment() {
             }
         }
         return true
+    }
+
+    private fun openImportSettings() {
+        findNavController().navigate(R.id.action_QuizLibListFragment_to_ImportCandidateSettingsFragment)
     }
 
     private fun showAboutDialog() {

@@ -2,11 +2,13 @@ package com.virin.visionquiz.quizlist.quizcontent
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color as AndroidColor
 import android.util.TypedValue
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -70,6 +73,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.LifecycleOwner
@@ -85,14 +89,21 @@ import com.virin.visionquiz.dao.QuizUiType
 import com.virin.visionquiz.dao.answerString
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.dao.typeString
+import com.virin.visionquiz.ai.AiConfigStore
 import com.virin.visionquiz.ai.AiExplanationType
+import com.virin.visionquiz.ai.AiExplanationRepository
+import com.virin.visionquiz.ai.AiMarkdownRenderer
+import com.virin.visionquiz.ai.AiPromptBuilder
+import com.virin.visionquiz.preference.SettingsActivity
 import com.virin.visionquiz.quizstudy.AiExplanationUiState
 import com.virin.visionquiz.quizstudy.AiRequestKey
 import com.virin.visionquiz.quizstudy.existingSimilarAnalysisSubKey
+import com.virin.visionquiz.quizstudy.isAiRequestInProgress
 import com.virin.visionquiz.util.MAX_SIMILAR_QUIZ_RESULTS
 import com.virin.visionquiz.util.QuizSimilarityIndex
 import com.virin.visionquiz.util.SimilarQuizStore
 import com.virin.visionquiz.util.convertNumToChar
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -161,6 +172,7 @@ fun showSimilarQuizContentDialog(
     onOpenAiSettings: (() -> Unit)? = null,
     renderMarkdown: ((TextView, String) -> Unit)? = null,
     dismissOnQuizClick: Boolean = true,
+    shouldDismissOnQuizClick: ((Quiz) -> Boolean)? = null,
     onQuizClick: (Quiz) -> Unit
 ) {
     val activity = context as? Activity ?: return
@@ -191,6 +203,7 @@ fun showSimilarQuizContentDialog(
                     onOpenAiSettings = onOpenAiSettings,
                     renderMarkdown = renderMarkdown,
                     dismissOnQuizClick = dismissOnQuizClick,
+                    shouldDismissOnQuizClick = shouldDismissOnQuizClick,
                     onQuizClick = onQuizClick,
                     onDismiss = { (overlay.parent as? ViewGroup)?.removeView(overlay) }
                 )
@@ -216,14 +229,23 @@ private fun QuizContentBottomSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val coroutineScope = rememberCoroutineScope()
     var visible by remember { mutableStateOf(true) }
+    var dismissing by remember { mutableStateOf(false) }
+
+    fun closeSheet() {
+        if (dismissing) return
+        dismissing = true
+        coroutineScope.launch {
+            runCatching { sheetState.hide() }
+            visible = false
+            onDismiss()
+        }
+    }
 
     if (visible) {
         ModalBottomSheet(
-            onDismissRequest = {
-                visible = false
-                onDismiss()
-            },
+            onDismissRequest = ::closeSheet,
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
@@ -251,10 +273,7 @@ private fun QuizContentBottomSheet(
                 quizzes = quizzes,
                 allQuizzes = allQuizzes,
                 initialIndex = initialIndex,
-                onDismiss = {
-                    visible = false
-                    onDismiss()
-                }
+                onDismiss = ::closeSheet
             )
         }
     }
@@ -273,21 +292,33 @@ private fun SimilarQuizContentBottomSheet(
     onOpenAiSettings: (() -> Unit)?,
     renderMarkdown: ((TextView, String) -> Unit)?,
     dismissOnQuizClick: Boolean,
+    shouldDismissOnQuizClick: ((Quiz) -> Boolean)?,
     onQuizClick: (Quiz) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var allowProgrammaticDismiss by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
-        confirmValueChange = { it != SheetValue.Hidden }
+        confirmValueChange = { allowProgrammaticDismiss || it != SheetValue.Hidden }
     )
+    val coroutineScope = rememberCoroutineScope()
     var visible by remember { mutableStateOf(true) }
+    var dismissing by remember { mutableStateOf(false) }
+
+    fun closeSheet() {
+        if (dismissing) return
+        dismissing = true
+        coroutineScope.launch {
+            allowProgrammaticDismiss = true
+            runCatching { sheetState.hide() }
+            visible = false
+            onDismiss()
+        }
+    }
 
     if (visible) {
         ModalBottomSheet(
-            onDismissRequest = {
-                visible = false
-                onDismiss()
-            },
+            onDismissRequest = ::closeSheet,
             sheetState = sheetState,
             sheetGesturesEnabled = false,
             containerColor = MaterialTheme.colorScheme.surface,
@@ -298,8 +329,7 @@ private fun SimilarQuizContentBottomSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            visible = false
-                            onDismiss()
+                            closeSheet()
                         },
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -331,16 +361,13 @@ private fun SimilarQuizContentBottomSheet(
                 onOpenAiSettings = onOpenAiSettings,
                 renderMarkdown = renderMarkdown,
                 onQuizClick = { quiz ->
-                    if (dismissOnQuizClick) {
-                        visible = false
-                        onDismiss()
+                    val shouldDismiss = shouldDismissOnQuizClick?.invoke(quiz) ?: dismissOnQuizClick
+                    if (shouldDismiss) {
+                        closeSheet()
                     }
                     onQuizClick(quiz)
                 },
-                onDismiss = {
-                    visible = false
-                    onDismiss()
-                }
+                onDismiss = ::closeSheet
             )
         }
     }
@@ -370,6 +397,11 @@ private fun QuizContentCard(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     var snackbarJob by remember { mutableStateOf<Job?>(null) }
+    val aiConfigStore = remember(context) { AiConfigStore(context.applicationContext) }
+    val aiRepository = remember(context) { AiExplanationRepository(context.applicationContext) }
+    val aiStates = remember { MutableLiveData<Map<AiRequestKey, AiExplanationUiState>>(emptyMap()) }
+    val markdownRenderer = remember(context) { AiMarkdownRenderer(context) }
+    var aiConfigComplete by remember { mutableStateOf(aiConfigStore.read().isComplete()) }
 
     // Similar-quiz keyword search
     var similarKeywordQuery by remember(quiz.id) { mutableStateOf("") }
@@ -429,6 +461,131 @@ private fun QuizContentCard(
                 selectedSimilarQuiz = null
             }
             snackbarJob = null
+        }
+    }
+
+    fun updateAiState(key: AiRequestKey, state: AiExplanationUiState) {
+        aiStates.postValue(aiStates.value.orEmpty() + (key to state))
+    }
+
+    fun openAiSettings() {
+        context.startActivity(Intent(context, SettingsActivity::class.java).apply {
+            putExtra(
+                SettingsActivity.EXTRA_LAUNCH_SOURCE,
+                SettingsActivity.LaunchSource.AI_SETTINGS
+            )
+        })
+    }
+
+    fun requestAiExplanation(
+        quiz: Quiz,
+        type: AiExplanationType,
+        forceRefresh: Boolean
+    ) {
+        val key = AiRequestKey(quiz.id, type)
+        val config = aiConfigStore.read()
+        aiConfigComplete = config.isComplete()
+        if (!config.isComplete()) {
+            updateAiState(key, AiExplanationUiState.ConfigurationRequired)
+            return
+        }
+        val currentState = aiStates.value.orEmpty()[key]
+        if (currentState.isAiRequestInProgress() && !forceRefresh) return
+        updateAiState(key, AiExplanationUiState.Loading)
+        coroutineScope.launch {
+            var latestPartialContent = ""
+            val prompt = AiPromptBuilder.build(
+                quiz = quiz,
+                type = type,
+                taskPrompt = config.promptFor(type),
+                selectedAnswer = null
+            )
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    aiRepository.getOrGenerate(
+                        quizId = quiz.id,
+                        libraryId = quiz.libraryId,
+                        type = type,
+                        config = config,
+                        prompt = prompt,
+                        forceRefresh = forceRefresh,
+                        onPartialContent = { content ->
+                            latestPartialContent = content
+                            updateAiState(key, AiExplanationUiState.Streaming(content))
+                        }
+                    )
+                }
+            }
+            result.onSuccess {
+                updateAiState(key, AiExplanationUiState.Success(it.content, it.fromCache))
+            }.onFailure {
+                if (it is CancellationException) return@onFailure
+                updateAiState(
+                    key,
+                    AiExplanationUiState.Error(
+                        message = it.message ?: "AI 请求失败",
+                        partialContent = latestPartialContent
+                    )
+                )
+            }
+        }
+    }
+
+    fun requestExistingSimilarAnalysis(
+        visibleSimilarQuizzes: List<Quiz>,
+        forceRefresh: Boolean
+    ) {
+        if (visibleSimilarQuizzes.isEmpty()) return
+        val key = AiRequestKey(
+            quiz.id,
+            AiExplanationType.EXISTING_SIMILAR_ANALYSIS,
+            existingSimilarAnalysisSubKey(visibleSimilarQuizzes)
+        )
+        val config = aiConfigStore.read()
+        aiConfigComplete = config.isComplete()
+        if (!config.isComplete()) {
+            updateAiState(key, AiExplanationUiState.ConfigurationRequired)
+            return
+        }
+        val currentState = aiStates.value.orEmpty()[key]
+        if (currentState.isAiRequestInProgress() && !forceRefresh) return
+        updateAiState(key, AiExplanationUiState.Loading)
+        coroutineScope.launch {
+            var latestPartialContent = ""
+            val prompt = AiPromptBuilder.buildExistingSimilarAnalysis(
+                quiz = quiz,
+                similarQuizzes = visibleSimilarQuizzes,
+                selectedAnswer = null
+            )
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    aiRepository.getOrGenerate(
+                        quizId = quiz.id,
+                        libraryId = quiz.libraryId,
+                        type = AiExplanationType.EXISTING_SIMILAR_ANALYSIS,
+                        config = config,
+                        prompt = prompt,
+                        forceRefresh = forceRefresh,
+                        strictFingerprint = true,
+                        onPartialContent = { content ->
+                            latestPartialContent = content
+                            updateAiState(key, AiExplanationUiState.Streaming(content))
+                        }
+                    )
+                }
+            }
+            result.onSuccess {
+                updateAiState(key, AiExplanationUiState.Success(it.content, it.fromCache))
+            }.onFailure {
+                if (it is CancellationException) return@onFailure
+                updateAiState(
+                    key,
+                    AiExplanationUiState.Error(
+                        message = it.message ?: "AI 请求失败",
+                        partialContent = latestPartialContent
+                    )
+                )
+            }
         }
     }
 
@@ -518,6 +675,28 @@ private fun QuizContentCard(
                 style = MaterialTheme.typography.bodySmall
             )
 
+            DialogAiExplanationSection(
+                quiz = quiz,
+                aiStates = aiStates,
+                aiConfigComplete = aiConfigComplete,
+                onGenerate = ::requestAiExplanation,
+                onOpenAiSettings = ::openAiSettings,
+                renderMarkdown = { target, content ->
+                    markdownRenderer.render(target, content)
+                }
+            )
+            ExistingSimilarAnalysisSection(
+                originQuiz = quiz,
+                similarQuizzes = similarQuizzes,
+                aiStates = aiStates,
+                aiConfigComplete = aiConfigComplete,
+                onGenerate = ::requestExistingSimilarAnalysis,
+                onOpenAiSettings = ::openAiSettings,
+                renderMarkdown = { target, content ->
+                    markdownRenderer.render(target, content)
+                }
+            )
+
             SimilarQuizSection(
                 quizzes = similarQuizzes,
                 hasAnalysis = hasAnalysis,
@@ -527,41 +706,47 @@ private fun QuizContentCard(
             )
         }
 
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-        )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedButton(
-                enabled = selectedSimilarQuiz == null && currentIndex > 0,
-                onClick = {
-                    clearSimilarNavigation()
-                    currentIndex--
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        enabled = selectedSimilarQuiz == null && currentIndex > 0,
+                        onClick = {
+                            clearSimilarNavigation()
+                            currentIndex--
+                        }
+                    ) {
+                        Text("上一题")
+                    }
+                    OutlinedButton(
+                        enabled = selectedSimilarQuiz == null && currentIndex < quizzes.lastIndex,
+                        onClick = {
+                            clearSimilarNavigation()
+                            currentIndex++
+                        }
+                    ) {
+                        Text("下一题")
+                    }
+                    TextButton(onClick = onDismiss) {
+                        Text("关闭")
+                    }
                 }
-            ) {
-                Text("上一题")
             }
-            OutlinedButton(
-                enabled = selectedSimilarQuiz == null && currentIndex < quizzes.lastIndex,
-                onClick = {
-                    clearSimilarNavigation()
-                    currentIndex++
-                }
-            ) {
-                Text("下一题")
-            }
-            TextButton(onClick = onDismiss) {
-                Text("关闭")
-            }
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = (-56).dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
         }
     }
 }
@@ -674,19 +859,6 @@ private fun SimilarQuizContentCard(
 
 @Composable
 private fun QuizHeader(quiz: Quiz, positionText: String) {
-    val (containerColor, contentColor) = when (quiz.inferredUiType()) {
-        QuizUiType.SINGLE_CHOICE ->
-            MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
-        QuizUiType.MULTIPLE_CHOICE ->
-            MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
-        QuizUiType.JUDGEMENT ->
-            MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
-        QuizUiType.FILL_BLANK ->
-            MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
-        QuizUiType.SUBJECTIVE ->
-            MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -698,18 +870,7 @@ private fun QuizHeader(quiz: Quiz, positionText: String) {
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold
         )
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = containerColor,
-            contentColor = contentColor
-        ) {
-            Text(
-                text = quiz.inferredUiType().label,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        QuizTypePill(quiz = quiz)
     }
 }
 
@@ -722,6 +883,217 @@ private fun SectionLabel(text: String) {
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.Bold
     )
+}
+
+@Composable
+private fun DialogAiExplanationSection(
+    quiz: Quiz,
+    aiStates: LiveData<Map<AiRequestKey, AiExplanationUiState>>,
+    aiConfigComplete: Boolean,
+    onGenerate: (Quiz, AiExplanationType, Boolean) -> Unit,
+    onOpenAiSettings: () -> Unit,
+    renderMarkdown: (TextView, String) -> Unit
+) {
+    val observedAiStates = aiStates.observeAsState(emptyMap())
+    Spacer(Modifier.height(20.dp))
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    SectionLabel("AI 解析")
+    DialogAiStateCard(
+        title = "快速复习",
+        state = observedAiStates.value[
+            AiRequestKey(quiz.id, AiExplanationType.QUICK_REVIEW)
+        ] ?: AiExplanationUiState.Idle,
+        configComplete = aiConfigComplete,
+        idleActionLabel = "生成快速复习",
+        onAction = {
+            if (aiConfigComplete) {
+                onGenerate(quiz, AiExplanationType.QUICK_REVIEW, false)
+            } else {
+                onOpenAiSettings()
+            }
+        },
+        onLongAction = {
+            onGenerate(quiz, AiExplanationType.QUICK_REVIEW, true)
+        },
+        renderMarkdown = renderMarkdown
+    )
+    Spacer(Modifier.height(10.dp))
+    DialogAiStateCard(
+        title = "详细解析",
+        state = observedAiStates.value[
+            AiRequestKey(quiz.id, AiExplanationType.DETAILED_ANALYSIS)
+        ] ?: AiExplanationUiState.Idle,
+        configComplete = aiConfigComplete,
+        idleActionLabel = "生成详细解析",
+        onAction = {
+            if (aiConfigComplete) {
+                onGenerate(quiz, AiExplanationType.DETAILED_ANALYSIS, false)
+            } else {
+                onOpenAiSettings()
+            }
+        },
+        onLongAction = {
+            onGenerate(quiz, AiExplanationType.DETAILED_ANALYSIS, true)
+        },
+        renderMarkdown = renderMarkdown
+    )
+}
+
+@Composable
+private fun DialogAiStateCard(
+    title: String,
+    state: AiExplanationUiState,
+    configComplete: Boolean,
+    idleActionLabel: String,
+    onAction: () -> Unit,
+    onLongAction: () -> Unit,
+    renderMarkdown: (TextView, String) -> Unit
+) {
+    val content = when (state) {
+        is AiExplanationUiState.Streaming -> state.content
+        is AiExplanationUiState.Success -> state.content
+        is AiExplanationUiState.Error -> state.partialContent
+        else -> ""
+    }
+    val status = when (state) {
+        AiExplanationUiState.Idle -> if (configComplete) "点击生成" else "请先配置 AI"
+        AiExplanationUiState.Loading -> "正在生成..."
+        AiExplanationUiState.ConfigurationRequired -> "请先配置 AI"
+        is AiExplanationUiState.Streaming -> "正在生成..."
+        is AiExplanationUiState.Success -> if (state.fromCache) "已读取缓存" else "生成完成"
+        is AiExplanationUiState.Error -> state.message
+    }
+    val showStatusInsideCard = state !is AiExplanationUiState.Success
+
+    Column(Modifier.fillMaxWidth()) {
+        DialogAiTitleRow(
+            title = title,
+            status = (state as? AiExplanationUiState.Success)?.let {
+                if (it.fromCache) "已读取缓存" else "生成完成"
+            },
+            showRefresh = state is AiExplanationUiState.Success,
+            onRefresh = onLongAction
+        )
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+        ) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                if (showStatusInsideCard) {
+                    if (state.isAiRequestInProgress()) {
+                        CenteredAiLoadingText(status)
+                    } else {
+                        CenteredAiActionContent(
+                            actionLabel = if (state is AiExplanationUiState.Error) {
+                                "重试"
+                            } else if (state == AiExplanationUiState.ConfigurationRequired || !configComplete) {
+                                "去配置 AI"
+                            } else {
+                                idleActionLabel
+                            },
+                            onAction = onAction
+                        )
+                    }
+                }
+                if (content.isNotBlank()) {
+                    if (showStatusInsideCard) {
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    AiMarkdownContent(content, renderMarkdown)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogAiTitleRow(
+    title: String,
+    status: String?,
+    showRefresh: Boolean,
+    onRefresh: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
+            )
+            if (status != null) {
+                Text(
+                    text = status,
+                    modifier = Modifier.padding(top = 2.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+        if (showRefresh) {
+            FilledTonalIconButton(
+                onClick = onRefresh,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "重新生成",
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CenteredAiActionContent(
+    actionLabel: String,
+    onAction: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        TextButton(
+            onClick = onAction,
+        ) {
+            Text(actionLabel)
+        }
+    }
+}
+
+@Composable
+private fun CenteredAiLoadingText(text: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CircularProgressIndicator(
+            strokeWidth = 2.dp,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
 }
 
 @Composable
@@ -792,34 +1164,22 @@ private fun ExistingSimilarAnalysisSection(
             when (state) {
                 AiExplanationUiState.Idle,
                 AiExplanationUiState.ConfigurationRequired -> {
-                    val message = if (state == AiExplanationUiState.ConfigurationRequired || !aiConfigComplete) {
-                        "需要先完成 AI 配置"
-                    } else {
-                        "分析当前题与相似题的共同考点、关键差异和易错点"
-                    }
-                    Text(
-                        text = message,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    OutlinedButton(
-                        onClick = {
+                    CenteredAiActionContent(
+                        actionLabel = if (aiConfigComplete) "生成 AI 辨析" else "去配置 AI",
+                        onAction = {
                             if (aiConfigComplete) {
                                 onGenerate(analysisQuizzes, false)
                             } else {
                                 onOpenAiSettings?.invoke()
                             }
-                        },
-                        modifier = Modifier.padding(top = 10.dp)
-                    ) {
-                        Text(if (aiConfigComplete) "生成 AI 辨析" else "去配置 AI")
-                    }
+                        }
+                    )
                 }
                 AiExplanationUiState.Loading -> {
-                    SimilarAnalysisLoadingText("正在生成 AI 辨析...")
+                    CenteredAiLoadingText("正在生成 AI 辨析...")
                 }
                 is AiExplanationUiState.Streaming -> {
-                    SimilarAnalysisLoadingText("正在生成 AI 辨析...")
+                    CenteredAiLoadingText("正在生成 AI 辨析...")
                     Spacer(Modifier.height(10.dp))
                     AiMarkdownContent(state.content, renderMarkdown)
                 }
@@ -827,20 +1187,13 @@ private fun ExistingSimilarAnalysisSection(
                     AiMarkdownContent(state.content, renderMarkdown)
                 }
                 is AiExplanationUiState.Error -> {
-                    Text(
-                        text = state.message,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium
+                    CenteredAiActionContent(
+                        actionLabel = "重试",
+                        onAction = { onGenerate(analysisQuizzes, true) }
                     )
                     if (state.partialContent.isNotBlank()) {
                         Spacer(Modifier.height(10.dp))
                         AiMarkdownContent(state.partialContent, renderMarkdown)
-                    }
-                    TextButton(
-                        onClick = { onGenerate(analysisQuizzes, true) },
-                        modifier = Modifier.padding(top = 6.dp)
-                    ) {
-                        Text("重试")
                     }
                 }
             }
@@ -890,22 +1243,6 @@ private fun SimilarAnalysisTitleRow(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun SimilarAnalysisLoadingText(text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        CircularProgressIndicator(
-            strokeWidth = 2.dp,
-            modifier = Modifier.height(18.dp).width(18.dp)
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = text,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium
-        )
     }
 }
 
@@ -997,11 +1334,9 @@ private fun SimilarQuizSection(
                     fontWeight = FontWeight.Medium,
                     maxLines = 3
                 )
-                Text(
-                    text = quiz.inferredUiType().label,
-                    modifier = Modifier.padding(top = 6.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.labelMedium
+                QuizTypePill(
+                    quiz = quiz,
+                    modifier = Modifier.padding(top = 8.dp)
                 )
                 Text(
                     text = highlightedKeywordText(
@@ -1022,6 +1357,40 @@ private fun SimilarQuizSection(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+@Composable
+private fun QuizTypePill(quiz: Quiz, modifier: Modifier = Modifier) {
+    val (containerColor, contentColor) = quizTypePillColors(quiz)
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = containerColor,
+        contentColor = contentColor
+    ) {
+        Text(
+            text = quiz.inferredUiType().label,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun quizTypePillColors(quiz: Quiz): Pair<Color, Color> {
+    return when (quiz.inferredUiType()) {
+        QuizUiType.SINGLE_CHOICE ->
+            MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+        QuizUiType.MULTIPLE_CHOICE ->
+            MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
+        QuizUiType.JUDGEMENT ->
+            MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
+        QuizUiType.FILL_BLANK ->
+            MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+        QuizUiType.SUBJECTIVE ->
+            MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+}
 
 private fun Quiz.correctOptionsText(): String {
     val optionsText = answer.sorted().joinToString("；") { index ->

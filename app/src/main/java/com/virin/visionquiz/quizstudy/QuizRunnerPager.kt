@@ -39,6 +39,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -595,7 +596,7 @@ private fun AiSection(
         state = state.detailedAiState,
         textSizeSp = textSize.supportSp,
         configComplete = state.aiConfigComplete,
-        idleActionLabel = "详细解析",
+        idleActionLabel = "生成详细解析",
         onAction = {
             if (state.aiConfigComplete) {
                 callbacks.onGenerateAi(page, AiExplanationType.DETAILED_ANALYSIS, false)
@@ -657,42 +658,19 @@ private fun AiStateCard(
         ) {
             Column(Modifier.padding(14.dp)) {
                 if (showStatusInsideCard) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (state.isAiRequestInProgress()) {
-                            CircularProgressIndicator(
-                                strokeWidth = 2.dp,
-                                modifier = Modifier
-                                    .width(22.dp)
-                                    .height(22.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                        }
-                        Text(
-                            status,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 13.sp,
-                            modifier = Modifier.weight(1f)
+                    if (state.isAiRequestInProgress()) {
+                        CenteredRunnerAiLoadingText(status)
+                    } else {
+                        CenteredRunnerAiActionContent(
+                            actionLabel = if (state is AiExplanationUiState.Error) {
+                                "重试"
+                            } else if (state == AiExplanationUiState.ConfigurationRequired || !configComplete) {
+                                "去配置 AI"
+                            } else {
+                                idleActionLabel
+                            },
+                            onAction = onAction
                         )
-                        if (state == AiExplanationUiState.Idle ||
-                            state == AiExplanationUiState.ConfigurationRequired ||
-                            state is AiExplanationUiState.Error
-                        ) {
-                            Text(
-                                text = if (state is AiExplanationUiState.Error) {
-                                    "重试"
-                                } else {
-                                    idleActionLabel
-                                },
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .combinedClickable(
-                                        onClick = onAction,
-                                        onLongClick = onLongAction
-                                    )
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                            )
-                        }
                     }
                 }
                 if (content.isNotBlank()) {
@@ -751,6 +729,43 @@ private fun AiStateTitleRow(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CenteredRunnerAiActionContent(
+    actionLabel: String,
+    onAction: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        TextButton(
+            onClick = onAction,
+        ) {
+            Text(actionLabel)
+        }
+    }
+}
+
+@Composable
+private fun CenteredRunnerAiLoadingText(text: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CircularProgressIndicator(
+            strokeWidth = 2.dp,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp
+        )
     }
 }
 

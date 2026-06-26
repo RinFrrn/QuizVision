@@ -70,6 +70,8 @@
     <string name="import_text_from_clipboard">获取剪贴板</string>
     <string name="import_text_clipboard_empty">剪贴板为空</string>
     <string name="import_choose_file">选择文件</string>
+    <string name="import_library_fab">导入题库</string>
+    <string name="import_library_title">导入题库</string>
     <string name="import_text_confirm">导入文本</string>
     <string name="import_text_empty_error">请先粘贴题库文本</string>
     <string name="import_text_format_help_content_description">支持的文本格式</string>
@@ -97,6 +99,8 @@
     <string name="pref_title_camerax_front_camera_target_resolution">CameraX 前置摄像头目标分辨率</string>
     <string name="pref_title_camera_live_viewport">启用实时视图</string>
     <string name="pref_summary_camera_live_viewport">检测时不阻塞摄像头预览绘制</string>
+    <string name="pref_title_camera_search_performance_panel">显示相机性能面板</string>
+    <string name="pref_summary_camera_search_performance_panel">在摄像头搜题页显示输入分辨率、帧率和延迟信息。</string>
     <string name="pref_category_text_recognition">文字识别</string>
     <string name="pref_category_general_display">通用显示</string>
     <string name="pref_category_screen_search">屏幕搜题</string>
@@ -127,6 +131,10 @@
     <string name="pref_summary_search_min_match_score">越高越严格，误匹配更少但可能漏题；越低越宽松，命中更多但误匹配风险更高。</string>
     <string name="pref_threshold_restore_default">恢复默认值</string>
     <string name="search_settings_menu_title">搜题设置</string>
+    <string name="settings_hub_title">设置</string>
+    <string name="settings_hub_search_summary">相机、屏幕、无障碍搜题、显示方式与匹配阈值。</string>
+    <string name="settings_hub_import_summary">导入时用于识别表头、答案、选项和题型的候选词。</string>
+    <string name="settings_hub_ai_summary">AI 配置、提示词、连接测试与生成内容缓存。</string>
     <string name="ai_settings_title">AI 设置</string>
     <string name="ai_settings_enabled">启用 AI 辅助</string>
     <string name="ai_settings_enabled_summary">答案显示后，为错题和收藏题自动生成快速复盘。</string>
@@ -197,12 +205,12 @@
     <string name="pref_key_group_recognized_text_in_blocks">grtib</string>
     <string name="pref_title_show_language_tag">显示识别的语言</string>
     <string name="pref_key_show_language_tag">slt</string>
-    <string name="pref_title_show_text_confidence">显示置信度分数</string>
+    <string name="pref_title_show_text_confidence">显示匹配与 OCR 调试信息</string>
     <string name="pref_summary_show_text_confidence">在搜题覆盖层显示匹配分数和 OCR 调试面板。</string>
     <string name="pref_key_show_text_confidence">stc</string>
     <string name="pref_title_brief_answer_display">简略显示答案</string>
     <string name="pref_summary_brief_answer_display">在搜题覆盖层缩短较长答案，减少遮挡。</string>
-    <string name="pref_title_quiz_overlay_text_size">题目悬浮窗文字大小</string>
+    <string name="pref_title_quiz_overlay_text_size">搜题覆盖层文字大小</string>
     <string name="screen_button_description">OCR按钮</string>
 
 </resources>

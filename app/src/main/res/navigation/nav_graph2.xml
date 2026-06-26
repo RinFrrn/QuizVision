@@ -21,6 +21,18 @@
         <action
             android:id="@+id/action_QuizLibListFragment_to_ImportCandidateSettingsFragment"
             app:destination="@id/ImportCandidateSettingsFragment" />
+        <action
+            android:id="@+id/action_QuizLibListFragment_to_SettingsHubFragment"
+            app:destination="@id/SettingsHubFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/SettingsHubFragment"
+        android:name="com.virin.visionquiz.quizlibrarylist.SettingsHubFragment"
+        android:label="@string/settings_hub_title">
+        <action
+            android:id="@+id/action_SettingsHubFragment_to_ImportCandidateSettingsFragment"
+            app:destination="@id/ImportCandidateSettingsFragment" />
     </fragment>
 
     <fragment

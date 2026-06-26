@@ -8,6 +8,12 @@
         android:title="@string/sort"
         app:showAsAction="always" />
     <item
+        android:id="@+id/settings_hub"
+        android:icon="@drawable/icon_switches_24px"
+        android:orderInCategory="95"
+        android:title="@string/settings_hub_title"
+        app:showAsAction="always" />
+    <item
         android:id="@+id/more"
         android:icon="@drawable/round_more_horiz_24"
         android:orderInCategory="100"
@@ -22,35 +28,6 @@
                     android:iconTintMode="src_in"
                     android:orderInCategory="10"
                     android:title="@string/select"
-                    app:showAsAction="never" />
-            </group>
-
-            <group android:id="@+id/group_settings">
-                <item
-                    android:id="@+id/search_settings"
-                    android:icon="@drawable/ic_settings_white_24dp"
-                    android:iconTint="?attr/colorOnSurfaceVariant"
-                    android:iconTintMode="src_in"
-                    android:orderInCategory="80"
-                    android:title="@string/search_settings_menu_title"
-                    app:showAsAction="never" />
-
-                <item
-                    android:id="@+id/import_settings"
-                    android:icon="@drawable/round_edit_24"
-                    android:iconTint="?attr/colorOnSurfaceVariant"
-                    android:iconTintMode="src_in"
-                    android:orderInCategory="90"
-                    android:title="@string/import_settings_menu_title"
-                    app:showAsAction="never" />
-
-                <item
-                    android:id="@+id/ai_settings"
-                    android:icon="@drawable/icon_science_24px"
-                    android:iconTint="?attr/colorOnSurfaceVariant"
-                    android:iconTintMode="src_in"
-                    android:orderInCategory="95"
-                    android:title="@string/ai_settings_title"
                     app:showAsAction="never" />
             </group>
 

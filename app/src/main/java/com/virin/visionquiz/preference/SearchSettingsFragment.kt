@@ -104,6 +104,13 @@ class SearchSettingsFragment : Fragment() {
                 titleResId = R.string.pref_title_camera_live_viewport,
                 summary = getString(R.string.pref_summary_camera_live_viewport),
                 defaultValue = true
+            ),
+            createSwitchRow(
+                context = context,
+                keyResId = R.string.pref_key_camera_search_performance_panel,
+                titleResId = R.string.pref_title_camera_search_performance_panel,
+                summary = getString(R.string.pref_summary_camera_search_performance_panel),
+                defaultValue = false
             )
         )
         addSection(context, getString(R.string.pref_category_title_camera), rows)

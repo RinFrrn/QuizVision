@@ -44,6 +44,21 @@
             app:layout_constraintTop_toBottomOf="@id/toolbar"
             tools:listitem="@layout/item_quiz_library" />
 
+        <FrameLayout
+            android:id="@+id/library_list_container"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/toolbar">
+
+            <androidx.compose.ui.platform.ComposeView
+                android:id="@+id/library_list_compose"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
+
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/permission_notice_card"
             android:layout_width="0dp"
@@ -119,82 +134,12 @@
             android:minWidth="48dp"
             android:paddingStart="24dp"
             android:paddingEnd="32dp"
-            android:text="导入"
+            android:text="@string/import_library_fab"
             android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
             app:icon="@drawable/twotone_add_24"
             app:iconPadding="12dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
-
-        <View
-            android:id="@+id/import_menu_scrim"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:background="@android:color/transparent"
-            android:visibility="gone"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/import_action_menu"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="16dp"
-            android:layout_marginBottom="12dp"
-            android:visibility="gone"
-            app:cardBackgroundColor="?attr/colorSurfaceContainerHigh"
-            app:cardCornerRadius="20dp"
-            app:cardElevation="3dp"
-            app:layout_constraintBottom_toTopOf="@id/fab_add_quiz_library"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:strokeColor="@android:color/transparent"
-            tools:visibility="visible">
-
-            <LinearLayout
-                android:layout_width="220dp"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="8dp">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/import_choose_file_button"
-                    style="@style/Widget.Material3.Button.TextButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:gravity="center_vertical"
-                    android:text="@string/import_choose_file"
-                    android:textAlignment="viewStart"
-                    app:icon="@drawable/icon_document_search_24px"
-                    app:iconGravity="textStart"
-                    app:iconPadding="12dp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/import_input_text_button"
-                    style="@style/Widget.Material3.Button.TextButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:gravity="center_vertical"
-                    android:text="@string/import_text_input"
-                    android:textAlignment="viewStart"
-                    app:icon="@drawable/icon_edit_square_24px"
-                    app:iconGravity="textStart"
-                    app:iconPadding="12dp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/import_clipboard_button"
-                    style="@style/Widget.Material3.Button.TextButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:gravity="center_vertical"
-                    android:text="@string/import_text_from_clipboard"
-                    android:textAlignment="viewStart"
-                    app:icon="@drawable/icon_content_paste_24px"
-                    app:iconGravity="textStart"
-                    app:iconPadding="12dp" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
 
         <LinearLayout
             android:id="@+id/empty_ll"

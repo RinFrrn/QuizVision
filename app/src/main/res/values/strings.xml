@@ -44,6 +44,8 @@
     <string name="import_text_from_clipboard">Get clipboard</string>
     <string name="import_text_clipboard_empty">Clipboard is empty</string>
     <string name="import_choose_file">Choose file</string>
+    <string name="import_library_fab">Import library</string>
+    <string name="import_library_title">Import library</string>
     <string name="import_text_confirm">Import text</string>
     <string name="import_text_empty_error">Paste quiz text first</string>
     <string name="import_text_format_help_content_description">Supported text formats</string>
@@ -85,6 +87,7 @@
     <string name="pref_key_camerax_rear_camera_target_resolution" translatable="false">crctas</string>
     <string name="pref_key_camerax_front_camera_target_resolution" translatable="false">cfctas</string>
     <string name="pref_key_camera_live_viewport" translatable="false">clv</string>
+    <string name="pref_key_camera_search_performance_panel" translatable="false">cspp</string>
     <string name="pref_key_screen_search_interval_ms" translatable="false">ssim</string>
     <string name="pref_key_screen_search_detect_changes" translatable="false">ssdc</string>
     <string name="pref_key_screen_search_show_answer_frames" translatable="false">sssaf</string>
@@ -108,6 +111,8 @@
     <string name="pref_title_camerax_front_camera_target_resolution" translatable="true">CameraX front camera target resolution</string>
     <string name="pref_title_camera_live_viewport" translatable="true">Enable live viewport</string>
     <string name="pref_summary_camera_live_viewport" translatable="true">Do not block camera preview drawing on detection</string>
+    <string name="pref_title_camera_search_performance_panel" translatable="true">Show camera performance panel</string>
+    <string name="pref_summary_camera_search_performance_panel" translatable="true">Show input resolution, frame rate, and latency on the camera search screen.</string>
     <string name="pref_title_screen_search_interval" translatable="true">Screen search interval</string>
     <string name="pref_title_screen_search_detect_changes" translatable="true">Recognize only when the screen changes</string>
     <string name="pref_summary_screen_search_detect_changes" translatable="true">Ignore small animations and repeat OCR only after a stable, significant screen change.</string>
@@ -134,6 +139,10 @@
     <string name="pref_summary_search_min_match_score" translatable="true">Higher is stricter with fewer false matches but may miss questions. Lower is looser with more hits and more false-match risk.</string>
     <string name="pref_threshold_restore_default" translatable="true">Restore default</string>
     <string name="search_settings_menu_title" translatable="true">Search settings</string>
+    <string name="settings_hub_title" translatable="true">Settings</string>
+    <string name="settings_hub_search_summary" translatable="true">Camera, screen, accessibility search, display, and match thresholds.</string>
+    <string name="settings_hub_import_summary" translatable="true">Header, answer, option, and question type candidates for imports.</string>
+    <string name="settings_hub_ai_summary" translatable="true">AI profiles, prompts, connection testing, and generated-content cache.</string>
     <string name="ai_settings_title">AI settings</string>
     <string name="ai_settings_enabled">Enable AI assistance</string>
     <string name="ai_settings_enabled_summary">Automatically generate a quick review for incorrect and bookmarked questions after answers are visible.</string>
@@ -208,13 +217,13 @@
     <string name="pref_key_group_recognized_text_in_blocks" translatable="true">grtib</string>
     <string name="pref_title_show_language_tag" translatable="true">Show language identified</string>
     <string name="pref_key_show_language_tag" translatable="true">slt</string>
-    <string name="pref_title_show_text_confidence" translatable="true">Show confidence score</string>
+    <string name="pref_title_show_text_confidence" translatable="true">Show match and OCR debug info</string>
     <string name="pref_summary_show_text_confidence" translatable="true">Show match scores and the OCR debug panel in search overlays.</string>
     <string name="pref_key_show_text_confidence" translatable="true">stc</string>
     <string name="pref_title_brief_answer_display" translatable="true">Brief answer display</string>
     <string name="pref_summary_brief_answer_display" translatable="true">Shorten long answer text in search overlays to reduce blocking the screen.</string>
     <string name="pref_key_brief_answer_display" translatable="false">bad</string>
-    <string name="pref_title_quiz_overlay_text_size" translatable="true">Quiz overlay text size</string>
+    <string name="pref_title_quiz_overlay_text_size" translatable="true">Search overlay text size</string>
     <string name="pref_key_quiz_overlay_text_size" translatable="false">qots</string>
 
     <!-- Strings for object detector enable multiple objects preference. -->

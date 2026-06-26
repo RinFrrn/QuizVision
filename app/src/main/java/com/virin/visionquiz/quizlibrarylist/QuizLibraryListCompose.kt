@@ -1,6 +1,17 @@
 package com.virin.visionquiz.quizlibrarylist
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
@@ -9,10 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,8 +28,11 @@ import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.virin.visionquiz.R
 import com.virin.visionquiz.dao.QuizLibrary
 
 @Composable
@@ -31,8 +42,7 @@ fun QuizLibraryListScreen(
     onLibraryLongClick: (QuizLibrary) -> Unit,
     onCameraClick: (QuizLibrary) -> Unit,
     onScreenRecordClick: (QuizLibrary) -> Unit,
-    onRename: (QuizLibrary) -> Unit,
-    onDelete: (QuizLibrary) -> Unit
+    onAccessibilitySearchClick: (QuizLibrary) -> Unit
 ) {
     val librariesWithReviewCount by viewModel.sortedLibrariesWithReviewCount.observeAsState(emptyList())
     val isSelectionMode by viewModel.isSelectionMode.observeAsState(false)
@@ -74,8 +84,9 @@ fun QuizLibraryListScreen(
                     onScreenRecordClick = {
                         if (!isSelectionMode) onScreenRecordClick(item.library)
                     },
-                    onRename = { onRename(item.library) },
-                    onDelete = { onDelete(item.library) }
+                    onAccessibilitySearchClick = {
+                        if (!isSelectionMode) onAccessibilitySearchClick(item.library)
+                    }
                 )
             }
         }
@@ -94,20 +105,47 @@ fun QuizLibraryCard(
     onLongClick: () -> Unit,
     onCameraClick: () -> Unit,
     onScreenRecordClick: () -> Unit,
-    onRename: () -> Unit,
-    onDelete: () -> Unit
+    onAccessibilitySearchClick: () -> Unit
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-
-    val containerColor = if (isSelected)
-        MaterialTheme.colorScheme.primaryContainer
-    else
-        MaterialTheme.colorScheme.surfaceContainer
-
-    val borderColor = if (isSelected)
-        MaterialTheme.colorScheme.primary
-    else
-        MaterialTheme.colorScheme.outlineVariant
+    val containerColor by animateColorAsState(
+        targetValue = if (isSelected)
+            MaterialTheme.colorScheme.primaryContainer
+        else
+            MaterialTheme.colorScheme.surfaceContainer,
+        animationSpec = tween(durationMillis = 220),
+        label = "libraryCardContainerColor"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected)
+            MaterialTheme.colorScheme.primary
+        else
+            MaterialTheme.colorScheme.outlineVariant,
+        animationSpec = tween(durationMillis = 220),
+        label = "libraryCardBorderColor"
+    )
+    val titleColor by animateColorAsState(
+        targetValue = if (isSelected)
+            MaterialTheme.colorScheme.onPrimaryContainer
+        else
+            MaterialTheme.colorScheme.onSurface,
+        animationSpec = tween(durationMillis = 220),
+        label = "libraryCardTitleColor"
+    )
+    val borderWidth by animateDpAsState(
+        targetValue = if (isSelected) 2.dp else 1.dp,
+        animationSpec = tween(durationMillis = 220),
+        label = "libraryCardBorderWidth"
+    )
+    val elevation by animateDpAsState(
+        targetValue = if (isSelected) 2.dp else 0.dp,
+        animationSpec = tween(durationMillis = 220),
+        label = "libraryCardElevation"
+    )
+    val contentEndPadding by animateDpAsState(
+        targetValue = if (isSelectionMode) 16.dp else 48.dp,
+        animationSpec = tween(durationMillis = 220),
+        label = "libraryCardEndPadding"
+    )
 
     Card(
         modifier = Modifier
@@ -115,200 +153,235 @@ fun QuizLibraryCard(
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
-            ),
+        ),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 2.dp else 0.dp),
-        border = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor)
+        elevation = CardDefaults.cardElevation(defaultElevation = elevation),
+        border = BorderStroke(borderWidth, borderColor)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (isSelectionMode) {
-                    Checkbox(
-                        checked = isSelected,
-                        onCheckedChange = { onClick() },
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = MaterialTheme.colorScheme.primary,
-                            uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = 16.dp,
+                        top = 16.dp,
+                        end = contentEndPadding,
+                        bottom = 16.dp
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-
-                Text(
-                    text = library.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else
-                        MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = if (isSelected)
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                    else
-                        MaterialTheme.colorScheme.secondaryContainer
-                ) {
-                    Text(
-                        text = "${library.quizCount} \u9898",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (isSelected)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
-
-                if (reviewCount > 0) {
-                    Surface(
-                        shape = MaterialTheme.shapes.small,
-                        color = if (isSelected)
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        else
-                            MaterialTheme.colorScheme.tertiaryContainer
-                    ) {
-                        Text(
-                            text = "\u5F85\u590D\u4E60 $reviewCount",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (isSelected)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onTertiaryContainer,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-                if (aiExplanationProgress.isGenerating) {
-                    Surface(
-                        shape = MaterialTheme.shapes.small,
-                        color = if (isSelected)
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        else
-                            MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Text(
-                            text = "解析中 ${aiExplanationProgress.cached}/${aiExplanationProgress.total}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (isSelected)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-            }
-
-            if (aiExplanationProgress.isGenerating && !isSelected) {
-                Spacer(modifier = Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { aiExplanationProgress.progressPercent / 100f },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
-            }
-
-            if (!isSelectionMode) {
-                Spacer(modifier = Modifier.height(12.dp))
-
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = onCameraClick,
-                        modifier = Modifier.size(40.dp)
+                    AnimatedVisibility(
+                        visible = isSelectionMode,
+                        enter = fadeIn(tween(120)) + expandHorizontally(
+                            expandFrom = Alignment.Start,
+                            animationSpec = tween(220)
+                        ),
+                        exit = shrinkHorizontally(
+                            shrinkTowards = Alignment.Start,
+                            animationSpec = tween(180)
+                        ) + fadeOut(tween(100))
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CameraAlt,
-                            contentDescription = "\u76F8\u673A\u641C\u9898",
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { onClick() },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = MaterialTheme.colorScheme.primary,
+                                    uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                    }
+
+                    Text(
+                        text = library.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = titleColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = if (isSelected)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        else
+                            MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            text = "${library.quizCount} \u9898",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (isSelected)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    IconButton(
-                        onClick = onScreenRecordClick,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PictureInPicture,
-                            contentDescription = "\u5C4F\u5E55\u641C\u9898",
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    Box {
-                        IconButton(
-                            onClick = { menuExpanded = true },
-                            modifier = Modifier.size(40.dp)
+                    if (reviewCount > 0) {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = if (isSelected)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            else
+                                MaterialTheme.colorScheme.tertiaryContainer
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "\u66F4\u591A",
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                            Text(
+                                text = "\u5F85\u590D\u4E60 $reviewCount",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isSelected)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
-
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false }
+                    }
+                    if (aiExplanationProgress.isGenerating) {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = if (isSelected)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            else
+                                MaterialTheme.colorScheme.primaryContainer
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("\u91CD\u547D\u540D") },
-                                onClick = {
-                                    menuExpanded = false
-                                    onRename()
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Default.Edit,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("\u5220\u9664") },
-                                onClick = {
-                                    menuExpanded = false
-                                    onDelete()
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
-                                }
+                            Text(
+                                text = "解析中 ${aiExplanationProgress.cached}/${aiExplanationProgress.total}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isSelected)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
                     }
                 }
+
+                if (aiExplanationProgress.isGenerating && !isSelected) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { aiExplanationProgress.progressPercent / 100f },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = !isSelectionMode,
+                    enter = fadeIn(tween(140)) + expandVertically(
+                        expandFrom = Alignment.Top,
+                        animationSpec = tween(220)
+                    ),
+                    exit = shrinkVertically(
+                        shrinkTowards = Alignment.Top,
+                        animationSpec = tween(180)
+                    ) + fadeOut(tween(100))
+                ) {
+                    Column {
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            QuizLibraryActionButton(
+                                icon = Icons.Default.CameraAlt,
+                                contentDescription = "相机搜题",
+                                onClick = onCameraClick
+                            )
+                            QuizLibraryActionButton(
+                                icon = Icons.Default.PictureInPicture,
+                                contentDescription = "屏幕搜题",
+                                onClick = onScreenRecordClick
+                            )
+                            QuizLibraryActionButton(
+                                iconRes = R.drawable.icon_accessible_forward_24px,
+                                contentDescription = "无障碍搜题",
+                                onClick = onAccessibilitySearchClick
+                            )
+                        }
+                    }
+                }
+            }
+            Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !isSelectionMode,
+                    enter = fadeIn(tween(140)) + expandHorizontally(
+                        expandFrom = Alignment.End,
+                        animationSpec = tween(220)
+                    ),
+                    exit = shrinkHorizontally(
+                        shrinkTowards = Alignment.End,
+                        animationSpec = tween(180)
+                    ) + fadeOut(tween(100))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(end = 14.dp)
+                            .size(22.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuizLibraryActionButton(
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    iconRes: Int? = null
+) {
+    val shape = RoundedCornerShape(10.dp)
+    Surface(
+        modifier = modifier
+            .width(52.dp)
+            .height(36.dp)
+            .clip(shape)
+            .clickable(onClick = onClick),
+        shape = shape,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            when {
+                icon != null -> Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.size(18.dp)
+                )
+                iconRes != null -> Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = contentDescription,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

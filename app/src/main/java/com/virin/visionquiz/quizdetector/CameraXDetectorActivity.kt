@@ -103,6 +103,7 @@ class CameraXDetectorActivity : AppCompatActivity(), AdapterView.OnItemSelectedL
     private var selectedModel = TEXT_RECOGNITION_QUESTION
     private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var cameraSelector: CameraSelector? = null
+    private var showPerformancePanel = false
 
     private var isPaused = false
         set(value) {
@@ -153,6 +154,8 @@ class CameraXDetectorActivity : AppCompatActivity(), AdapterView.OnItemSelectedL
 
         previewView = binding.previewView
         graphicOverlay = binding.graphicOverlay
+        showPerformancePanel = PreferenceUtils.shouldShowCameraSearchPerformancePanel(this)
+        hideInferenceInfoPanel()
 
 
 //        previewView = findViewById(R.id.preview_view)
@@ -406,6 +409,10 @@ class CameraXDetectorActivity : AppCompatActivity(), AdapterView.OnItemSelectedL
 
     public override fun onResume() {
         super.onResume()
+        showPerformancePanel = PreferenceUtils.shouldShowCameraSearchPerformancePanel(this)
+        if (!showPerformancePanel) {
+            hideInferenceInfoPanel()
+        }
 
         if (isPaused) {
             resumePreview()
@@ -589,10 +596,14 @@ class CameraXDetectorActivity : AppCompatActivity(), AdapterView.OnItemSelectedL
     }
 
     private fun renderInferenceInfo(info: VisionProcessorBase.InferenceInfo?) {
+        if (!showPerformancePanel) {
+            hideInferenceInfoPanel()
+            return
+        }
+
         val infoView = binding.inferenceInfoTextView
         if (info == null) {
-            infoView.visibility = View.GONE
-            infoView.text = ""
+            hideInferenceInfoPanel()
             return
         }
 
@@ -607,6 +618,11 @@ class CameraXDetectorActivity : AppCompatActivity(), AdapterView.OnItemSelectedL
             append('\n')
             append("Detector latency: ${info.detectorLatencyMs} ms")
         }
+    }
+
+    private fun hideInferenceInfoPanel() {
+        binding.inferenceInfoTextView.visibility = View.GONE
+        binding.inferenceInfoTextView.text = ""
     }
 
     //暂停预览

@@ -1604,7 +1604,8 @@ class QuizRunnerFragment : BaseQuizFragment() {
             binding.root,
             "已跳转到相似题目",
             Snackbar.LENGTH_INDEFINITE
-        ).setAction("返回原题") {
+        ).setAnchorView(binding.bottomControlsContainer)
+            .setAction("返回原题") {
             val returnIndex = similarQuizOriginIndex
             clearSimilarQuizReturn()
             if (returnIndex != null) {
@@ -1695,7 +1696,9 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 renderMarkdown = { target, content ->
                     markdownRenderer().render(target, content)
                 },
-                dismissOnQuizClick = false,
+                shouldDismissOnQuizClick = { selectedQuiz ->
+                    quizzes.any { it.id == selectedQuiz.id }
+                },
                 onQuizClick = { selectedQuiz ->
                     val targetIndex = quizzes.indexOfFirst { it.id == selectedQuiz.id }
                     if (targetIndex >= 0) {

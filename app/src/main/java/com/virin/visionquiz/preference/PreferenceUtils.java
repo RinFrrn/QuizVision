@@ -572,6 +572,12 @@ public class PreferenceUtils {
     return sharedPreferences.getBoolean(prefKey, true);
   }
 
+  public static boolean shouldShowCameraSearchPerformancePanel(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_camera_search_performance_panel);
+    return sharedPreferences.getBoolean(prefKey, false);
+  }
+
 //  public static int getFaceMeshUseCase(Context context) {
 //    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
 //    String prefKey = context.getString(R.string.pref_key_face_mesh_use_case);
