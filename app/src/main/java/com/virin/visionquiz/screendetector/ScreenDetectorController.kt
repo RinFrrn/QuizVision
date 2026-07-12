@@ -563,10 +563,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                 it.questionFingerprint !in answeredQuestionFingerprints
             }
             if (clippedTarget != null) {
-                waitForManualPage(
-                    "最后一题选项未完整显示，请手动上滑",
-                    ScreenDetectorSession.AssistanceIndicator.ERROR
-                )
+                revealBottomClippedTarget()
             } else {
                 continueWithPageDirection()
             }
@@ -710,6 +707,20 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             "答案被底部操作按钮遮挡，请选择上滑",
             ScreenDetectorSession.AssistanceIndicator.ERROR
         )
+    }
+
+    private fun revealBottomClippedTarget() {
+        if (selectedPageAxis != QuizAccessibilityService.PageAxis.VERTICAL) {
+            waitForManualPage(
+                "最后一题选项未完整显示，请选择上滑",
+                ScreenDetectorSession.AssistanceIndicator.ERROR
+            )
+            return
+        }
+        waitForManualPage("选项未完整显示，准备自动上滑")
+        scheduleAutoAdvance(AUTO_PAGE_DELAY_MS) {
+            performPageSwipe(QuizAccessibilityService.PageAxis.VERTICAL)
+        }
     }
 
     private fun shouldWaitForAnswerOverlayRender(): Boolean {
@@ -872,12 +883,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             axis == QuizAccessibilityService.PageAxis.VERTICAL &&
             PreferenceUtils.shouldUseSmartAccessibilityVerticalSwipe(service)
         ) {
-            ScreenDetectorSession.buildAnswerClickPlan()
-                ?.targets
-                ?.takeIf { it.size >= MIN_QUESTIONS_FOR_ALIGNED_VERTICAL_SWIPE }
-                ?.maxByOrNull { it.questionRect.top }
-                ?.questionRect
-                ?.top
+            buildSmartVerticalSwipeDistance(frameInfo.height)
         } else {
             null
         }
@@ -894,6 +900,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         service.swipePage(
             screenBounds = android.graphics.Rect(0, 0, frameInfo.width, frameInfo.height),
             overlayBounds = ScreenDetectorSession.getOverlayBoundsSnapshot(),
+            excludedPackageName = hostActivity?.packageName.orEmpty(),
             axis = axis,
             verticalTargetPosition = verticalTargetPosition
         ) { success ->
@@ -923,6 +930,17 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         }
     }
 
+    private fun buildSmartVerticalSwipeDistance(screenHeight: Int): Int? {
+        val plan = ScreenDetectorSession.buildAnswerClickPlan() ?: return null
+        val anchorTarget = plan.bottomClippedTarget
+            ?: plan.targets
+                .takeIf { it.size >= MIN_QUESTIONS_FOR_ALIGNED_VERTICAL_SWIPE }
+                ?.maxByOrNull { it.questionRect.top }
+            ?: return null
+        val desiredTop = (screenHeight * VERTICAL_QUESTION_TOP_RATIO).toInt()
+        return (anchorTarget.questionRect.top - desiredTop).takeIf { it > 0 }
+    }
+
     private fun schedulePageChangeTimeout(generation: Int, oldFingerprint: String) {
         pendingPageChangeTimeoutRunnable?.let(assistanceHandler::removeCallbacks)
         val runnable = Runnable {
@@ -946,7 +964,11 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
     }
 
     private fun scheduleAutoAdvance(delayMs: Long, step: () -> Unit) {
-        cancelPendingAutoAdvance()
+        // Stable scans can publish the same clipped question several times before this delay
+        // expires. Keep the earliest transition so repeated scans cannot postpone automation.
+        if (pendingAutoAdvanceRunnable != null) {
+            return
+        }
         val generation = assistanceGeneration
         val runnable = Runnable {
             pendingAutoAdvanceRunnable = null
@@ -1590,6 +1612,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
     private const val NOTIFICATION_PERMISSION_REFRESH_ATTEMPTS = 20
     private const val ANSWER_SETTLE_DELAY_MS = 550L
     private const val AUTO_PAGE_DELAY_MS = 120L
+    private const val VERTICAL_QUESTION_TOP_RATIO = 0.12f
     private const val OVERLAY_RENDER_RETRY_DELAY_MS = 48L
     private const val ASSISTANCE_RESUME_DELAY_MS = 220L
     private const val PAGE_CHANGE_TIMEOUT_MS = 3_500L

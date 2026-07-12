@@ -158,6 +158,7 @@ class QuizAccessibilityService : AccessibilityService() {
     fun swipePage(
         screenBounds: Rect,
         overlayBounds: Rect?,
+        excludedPackageName: String,
         axis: PageAxis,
         verticalTargetPosition: Int? = null,
         onComplete: (Boolean) -> Unit
@@ -165,6 +166,7 @@ class QuizAccessibilityService : AccessibilityService() {
         dispatchPageSwipe(
             screenBounds,
             overlayBounds,
+            excludedPackageName,
             axis,
             verticalTargetPosition,
             onComplete
@@ -296,6 +298,7 @@ class QuizAccessibilityService : AccessibilityService() {
     private fun dispatchPageSwipe(
         screenBounds: Rect,
         overlayBounds: Rect?,
+        excludedPackageName: String,
         axis: PageAxis,
         verticalTargetPosition: Int?,
         onComplete: (Boolean) -> Unit
@@ -314,6 +317,7 @@ class QuizAccessibilityService : AccessibilityService() {
             dispatchVerticalSwipe(
                 screenBounds,
                 overlayBounds,
+                collectGestureBlockingBounds(excludedPackageName, screenBounds),
                 targetDistance,
                 onComplete
             )
@@ -344,21 +348,20 @@ class QuizAccessibilityService : AccessibilityService() {
     private fun dispatchVerticalSwipe(
         screenBounds: Rect,
         overlayBounds: Rect?,
+        blockingBounds: List<Rect>,
         distance: Int,
         onComplete: (Boolean) -> Unit
     ) {
         activeGestureCompletion?.invoke(false)
         activeGestureCompletion = onComplete
         val generation = ++gestureGeneration
-        val x = chooseGestureCoordinate(
-            preferred = screenBounds.centerX(),
-            minimum = screenBounds.left + screenBounds.width() / 4,
-            maximum = screenBounds.right - screenBounds.width() / 4,
-            blockedStart = overlayBounds?.left,
-            blockedEnd = overlayBounds?.right
+        val gestureStart = chooseVerticalGestureStart(
+            screenBounds = screenBounds,
+            overlayBounds = overlayBounds,
+            blockingBounds = blockingBounds
         )
-        val startY =
-            screenBounds.top + (screenBounds.height() * VERTICAL_SWIPE_START_RATIO).toInt()
+        val x = gestureStart.x
+        val startY = gestureStart.y
         val minimumEndY =
             screenBounds.top + (screenBounds.height() * VERTICAL_SWIPE_END_RATIO).toInt()
         val endY = (startY - distance).coerceAtLeast(minimumEndY)
@@ -367,6 +370,107 @@ class QuizAccessibilityService : AccessibilityService() {
             lineTo(x.toFloat(), endY.toFloat())
         }
         dispatchPath(path, generation, VERTICAL_SWIPE_DURATION_MS)
+    }
+
+    private fun chooseVerticalGestureStart(
+        screenBounds: Rect,
+        overlayBounds: Rect?,
+        blockingBounds: List<Rect>
+    ): Point {
+        val xRatios = floatArrayOf(0.50f, 0.25f, 0.75f, 0.38f, 0.62f, 0.12f, 0.88f)
+        val yRatios = floatArrayOf(0.92f, 0.88f, 0.84f, 0.80f, 0.76f, 0.72f, 0.68f)
+        yRatios.forEach { yRatio ->
+            val y = screenBounds.top + (screenBounds.height() * yRatio).toInt()
+            xRatios.forEach { xRatio ->
+                val x = screenBounds.left + (screenBounds.width() * xRatio).toInt()
+                val isBlocked = overlayBounds?.contains(x, y) == true ||
+                    blockingBounds.any { it.contains(x, y) }
+                if (!isBlocked) {
+                    return Point(x, y)
+                }
+            }
+        }
+        return Point(
+            chooseGestureCoordinate(
+                preferred = screenBounds.centerX(),
+                minimum = screenBounds.left + screenBounds.width() / 4,
+                maximum = screenBounds.right - screenBounds.width() / 4,
+                blockedStart = overlayBounds?.left,
+                blockedEnd = overlayBounds?.right
+            ),
+            screenBounds.top +
+                (screenBounds.height() * VERTICAL_SWIPE_START_RATIO).toInt()
+        )
+    }
+
+    private fun collectGestureBlockingBounds(
+        excludedPackageName: String,
+        screenBounds: Rect
+    ): List<Rect> {
+        val result = mutableListOf<Rect>()
+        val interactiveWindows = windows.orEmpty().sortedByDescending { it.layer }
+        if (interactiveWindows.isNotEmpty()) {
+            interactiveWindows.forEach { window ->
+                val root = window.root ?: return@forEach
+                try {
+                    traverseGestureBlockingBounds(
+                        root,
+                        excludedPackageName,
+                        screenBounds,
+                        result
+                    )
+                } finally {
+                    root.recycle()
+                }
+            }
+        } else {
+            val root = rootInActiveWindow ?: return emptyList()
+            try {
+                traverseGestureBlockingBounds(
+                    root,
+                    excludedPackageName,
+                    screenBounds,
+                    result
+                )
+            } finally {
+                root.recycle()
+            }
+        }
+        return result.distinctBy { it.flattenToString() }
+    }
+
+    private fun traverseGestureBlockingBounds(
+        node: AccessibilityNodeInfo,
+        excludedPackageName: String,
+        screenBounds: Rect,
+        outBounds: MutableList<Rect>
+    ) {
+        if (node.isVisibleToUser &&
+            node.packageName?.toString() != excludedPackageName &&
+            node.isClickable &&
+            !node.isScrollable
+        ) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            if (rect.intersect(screenBounds) &&
+                rect.height() < screenBounds.height() * MAX_GESTURE_BLOCKER_HEIGHT_RATIO
+            ) {
+                outBounds.add(Rect(rect))
+            }
+        }
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            try {
+                traverseGestureBlockingBounds(
+                    child,
+                    excludedPackageName,
+                    screenBounds,
+                    outBounds
+                )
+            } finally {
+                child.recycle()
+            }
+        }
     }
 
     private fun dispatchPath(
@@ -646,6 +750,7 @@ class QuizAccessibilityService : AccessibilityService() {
         private const val VERTICAL_SWIPE_START_RATIO = 0.92f
         private const val VERTICAL_SWIPE_END_RATIO = 0.05f
         private const val DEFAULT_VERTICAL_SWIPE_DISTANCE_RATIO = 0.60f
+        private const val MAX_GESTURE_BLOCKER_HEIGHT_RATIO = 0.35f
         private const val DANGEROUS_ACTION_MIN_Y_RATIO = 0.55f
         private const val MAX_CLICKABLE_ANCESTOR_DEPTH = 4
         private const val PERMISSION_RETURN_INITIAL_DELAY_MS = 120L
