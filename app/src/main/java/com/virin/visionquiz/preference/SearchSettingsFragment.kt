@@ -687,7 +687,7 @@ class SearchSettingsFragment : Fragment() {
     private companion object {
         const val MIN_THRESHOLD_SCORE = 0.60
         const val MAX_THRESHOLD_SCORE = 1.00
-        const val DEFAULT_THRESHOLD_SCORE = 0.76
+        const val DEFAULT_THRESHOLD_SCORE = 0.90
         const val ACCESSIBILITY_THRESHOLD_DEFAULT_SCORE = 1.00
         const val THRESHOLD_SCORE_STEP = 0.02
         const val DEFAULT_ACCESSIBILITY_ANSWER_DOT_COLOR = "#000000"

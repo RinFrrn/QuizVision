@@ -7,6 +7,12 @@ import org.junit.Test
 
 class QuizLibraryFeatureListBuilderTest {
     @Test
+    fun similarAnalysisBadgeOnlyShowsWithoutCurrentAnalysis() {
+        assertTrue(shouldShowSimilarAnalysisBadge(hasCurrentAnalysis = false))
+        assertFalse(shouldShowSimilarAnalysisBadge(hasCurrentAnalysis = true))
+    }
+
+    @Test
     fun buildGroupedFeatureItemsKeepsSectionAndFeatureOrder() {
         val items = buildGroupedFeatureItems(buildLibraryStudyFeatures())
 

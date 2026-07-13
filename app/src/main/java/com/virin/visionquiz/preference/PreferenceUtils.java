@@ -31,7 +31,6 @@ import com.google.mlkit.common.model.LocalModel;
 import com.virin.visionquiz.CameraSource;
 import com.virin.visionquiz.CameraSource.SizePair;
 import com.virin.visionquiz.R;
-import com.virin.visionquiz.dao.QuizManager;
 import java.util.Arrays;
 //import com.google.mlkit.vision.face.FaceDetectorOptions;
 //import com.google.mlkit.vision.facemesh.FaceMeshDetectorOptions;
@@ -54,6 +53,7 @@ public class PreferenceUtils {
   private static final String DEFAULT_ACCESSIBILITY_ANSWER_DOT_COLOR = "#000000";
   private static final double MIN_SEARCH_MATCH_SCORE = 0.60;
   private static final double MAX_SEARCH_MATCH_SCORE = 1.00;
+  private static final double DEFAULT_CAMERA_SCREEN_SEARCH_MATCH_SCORE = 0.90;
   private static final android.util.Size DEFAULT_CAMERAX_TARGET_RESOLUTION =
       new android.util.Size(1280, 720);
 
@@ -387,14 +387,14 @@ public class PreferenceUtils {
     return getSearchMinMatchScore(
         context,
         R.string.pref_key_camera_search_min_match_score,
-        QuizManager.DEFAULT_MIN_MATCH_SCORE);
+        DEFAULT_CAMERA_SCREEN_SEARCH_MATCH_SCORE);
   }
 
   public static double getScreenSearchMinMatchScore(Context context) {
     return getSearchMinMatchScore(
         context,
         R.string.pref_key_screen_search_min_match_score,
-        QuizManager.DEFAULT_MIN_MATCH_SCORE);
+        DEFAULT_CAMERA_SCREEN_SEARCH_MATCH_SCORE);
   }
 
   public static double getAccessibilitySearchMinMatchScore(Context context) {

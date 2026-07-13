@@ -186,7 +186,10 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
             features = buildLibraryStudyFeatures(),
             answerStats = LibraryAnswerStats(),
             reviewEntryState = ReviewEntryState(),
-            reviewStats = ReviewStats()
+            reviewStats = ReviewStats(),
+            showSimilarAnalysisBadge = shouldShowSimilarAnalysisBadge(
+                SimilarQuizStore.hasAnalysis(requireContext(), libraryId)
+            )
         ) { feature ->
             handleFeatureClick(feature)
         }
@@ -214,6 +217,11 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
                 }
             }
             adapter.updateFeatureDescription(FeatureAction.SIMILAR_ANALYSIS, description)
+            adapter.updateSimilarAnalysisBadge(
+                shouldShowSimilarAnalysisBadge(
+                    SimilarQuizStore.hasAnalysis(requireContext(), libraryId)
+                )
+            )
         }
 
         viewModel.library.observe(viewLifecycleOwner) { library ->
@@ -245,6 +253,12 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
     override fun onResume() {
         super.onResume()
         ScreenDetectorController.onHostResumed(requireActivity())
+        (binding.studyFeaturesRecyclerView.adapter as? QuizLibFeaturesAdapter)
+            ?.updateSimilarAnalysisBadge(
+                shouldShowSimilarAnalysisBadge(
+                    SimilarQuizStore.hasAnalysis(requireContext(), libraryId)
+                )
+            )
     }
 
     private fun applyStatusBarScrimInsets() {
@@ -952,11 +966,16 @@ internal fun quizLibraryFeatureSpanSize(
     }
 }
 
+internal fun shouldShowSimilarAnalysisBadge(hasCurrentAnalysis: Boolean): Boolean {
+    return !hasCurrentAnalysis
+}
+
 class QuizLibFeaturesAdapter(
     features: List<QuizLibraryFeaturesFragment.StudyFeature>,
     private var answerStats: LibraryAnswerStats,
     private var reviewEntryState: ReviewEntryState,
     private var reviewStats: ReviewStats,
+    private var showSimilarAnalysisBadge: Boolean = false,
     private val onItemClick: (QuizLibraryFeaturesFragment.StudyFeature) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
@@ -972,6 +991,7 @@ class QuizLibFeaturesAdapter(
         val titleText: TextView = itemView.findViewById(R.id.feature_title)
         val descriptionText: TextView = itemView.findViewById(R.id.feature_description)
         val iconView: ImageView = itemView.findViewById(R.id.feature_icon)
+        val attentionDot: View? = itemView.findViewById(R.id.feature_attention_dot)
         val endChevron: ImageView? = itemView.findViewById(R.id.feature_end_chevron)
         var showInlineTitleChevron: Boolean = false
         val accuracyGroup: View? = itemView.findViewById(R.id.feature_accuracy_group)
@@ -1033,6 +1053,12 @@ class QuizLibFeaturesAdapter(
     fun updateReviewStats(newStats: ReviewStats) {
         reviewStats = newStats
         notifyStatsChanged()
+    }
+
+    fun updateSimilarAnalysisBadge(show: Boolean) {
+        if (showSimilarAnalysisBadge == show) return
+        showSimilarAnalysisBadge = show
+        notifyFeatureChanged(QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS)
     }
 
     fun isFullSpan(position: Int): Boolean {
@@ -1111,6 +1137,9 @@ class QuizLibFeaturesAdapter(
         holder.titleText.text = feature.title
         holder.descriptionText.text = feature.description
         holder.iconView.setImageResource(feature.iconResId)
+        holder.attentionDot?.isVisible =
+            showSimilarAnalysisBadge &&
+                feature.action == QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS
         holder.cardView.setOnClickListener { onItemClick(feature) }
         holder.showInlineTitleChevron = feature.showsInlineTitleChevron()
         holder.endChevron?.isVisible = feature.action == QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST
