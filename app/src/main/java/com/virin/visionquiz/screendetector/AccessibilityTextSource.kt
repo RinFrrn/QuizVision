@@ -65,6 +65,7 @@ class AccessibilityTextSource(
     private var lastPageActivityAtMs = 0L
     private var fastScanGeneration = 0
     private var fastScanPending = false
+    private var fastPageActivityNotified = false
     private var fastCandidate: FastCandidate? = null
     private var publishedSnapshotVersion = 0
     private var lastPublishedFingerprint: String? = null
@@ -147,7 +148,8 @@ class AccessibilityTextSource(
     }
 
     fun requestPageChangeScan() {
-        beginFastPageScan(notifyPageActivity = true)
+        // This is an active scan request, not evidence that the target page moved.
+        beginFastPageScan(notifyPageActivity = false)
     }
 
     fun stop() {
@@ -288,7 +290,13 @@ class AccessibilityTextSource(
         if (!active || paused) {
             return
         }
-        val shouldNotifyPageActivity = notifyPageActivity && !fastScanPending
+        if (!fastScanPending) {
+            fastPageActivityNotified = false
+        }
+        val shouldNotifyPageActivity = notifyPageActivity && !fastPageActivityNotified
+        if (shouldNotifyPageActivity) {
+            fastPageActivityNotified = true
+        }
         lastPageActivityAtMs = SystemClock.uptimeMillis()
         fastScanGeneration++
         fastScanPending = true
@@ -492,6 +500,7 @@ class AccessibilityTextSource(
     private fun resetFastScan(invalidateGeneration: Boolean = false) {
         fastScanGeneration++
         fastScanPending = false
+        fastPageActivityNotified = false
         fastCandidate = null
         handler.removeCallbacks(pageCandidateRunnable)
         handler.removeCallbacks(pageConfirmationRunnable)

@@ -881,6 +881,8 @@ class ScreenDetectorService : LifecycleService() {
                 R.drawable.round_arrow_forward_24
             assistance.indicator == ScreenDetectorSession.AssistanceIndicator.SWIPE_UP ->
                 R.drawable.round_arrow_back_24
+            assistance.indicator == ScreenDetectorSession.AssistanceIndicator.WAITING ->
+                R.drawable.icon_refresh_24px
             assistance.isActive -> R.drawable.icon_touch_app_24px
             else -> R.drawable.round_search_24
         }
@@ -900,6 +902,8 @@ class ScreenDetectorService : LifecycleService() {
                 "正在左滑翻页，点击展开"
             assistance.indicator == ScreenDetectorSession.AssistanceIndicator.SWIPE_UP ->
                 "正在上滑，点击展开"
+            assistance.indicator == ScreenDetectorSession.AssistanceIndicator.WAITING ->
+                "正在等待页面识别，点击展开"
             assistance.isActive -> "自动答题中，点击展开"
             else -> "正在扫描，点击展开"
         }
@@ -907,7 +911,8 @@ class ScreenDetectorService : LifecycleService() {
             isError -> ERROR_ICON_COLOR
             isPaused -> PAUSED_BADGE_COLOR
             assistance.indicator == ScreenDetectorSession.AssistanceIndicator.SWIPE_LEFT ||
-                assistance.indicator == ScreenDetectorSession.AssistanceIndicator.SWIPE_UP ->
+                assistance.indicator == ScreenDetectorSession.AssistanceIndicator.SWIPE_UP ||
+                assistance.indicator == ScreenDetectorSession.AssistanceIndicator.WAITING ->
                 RUNNING_BADGE_COLOR
             assistance.indicator == ScreenDetectorSession.AssistanceIndicator.TOUCH ||
                 assistance.isActive -> ASSISTANCE_BADGE_COLOR

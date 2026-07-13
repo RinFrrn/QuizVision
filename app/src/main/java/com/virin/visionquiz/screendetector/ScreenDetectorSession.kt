@@ -76,6 +76,7 @@ object ScreenDetectorSession {
         TOUCH,
         SWIPE_LEFT,
         SWIPE_UP,
+        WAITING,
         ERROR,
     }
 
@@ -576,8 +577,8 @@ object ScreenDetectorSession {
         return when (phase) {
             AssistancePhase.REVEALING_OPTIONS,
             AssistancePhase.WAITING_OPTION_UPDATE -> AssistanceIndicator.SWIPE_UP
+            AssistancePhase.WAITING_NEW_PAGE -> AssistanceIndicator.WAITING
             AssistancePhase.SWIPING,
-            AssistancePhase.WAITING_NEW_PAGE,
             AssistancePhase.WAITING_MANUAL_PAGE -> when (pageDirection) {
                 PageDirection.LEFT -> AssistanceIndicator.SWIPE_LEFT
                 PageDirection.UP -> AssistanceIndicator.SWIPE_UP

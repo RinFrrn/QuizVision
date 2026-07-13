@@ -766,6 +766,14 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
     }
 
     private fun handleAccessibilityPageActivity() {
+        val previousPhase = ScreenDetectorSession.assistanceState.value.phase
+        val pageMovementObserved = waitingForPageFingerprint != null &&
+            (previousPhase == ScreenDetectorSession.AssistancePhase.SWIPING ||
+                previousPhase == ScreenDetectorSession.AssistancePhase.WAITING_NEW_PAGE)
+        if (pageMovementObserved) {
+            waitingForPageFingerprint = null
+            cancelPageChangeTimeout()
+        }
         latestStableSnapshotVersion = 0
         ScreenDetectorSession.clearMatches()
         ScreenDetectorSession.clearAnnotationBounds()
@@ -784,9 +792,15 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             pendingAnswerPointIndex = 0
             ScreenDetectorSession.resetAnswerClickState()
         }
-        if (ScreenDetectorSession.assistanceState.value.phase !=
-            ScreenDetectorSession.AssistancePhase.SWIPING
-        ) {
+        if (pageMovementObserved) {
+            val feedback = PageTurnFeedback.forOutcome(PageTurnFeedback.Outcome.PAGE_MOVED)
+            ScreenDetectorSession.setAssistanceState(
+                isActive = true,
+                phase = ScreenDetectorSession.AssistancePhase.WAITING_NEW_PAGE,
+                indicator = feedback.indicator,
+                statusText = feedback.statusText
+            )
+        } else if (previousPhase != ScreenDetectorSession.AssistancePhase.SWIPING) {
             ScreenDetectorSession.setAssistanceState(
                 isActive = true,
                 phase = ScreenDetectorSession.AssistancePhase.RECOGNIZING_ANSWERS,
@@ -863,12 +877,13 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
         val frameInfo = ScreenDetectorSession.screenFrameInfo.value
         val service = QuizAccessibilityService.instance
         if (pageFingerprint == null || frameInfo == null) {
+            val feedback = PageTurnFeedback.forOutcome(PageTurnFeedback.Outcome.PAGE_NOT_READY)
             ScreenDetectorSession.setAssistanceState(
                 isActive = true,
                 phase = ScreenDetectorSession.AssistancePhase.WAITING_MANUAL_PAGE,
                 pageDirection = axis.toSessionPageDirection(),
-                indicator = ScreenDetectorSession.AssistanceIndicator.ERROR,
-                statusText = "翻页未生效，请重试"
+                indicator = feedback.indicator,
+                statusText = feedback.statusText
             )
             return
         }
@@ -879,6 +894,8 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
 
         assistanceBusy = true
         val generation = assistanceGeneration
+        // Set this before dispatch so an early accessibility movement event can confirm the turn.
+        waitingForPageFingerprint = pageFingerprint
         val verticalTargetPosition = if (
             axis == QuizAccessibilityService.PageAxis.VERTICAL &&
             PreferenceUtils.shouldUseSmartAccessibilityVerticalSwipe(service)
@@ -908,25 +925,39 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                 return@swipePage
             }
             assistanceBusy = false
-            if (!success) {
+            val pageMovementObserved = waitingForPageFingerprint != pageFingerprint
+            if (!success && !pageMovementObserved) {
+                waitingForPageFingerprint = null
+                val feedback = PageTurnFeedback.forOutcome(
+                    PageTurnFeedback.Outcome.GESTURE_FAILED
+                )
                 ScreenDetectorSession.setAssistanceState(
                     isActive = true,
                     phase = ScreenDetectorSession.AssistancePhase.WAITING_MANUAL_PAGE,
                     pageDirection = axis.toSessionPageDirection(),
-                    indicator = ScreenDetectorSession.AssistanceIndicator.ERROR,
-                    statusText = "翻页未生效，请重试"
+                    indicator = feedback.indicator,
+                    statusText = feedback.statusText
                 )
                 return@swipePage
             }
-            waitingForPageFingerprint = pageFingerprint
+            val feedback = PageTurnFeedback.forOutcome(
+                if (pageMovementObserved) {
+                    PageTurnFeedback.Outcome.PAGE_MOVED
+                } else {
+                    PageTurnFeedback.Outcome.GESTURE_COMPLETED
+                }
+            )
             ScreenDetectorSession.setAssistanceState(
                 isActive = true,
                 phase = ScreenDetectorSession.AssistancePhase.WAITING_NEW_PAGE,
                 pageDirection = axis.toSessionPageDirection(),
-                statusText = "等待识别新题"
+                indicator = feedback.indicator,
+                statusText = feedback.statusText
             )
             accessibilitySource?.requestPageChangeScan()
-            schedulePageChangeTimeout(generation, pageFingerprint)
+            if (!pageMovementObserved) {
+                schedulePageChangeTimeout(generation, pageFingerprint)
+            }
         }
     }
 
@@ -942,7 +973,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
     }
 
     private fun schedulePageChangeTimeout(generation: Int, oldFingerprint: String) {
-        pendingPageChangeTimeoutRunnable?.let(assistanceHandler::removeCallbacks)
+        cancelPageChangeTimeout()
         val runnable = Runnable {
             pendingPageChangeTimeoutRunnable = null
             if (generation == assistanceGeneration &&
@@ -950,13 +981,17 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             ) {
                 waitingForPageFingerprint = null
                 assistanceBusy = false
+                val feedback = PageTurnFeedback.forOutcome(
+                    PageTurnFeedback.Outcome.RECOGNITION_DELAYED
+                )
                 ScreenDetectorSession.setAssistanceState(
                     isActive = true,
                     phase = ScreenDetectorSession.AssistancePhase.WAITING_MANUAL_PAGE,
                     pageDirection = selectedPageAxis.toSessionPageDirection(),
-                    indicator = ScreenDetectorSession.AssistanceIndicator.ERROR,
-                    statusText = "翻页未生效，仍在等待页面刷新"
+                    indicator = feedback.indicator,
+                    statusText = feedback.statusText
                 )
+                accessibilitySource?.requestFreshScan()
             }
         }
         pendingPageChangeTimeoutRunnable = runnable
@@ -987,6 +1022,10 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
 
     private fun clearPendingNavigationTasks() {
         cancelPendingAutoAdvance()
+        cancelPageChangeTimeout()
+    }
+
+    private fun cancelPageChangeTimeout() {
         pendingPageChangeTimeoutRunnable?.let(assistanceHandler::removeCallbacks)
         pendingPageChangeTimeoutRunnable = null
     }
