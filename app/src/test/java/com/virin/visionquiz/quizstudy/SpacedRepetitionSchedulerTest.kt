@@ -68,7 +68,40 @@ class SpacedRepetitionSchedulerTest {
 
         assertEquals(6.0 / 1440.0, scheduled.intervalDays, 0.0001)
         assertEquals(NOW + 360_000L, scheduled.dueAt)
-        assertEquals(2.35, scheduled.easeFactor, 0.0001)
+        assertEquals(2.5, scheduled.easeFactor, 0.0001)
+        assertEquals(0, scheduled.lapseCount)
+    }
+
+    @Test
+    fun forgotDuringInitialLearningDoesNotCountAsMatureLapse() {
+        val scheduled = SpacedRepetitionScheduler.schedule(
+            card = newCard(),
+            rating = ReviewRating.FORGOT,
+            now = NOW
+        )
+
+        assertEquals(2.5, scheduled.easeFactor, 0.0001)
+        assertEquals(0, scheduled.lapseCount)
+        assertEquals(NOW + 60_000L, scheduled.dueAt)
+    }
+
+    @Test
+    fun invalidAndHugeIntervalsAreSanitizedWithoutDueDateOverflow() {
+        val invalid = SpacedRepetitionScheduler.schedule(
+            card = newCard(intervalDays = Double.NaN, easeFactor = Double.POSITIVE_INFINITY),
+            rating = ReviewRating.GOOD,
+            now = NOW
+        )
+        val huge = SpacedRepetitionScheduler.schedule(
+            card = newCard(intervalDays = Double.MAX_VALUE, easeFactor = 3.0),
+            rating = ReviewRating.EASY,
+            now = Long.MAX_VALUE - 1_000L
+        )
+
+        assertEquals(1.0, invalid.intervalDays, 0.0001)
+        assertEquals(2.5, invalid.easeFactor, 0.0001)
+        assertEquals(36_500.0, huge.intervalDays, 0.0001)
+        assertEquals(Long.MAX_VALUE, huge.dueAt)
     }
 
     @Test

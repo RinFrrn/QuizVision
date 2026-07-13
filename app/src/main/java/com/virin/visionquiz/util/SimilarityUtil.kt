@@ -6,6 +6,7 @@ import java.util.Locale
 import java.util.PriorityQueue
 import kotlin.coroutines.coroutineContext
 import kotlin.math.min
+import kotlin.math.ln
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.yield
 
@@ -18,8 +19,8 @@ data class QuizSimilarityResult(
 data class QuizSimilarityAnalysis(
     val resultsByQuizId: Map<Int, List<QuizSimilarityResult>>,
     val featureExtractionCount: Int,
-    val pairEvaluationCount: Int,
-    val skippedPairCount: Int
+    val pairEvaluationCount: Long,
+    val skippedPairCount: Long
 )
 
 const val MAX_SIMILAR_QUIZ_RESULTS = 20
@@ -33,6 +34,7 @@ class QuizSimilarityIndex(candidates: List<Quiz>) {
         .toList()
     private val byQuizId = indexed.associateBy { it.quiz.id }
     private val featurePostings = buildFeaturePostings(indexed)
+    private val featureWeights = buildFeatureWeights(indexed)
 
     val size: Int
         get() = indexed.size
@@ -59,7 +61,13 @@ class QuizSimilarityIndex(candidates: List<Quiz>) {
         return source
             .filter { it.quiz.id != currentQuiz.id }
             .map { candidate ->
-                scoreSimilarity(current.features, candidate.features, candidate.quiz, keywords)
+                scoreSimilarity(
+                    current.features,
+                    candidate.features,
+                    candidate.quiz,
+                    keywords,
+                    featureWeights
+                )
             }
             .filter { keywords.isNotEmpty() || it.score >= MIN_AUTOMATIC_SCORE }
             .sortedWith(BEST_RESULT_COMPARATOR)
@@ -76,7 +84,15 @@ class QuizSimilarityIndex(candidates: List<Quiz>) {
             ?: IndexedQuiz(currentQuiz, extractFeatures(currentQuiz))
         return indexed.asSequence()
             .filter { it.quiz.id != currentQuiz.id }
-            .map { scoreSimilarity(current.features, it.features, it.quiz, emptyList()) }
+            .map {
+                scoreSimilarity(
+                    current.features,
+                    it.features,
+                    it.quiz,
+                    emptyList(),
+                    featureWeights
+                )
+            }
             .filter { it.score >= MIN_AUTOMATIC_SCORE }
             .sortedWith(BEST_RESULT_COMPARATOR)
             .take(maxResults)
@@ -92,15 +108,18 @@ class QuizSimilarityIndex(candidates: List<Quiz>) {
                 resultsByQuizId = indexed.associate { it.quiz.id to emptyList() },
                 featureExtractionCount = indexed.size,
                 pairEvaluationCount = 0,
-                skippedPairCount = indexed.size * (indexed.size - 1) / 2
+                skippedPairCount = indexed.size.toLong() * (indexed.size - 1) / 2
             )
         }
 
         val heaps = Array(indexed.size) {
-            PriorityQueue<QuizSimilarityResult>(maxResults, WORST_RESULT_COMPARATOR)
+            PriorityQueue<QuizSimilarityResult>(
+                minOf(maxResults, indexed.size.coerceAtLeast(1)),
+                WORST_RESULT_COMPARATOR
+            )
         }
-        var evaluatedPairs = 0
-        var possiblePairs = 0
+        var evaluatedPairs = 0L
+        var possiblePairs = 0L
 
         indexed.indices.forEach { leftIndex ->
             coroutineContext.ensureActive()
@@ -110,7 +129,7 @@ class QuizSimilarityIndex(candidates: List<Quiz>) {
                 .filter { it > leftIndex }
                 .sorted()
                 .toList()
-            possiblePairs += candidateIndexes.size
+            possiblePairs += candidateIndexes.size.toLong()
 
             candidateIndexes.forEachIndexed { pairOffset, rightIndex ->
                 if (pairOffset % CANCELLATION_CHECK_INTERVAL == 0) {
@@ -121,7 +140,8 @@ class QuizSimilarityIndex(candidates: List<Quiz>) {
                     left.features,
                     right.features,
                     right.quiz,
-                    emptyList()
+                    emptyList(),
+                    featureWeights
                 )
                 evaluatedPairs++
                 if (rightForLeft.score >= MIN_AUTOMATIC_SCORE) {
@@ -145,7 +165,7 @@ class QuizSimilarityIndex(candidates: List<Quiz>) {
         val results = indexed.indices.associate { index ->
             indexed[index].quiz.id to heaps[index].toList().sortedWith(BEST_RESULT_COMPARATOR)
         }
-        val totalPairs = indexed.size * (indexed.size - 1) / 2
+        val totalPairs = indexed.size.toLong() * (indexed.size - 1) / 2
         return QuizSimilarityAnalysis(
             resultsByQuizId = results,
             featureExtractionCount = indexed.size,
@@ -199,7 +219,6 @@ private data class QuizFeatures(
     val matchFeatures: Set<String> = buildSet {
         addAll(promptFeatures)
         addAll(optionFeatures)
-        addAll(exactTerms)
     }
 }
 
@@ -211,6 +230,20 @@ private fun buildFeaturePostings(indexed: List<IndexedQuiz>): Map<String, IntArr
         }
     }
     return mutable.mapValues { (_, indexes) -> indexes.toIntArray() }
+}
+
+private fun buildFeatureWeights(indexed: List<IndexedQuiz>): Map<String, Double> {
+    if (indexed.isEmpty()) return emptyMap()
+    val documentFrequencies = mutableMapOf<String, Int>()
+    indexed.forEach { item ->
+        item.features.matchFeatures.forEach { feature ->
+            documentFrequencies[feature] = documentFrequencies.getOrDefault(feature, 0) + 1
+        }
+    }
+    val documentCount = indexed.size.toDouble()
+    return documentFrequencies.mapValues { (_, frequency) ->
+        ln((documentCount + 1.0) / (frequency + 1.0)) + 1.0
+    }
 }
 
 private fun extractFeatures(quiz: Quiz): QuizFeatures {
@@ -278,17 +311,30 @@ private fun extractTextFeatures(text: String): TextFeatures {
         }
     }
 
-    return TextFeatures(features, exactTerms)
+    val boundedExactTerms = exactTerms
+        .sortedWith(compareByDescending<String> { it.length }.thenBy { it })
+        .take(MAX_EXACT_TERMS_PER_TEXT)
+        .toCollection(linkedSetOf())
+    return TextFeatures(features, boundedExactTerms)
 }
 
 private fun scoreSimilarity(
     current: QuizFeatures,
     candidate: QuizFeatures,
     quiz: Quiz,
-    requiredKeywords: List<String>
+    requiredKeywords: List<String>,
+    featureWeights: Map<String, Double>
 ): QuizSimilarityResult {
-    val promptScore = diceSimilarity(current.promptFeatures, candidate.promptFeatures)
-    val optionScore = diceSimilarity(current.optionFeatures, candidate.optionFeatures)
+    val promptScore = weightedDiceSimilarity(
+        current.promptFeatures,
+        candidate.promptFeatures,
+        featureWeights
+    )
+    val optionScore = weightedDiceSimilarity(
+        current.optionFeatures,
+        candidate.optionFeatures,
+        featureWeights
+    )
     val fullTextScore = JaroWinklerDistance.computeJaroWinklerDistance(
         current.normalizedFullText,
         candidate.normalizedFullText
@@ -300,12 +346,13 @@ private fun scoreSimilarity(
         .sortedWith(compareByDescending<String> { it.length }.thenBy { it })
     val distinctTerms = removeContainedTerms(sharedTerms)
     val exactTermBoost = distinctTerms.sumOf { term ->
-        when {
+        val baseBoost = when {
             term.any(::isCjkCharacter) && term.length >= 4 ->
                 ((term.length - 3) * 0.08).coerceAtMost(MAX_SINGLE_TERM_BOOST)
             term.length >= 3 -> 0.16
             else -> 0.1
         }
+        baseBoost * exactTermRarityMultiplier(term, featureWeights)
     }.coerceAtMost(MAX_EXACT_TERM_BOOST)
 
     val keywordBoost = if (requiredKeywords.isEmpty()) 0.0 else KEYWORD_MATCH_BOOST
@@ -323,6 +370,26 @@ private fun scoreSimilarity(
     }.take(MAX_MATCHED_TERMS)
 
     return QuizSimilarityResult(quiz, score, matchedTerms)
+}
+
+private fun exactTermRarityMultiplier(
+    term: String,
+    featureWeights: Map<String, Double>
+): Double {
+    val componentWeights = if (term.any(::isCjkCharacter)) {
+        buildList {
+            for (size in 2..min(3, term.length)) {
+                for (start in 0..term.length - size) {
+                    featureWeights[term.substring(start, start + size)]?.let(::add)
+                }
+            }
+        }
+    } else {
+        listOfNotNull(featureWeights[term])
+    }
+    if (componentWeights.isEmpty()) return 1.0
+    return (componentWeights.average() / IDF_RARITY_BASELINE)
+        .coerceIn(MIN_RARITY_MULTIPLIER, MAX_RARITY_MULTIPLIER)
 }
 
 private fun offerTopResult(
@@ -373,7 +440,9 @@ private fun normalizeWidth(text: String): String {
 
 private fun splitMeaningfulChineseRuns(text: String): List<String> {
     var result = text
-    STOP_PHRASES.forEach { phrase -> result = result.replace(phrase, " ") }
+    SORTED_STOP_PHRASES.forEach { phrase ->
+        result = result.replace(phrase, " ")
+    }
     return result.split(WHITESPACE_REGEX).filter { it.isNotBlank() }
 }
 
@@ -385,9 +454,18 @@ private fun removeContainedTerms(terms: List<String>): List<String> {
     return selected
 }
 
-private fun diceSimilarity(left: Set<String>, right: Set<String>): Double {
+private fun weightedDiceSimilarity(
+    left: Set<String>,
+    right: Set<String>,
+    featureWeights: Map<String, Double>
+): Double {
     if (left.isEmpty() || right.isEmpty()) return 0.0
-    return 2.0 * left.count { it in right } / (left.size + right.size)
+    val leftWeight = left.sumOf { featureWeights[it] ?: 1.0 }
+    val rightWeight = right.sumOf { featureWeights[it] ?: 1.0 }
+    val sharedWeight = left.sumOf { feature ->
+        if (feature in right) featureWeights[feature] ?: 1.0 else 0.0
+    }
+    return 2.0 * sharedWeight / (leftWeight + rightWeight)
 }
 
 private fun isLowInformationOption(option: String): Boolean {
@@ -406,7 +484,11 @@ private const val MAX_EXACT_TERM_BOOST = 0.4
 private const val KEYWORD_MATCH_BOOST = 0.08
 private const val MIN_AUTOMATIC_SCORE = 0.16
 private const val MAX_EXACT_TERM_LENGTH = 8
+private const val MAX_EXACT_TERMS_PER_TEXT = 96
 private const val MAX_MATCHED_TERMS = 5
+private const val IDF_RARITY_BASELINE = 1.0
+private const val MIN_RARITY_MULTIPLIER = 0.75
+private const val MAX_RARITY_MULTIPLIER = 1.75
 private const val CANCELLATION_CHECK_INTERVAL = 128
 private const val YIELD_INTERVAL = 8
 
@@ -438,6 +520,7 @@ private val STOP_TERMS = (
         LOW_INFORMATION_OPTIONS +
         listOf("选择", "选项", "题目", "答案", "其中", "属于", "可以", "应当")
     ).toSet()
+private val SORTED_STOP_PHRASES = STOP_PHRASES.sortedByDescending(String::length)
 private val STOP_FEATURES = buildSet {
     STOP_TERMS.filter { term -> term.any(::isCjkCharacter) }.forEach { term ->
         for (size in 2..min(3, term.length)) {

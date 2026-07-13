@@ -242,6 +242,23 @@ class OcrOptionLocatorTest {
     }
 
     @Test
+    fun globalAssignmentAvoidsConsumingAnotherOptionsOnlyCandidate() {
+        val exactLongOption = candidate("安全生产制度管理", 1, 100)
+        val alternativeForShorterOption = candidate("安全生产制度条例", 2, 160)
+
+        val result = locate(
+            options = listOf("安全生产制度", "安全生产制度管理"),
+            answers = setOf(0, 1),
+            candidates = listOf(exactLongOption, alternativeForShorterOption)
+        )
+
+        assertEquals(
+            listOf(alternativeForShorterOption.bounds, exactLongOption.bounds),
+            result.answerBounds
+        )
+    }
+
+    @Test
     fun oversizedAndFarCandidatesAreIgnored() {
         val result = locate(
             options = listOf("甲", "乙"),

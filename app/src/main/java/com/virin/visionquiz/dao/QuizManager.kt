@@ -31,6 +31,7 @@ import java.text.SimpleDateFormat
 import kotlin.math.min
 import java.util.concurrent.ConcurrentHashMap
 import java.util.PriorityQueue
+import kotlin.math.abs
 
 object QuizManager {
     const val TAG = "QuizManager"
@@ -57,8 +58,61 @@ object QuizManager {
     class QuizMatchIndex internal constructor(
         val candidates: List<QuizMatchCandidate>
     ) {
+        private val featurePostings = buildPromptFeaturePostings(candidates)
+
         val isEmpty: Boolean
             get() = candidates.isEmpty()
+
+        internal fun retrievalCandidates(
+            normalizedInput: String,
+            minScore: Double,
+            maxResults: Int
+        ): List<QuizMatchCandidate> {
+            if (candidates.isEmpty()) return emptyList()
+            val queryFeatures = buildPromptIndexFeatures(normalizedInput)
+            if (queryFeatures.isEmpty()) return emptyList()
+
+            val scores = IntArray(candidates.size)
+            val touched = linkedSetOf<Int>()
+            queryFeatures.forEach { feature ->
+                val weight = when {
+                    feature.startsWith(TRIGRAM_FEATURE_PREFIX) -> 6
+                    feature.startsWith(BIGRAM_FEATURE_PREFIX) -> 3
+                    else -> 1
+                }
+                featurePostings[feature]?.forEach { index ->
+                    scores[index] += weight
+                    touched += index
+                }
+            }
+            if (touched.isEmpty()) return emptyList()
+
+            val candidateLimit = retrievalCandidateLimit(
+                inputLength = normalizedInput.length,
+                minScore = minScore,
+                maxResults = maxResults,
+                candidateCount = candidates.size
+            )
+            return touched
+                .asSequence()
+                .sortedWith(
+                    compareByDescending<Int> { scores[it] }
+                        .thenBy { abs(candidates[it].normalizedPrompt.length - normalizedInput.length) }
+                        .thenBy { candidates[it].question.id }
+                )
+                .take(candidateLimit)
+                .map(candidates::get)
+                .toList()
+        }
+
+        internal fun retrievalCandidateCount(input: String): Int {
+            val normalizedInput = normalizeQuestionText(input)
+            return retrievalCandidates(
+                normalizedInput = normalizedInput,
+                minScore = DEFAULT_MIN_MATCH_SCORE,
+                maxResults = DEFAULT_MAX_MATCH_RESULTS
+            ).size
+        }
     }
 
     private enum class ImportTemplate(val displayName: String) {
@@ -415,9 +469,14 @@ object QuizManager {
 
         val inputSignature = buildSignature(normalizedInput)
         if (inputSignature.isEmpty()) return emptyList()
+        val retrievalCandidates = index.retrievalCandidates(
+            normalizedInput = normalizedInput,
+            minScore = minScore,
+            maxResults = maxResults
+        )
 
         if (maxResults == Int.MAX_VALUE) {
-            return index.candidates.asSequence().mapNotNull { candidate ->
+            return retrievalCandidates.asSequence().mapNotNull { candidate ->
                 if (!isCandidateMatch(normalizedInput, inputSignature, candidate)) {
                     return@mapNotNull null
                 }
@@ -428,11 +487,11 @@ object QuizManager {
                 }
 
                 candidate.question to score
-            }.sortedByDescending { it.second }.toList()
+            }.sortedWith(BEST_QUIZ_MATCH_COMPARATOR).toList()
         }
 
-        val topMatches = PriorityQueue<Pair<Quiz, Double>>(compareBy { it.second })
-        for (candidate in index.candidates) {
+        val topMatches = PriorityQueue<Pair<Quiz, Double>>(WORST_QUIZ_MATCH_COMPARATOR)
+        for (candidate in retrievalCandidates) {
             if (!isCandidateMatch(normalizedInput, inputSignature, candidate)) {
                 continue
             }
@@ -445,13 +504,13 @@ object QuizManager {
             val match = candidate.question to score
             if (topMatches.size < maxResults) {
                 topMatches.offer(match)
-            } else if (score > (topMatches.peek()?.second ?: Double.NEGATIVE_INFINITY)) {
+            } else if (BEST_QUIZ_MATCH_COMPARATOR.compare(match, topMatches.peek()) < 0) {
                 topMatches.poll()
                 topMatches.offer(match)
             }
         }
 
-        return topMatches.toList().sortedByDescending { it.second }
+        return topMatches.toList().sortedWith(BEST_QUIZ_MATCH_COMPARATOR)
     }
 
     private fun getCachedPrompt(question: Quiz): CachedQuizPrompt {
@@ -583,6 +642,55 @@ object QuizManager {
         return text.filter(::isMeaningfulQuestionChar).toSet()
     }
 
+    private fun buildPromptFeaturePostings(
+        candidates: List<QuizMatchCandidate>
+    ): Map<String, IntArray> {
+        val postings = mutableMapOf<String, MutableList<Int>>()
+        candidates.forEachIndexed { index, candidate ->
+            buildPromptIndexFeatures(candidate.normalizedPrompt).forEach { feature ->
+                postings.getOrPut(feature) { mutableListOf() }.add(index)
+            }
+        }
+        return postings.mapValues { (_, indexes) -> indexes.toIntArray() }
+    }
+
+    private fun buildPromptIndexFeatures(text: String): Set<String> {
+        if (text.isEmpty()) return emptySet()
+        return buildSet {
+            text.toSet().forEach { add("$CHAR_FEATURE_PREFIX$it") }
+            if (text.length >= 2) {
+                for (index in 0 until text.length - 1) {
+                    add("$BIGRAM_FEATURE_PREFIX${text.substring(index, index + 2)}")
+                }
+            }
+            if (text.length >= 3) {
+                for (index in 0 until text.length - 2) {
+                    add("$TRIGRAM_FEATURE_PREFIX${text.substring(index, index + 3)}")
+                }
+            }
+        }
+    }
+
+    private fun retrievalCandidateLimit(
+        inputLength: Int,
+        minScore: Double,
+        maxResults: Int,
+        candidateCount: Int
+    ): Int {
+        if (maxResults == Int.MAX_VALUE || minScore < DEFAULT_MIN_MATCH_SCORE) {
+            return candidateCount
+        }
+        val baseLimit = if (inputLength <= SHORT_RETRIEVAL_INPUT_LENGTH) {
+            MAX_SHORT_RETRIEVAL_CANDIDATES
+        } else {
+            MAX_RETRIEVAL_CANDIDATES
+        }
+        val resultScaledLimit = (maxResults.toLong() * RETRIEVAL_CANDIDATES_PER_RESULT)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+        return maxOf(baseLimit, resultScaledLimit).coerceAtMost(candidateCount)
+    }
+
     fun normalizeQuestionText(text: String): String {
         return normalizeMatchText(text, stripQuestionPrefix = true)
     }
@@ -626,6 +734,17 @@ object QuizManager {
     private val QUESTION_PREFIX_REGEX = Regex(
         pattern = """^\s*(第?[0-9一二三四五六七八九十]{1,3}[题章节]?\s*[-.．、:：)）]?\s*)+"""
     )
+    private const val CHAR_FEATURE_PREFIX = "c:"
+    private const val BIGRAM_FEATURE_PREFIX = "b:"
+    private const val TRIGRAM_FEATURE_PREFIX = "t:"
+    private const val SHORT_RETRIEVAL_INPUT_LENGTH = 6
+    private const val MAX_RETRIEVAL_CANDIDATES = 256
+    private const val MAX_SHORT_RETRIEVAL_CANDIDATES = 512
+    private const val RETRIEVAL_CANDIDATES_PER_RESULT = 32L
+    private val BEST_QUIZ_MATCH_COMPARATOR =
+        compareByDescending<Pair<Quiz, Double>> { it.second }.thenBy { it.first.id }
+    private val WORST_QUIZ_MATCH_COMPARATOR =
+        compareBy<Pair<Quiz, Double>> { it.second }.thenByDescending { it.first.id }
 
 //    fun matchQuiz(input: String, libraryId: Int): List<Pair<Quiz, Double>>? {
 //        val questions = questionsDict[libraryId]

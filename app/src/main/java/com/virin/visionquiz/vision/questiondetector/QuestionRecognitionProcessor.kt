@@ -19,12 +19,15 @@ import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.collections.ArrayList
+import kotlin.coroutines.coroutineContext
 
 class QuizRecognitionProcessor(
     private val context: Context,
@@ -50,6 +53,7 @@ class QuizRecognitionProcessor(
     private var cachedQuizIndex: QuizManager.QuizMatchIndex? = null
     @Volatile
     private var displayedMatches: List<QuizGraphicItem> = emptyList()
+    private var matchingJob: Job? = null
 
     private data class RecognizedTextItem(
         val text: String,
@@ -83,13 +87,11 @@ class QuizRecognitionProcessor(
         val debugLines: List<String>
     )
 
-    private data class StableMatchCandidate(
-        val fingerprint: String,
-        val matches: List<QuizGraphicItem>,
-        val count: Int
+    private val stableResultGate = StableResultGate(
+        requiredStableResults = REQUIRED_STABLE_MATCH_FRAMES,
+        fingerprintOf = ::buildStableMatchesFingerprint,
+        isEmpty = List<QuizGraphicItem>::isEmpty
     )
-
-    private var stableCandidate: StableMatchCandidate? = null
 
     private fun createRecognizedTextItem(
         text: String,
@@ -592,6 +594,8 @@ class QuizRecognitionProcessor(
     }
 
     override fun stop() {
+        matchingJob?.cancel()
+        matchingJob = null
         matchScope.cancel()
         super.stop()
         textRecognizer.close()
@@ -617,10 +621,12 @@ class QuizRecognitionProcessor(
 
         val imageWidth = graphicOverlay.imageWidth
         val imageHeight = graphicOverlay.imageHeight
-        matchScope.launch {
+        matchingJob?.cancel()
+        matchingJob = matchScope.launch {
             val quizIndex = getQuizIndex(quizSnapshot)
             val matchedQuizs: MutableList<MatchedTextItem> = ArrayList()
             for (item in recognizedTextItems) {
+                coroutineContext.ensureActive()
                 val matched = getMatchedQuizGraphicItem(item, quizIndex, lineCandidates)
                 matched?.let { matchedQuizs.add(it) }
             }
@@ -649,33 +655,16 @@ class QuizRecognitionProcessor(
     }
 
     override fun onFailure(e: Exception) {
+        matchingJob?.cancel()
+        matchingJob = null
         displayedMatches = emptyList()
-        stableCandidate = null
+        stableResultGate.reset()
         onMatchesDetected?.invoke(emptyList())
         Log.w(TAG, "Text detection failed.$e")
     }
 
     private fun resolveStableMatches(newMatches: List<QuizGraphicItem>): List<QuizGraphicItem> {
-        val fingerprint = buildStableMatchesFingerprint(newMatches)
-        val previousCandidate = stableCandidate
-        val count = if (previousCandidate?.fingerprint == fingerprint) {
-            previousCandidate.count + 1
-        } else {
-            1
-        }
-        stableCandidate = StableMatchCandidate(fingerprint, newMatches, count)
-
-        if (newMatches.isEmpty()) {
-            return if (displayedMatches.isEmpty() || count >= REQUIRED_STABLE_MATCH_FRAMES) {
-                newMatches
-            } else {
-                displayedMatches
-            }
-        }
-        if (displayedMatches.isEmpty() || count >= REQUIRED_STABLE_MATCH_FRAMES) {
-            return newMatches
-        }
-        return displayedMatches
+        return stableResultGate.resolve(newMatches, displayedMatches)
     }
 
     private fun buildStableMatchesFingerprint(matches: List<QuizGraphicItem>): String {

@@ -116,7 +116,11 @@ object AccessibilityPageStabilityDetector {
         val dangerousRegionsChanged = changedBounds.size > changedTextRegionCount
 
         val screenArea = candidate.width.toLong() * candidate.height.toLong()
-        val changedArea = changedBounds.sumOf(Bounds::area).coerceAtMost(screenArea)
+        val changedArea = unionArea(
+            bounds = changedBounds,
+            screenWidth = candidate.width,
+            screenHeight = candidate.height
+        )
         val changedAreaRatio = if (screenArea == 0L) {
             1.0
         } else {
@@ -200,5 +204,49 @@ object AccessibilityPageStabilityDetector {
             right = maxOf(right, other.right),
             bottom = maxOf(bottom, other.bottom)
         )
+    }
+
+    private fun unionArea(bounds: List<Bounds>, screenWidth: Int, screenHeight: Int): Long {
+        val clipped = bounds.mapNotNull { item ->
+            val left = item.left.coerceIn(0, screenWidth)
+            val right = item.right.coerceIn(0, screenWidth)
+            val top = item.top.coerceIn(0, screenHeight)
+            val bottom = item.bottom.coerceIn(0, screenHeight)
+            if (left >= right || top >= bottom) null else Bounds(left, top, right, bottom)
+        }
+        if (clipped.isEmpty()) return 0L
+
+        val xCoordinates = clipped.flatMap { listOf(it.left, it.right) }.distinct().sorted()
+        var area = 0L
+        for (index in 0 until xCoordinates.lastIndex) {
+            val xStart = xCoordinates[index]
+            val xEnd = xCoordinates[index + 1]
+            if (xStart == xEnd) continue
+            val yIntervals = clipped
+                .asSequence()
+                .filter { it.left < xEnd && it.right > xStart }
+                .map { it.top to it.bottom }
+                .sortedBy { it.first }
+                .toList()
+            var coveredHeight = 0L
+            var currentTop: Int? = null
+            var currentBottom = 0
+            yIntervals.forEach { (top, bottom) ->
+                val activeTop = currentTop
+                if (activeTop == null) {
+                    currentTop = top
+                    currentBottom = bottom
+                } else if (top <= currentBottom) {
+                    currentBottom = maxOf(currentBottom, bottom)
+                } else {
+                    coveredHeight += currentBottom - activeTop
+                    currentTop = top
+                    currentBottom = bottom
+                }
+            }
+            currentTop?.let { coveredHeight += currentBottom - it }
+            area += (xEnd - xStart).toLong() * coveredHeight
+        }
+        return area
     }
 }

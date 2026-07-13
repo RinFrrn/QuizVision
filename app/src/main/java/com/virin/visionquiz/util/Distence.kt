@@ -59,10 +59,13 @@ object JaroWinklerDistance {
     ): Double {
         val len1 = s1.length
         val len2 = s2.length
+        if (s1 == s2) {
+            return 1.0
+        }
         if (len1 == 0 || len2 == 0) {
             return 0.0
         }
-        val matchDistance = Math.max(len1, len2) / 2 - 1
+        val matchDistance = (Math.max(len1, len2) / 2 - 1).coerceAtLeast(0)
         val s1Matched = BooleanArray(len1)
         val s2Matched = BooleanArray(len2)
         var matches = 0
@@ -94,8 +97,11 @@ object JaroWinklerDistance {
                 k++
             }
         }
+        val halfTranspositions = transpositions / 2.0
         val jaro =
-            (matches.toDouble() / len1 + matches.toDouble() / len2 + (matches - transpositions).toDouble() / matches) / 3
+            (matches.toDouble() / len1 +
+                matches.toDouble() / len2 +
+                (matches - halfTranspositions) / matches) / 3
         var prefixLength = 0
         while (prefixLength < MAX_PREFIX_LENGTH && prefixLength < Math.min(
                 len1,

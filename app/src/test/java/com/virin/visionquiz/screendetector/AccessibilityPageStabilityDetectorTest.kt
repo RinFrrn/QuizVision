@@ -46,6 +46,27 @@ class AccessibilityPageStabilityDetectorTest {
     }
 
     @Test
+    fun overlappingChangedRegionsUseUnionArea() {
+        val candidate = signature(
+            textRegions = listOf(
+                region("计时一", 0, 0, 200, 100),
+                region("计时二", 100, 0, 300, 100)
+            )
+        )
+        val confirmation = signature(
+            textRegions = listOf(
+                region("变化一", 0, 0, 200, 100),
+                region("变化二", 100, 0, 300, 100)
+            )
+        )
+
+        val result = AccessibilityPageStabilityDetector.compare(candidate, confirmation)
+
+        assertTrue(result.isStable)
+        assertEquals(30_000.0 / (1080 * 2400), result.changedAreaRatio, 0.000001)
+    }
+
+    @Test
     fun mainContentChangeRequiresAnotherCandidate() {
         val candidate = signature(
             textRegions = listOf(region("第一道题", 40, 100, 1000, 500))

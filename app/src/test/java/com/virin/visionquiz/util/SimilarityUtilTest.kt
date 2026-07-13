@@ -184,7 +184,10 @@ class SimilarityUtilTest {
         val analysis = index.analyzeAll()
 
         assertEquals(quizzes.size, analysis.featureExtractionCount)
-        assertEquals(quizzes.size * (quizzes.size - 1) / 2, analysis.pairEvaluationCount)
+        assertEquals(
+            quizzes.size.toLong() * (quizzes.size - 1) / 2,
+            analysis.pairEvaluationCount
+        )
         quizzes.forEach { current ->
             assertEquals(
                 index.findSimilarExhaustiveForTesting(current),
@@ -214,8 +217,8 @@ class SimilarityUtilTest {
 
         assertTrue(analysis.resultsByQuizId.isEmpty())
         assertEquals(0, analysis.featureExtractionCount)
-        assertEquals(0, analysis.pairEvaluationCount)
-        assertEquals(0, analysis.skippedPairCount)
+        assertEquals(0L, analysis.pairEvaluationCount)
+        assertEquals(0L, analysis.skippedPairCount)
     }
 
     @Test
@@ -228,9 +231,26 @@ class SimilarityUtilTest {
 
         val analysis = QuizSimilarityIndex(quizzes).analyzeAll()
 
-        assertEquals(0, analysis.pairEvaluationCount)
-        assertEquals(3, analysis.skippedPairCount)
+        assertEquals(0L, analysis.pairEvaluationCount)
+        assertEquals(3L, analysis.skippedPairCount)
         assertTrue(analysis.resultsByQuizId.values.all { it.isEmpty() })
+    }
+
+    @Test
+    fun rareTechnicalFeaturesOutrankCorpusWideCommonPhrases() {
+        val current = quiz(1, "安全生产中的电流互感器检查要求")
+        val rareTechnicalMatch = quiz(2, "电流互感器二次回路运行检查")
+        val commonPhraseMatch = quiz(3, "安全生产管理制度检查要求")
+        val commonCorpus = (4..30).map { id ->
+            quiz(id, "安全生产管理通用要求项目$id")
+        }
+
+        val results = findSimilarQuizResults(
+            current,
+            listOf(current, rareTechnicalMatch, commonPhraseMatch) + commonCorpus
+        )
+
+        assertEquals(2, results.first().quiz.id)
     }
 
     @Test

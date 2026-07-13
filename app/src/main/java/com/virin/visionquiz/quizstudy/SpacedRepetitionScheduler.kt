@@ -10,6 +10,7 @@ object SpacedRepetitionScheduler {
     private const val MIN_EASE_FACTOR = 1.3
     private const val MAX_EASE_FACTOR = 3.0
     private const val DEFAULT_EASE_FACTOR = 2.5
+    private const val MAX_INTERVAL_DAYS = 36_500.0
     private const val MILLIS_PER_DAY = 86_400_000L
     private const val ONE_MINUTE_IN_DAYS = 1.0 / 1_440.0
     private const val SIX_MINUTES_IN_DAYS = 6.0 / 1_440.0
@@ -19,18 +20,19 @@ object SpacedRepetitionScheduler {
         rating: ReviewRating,
         now: Long = System.currentTimeMillis()
     ): ReviewCard {
-        val currentInterval = card.intervalDays
-        val currentEase = card.easeFactor.takeIf { it > 0.0 } ?: DEFAULT_EASE_FACTOR
+        val currentInterval = sanitizeInterval(card.intervalDays)
+        val currentEase = sanitizeEase(card.easeFactor)
+        val isGraduated = currentInterval >= 1.0
         val (nextInterval, nextEase, nextLapseCount) = when (rating) {
             ReviewRating.FORGOT -> Triple(
                 ONE_MINUTE_IN_DAYS,
-                max(MIN_EASE_FACTOR, currentEase - 0.2),
-                card.lapseCount + 1
+                if (isGraduated) max(MIN_EASE_FACTOR, currentEase - 0.2) else currentEase,
+                if (isGraduated) card.lapseCount + 1 else card.lapseCount
             )
             ReviewRating.HARD -> Triple(
                 if (currentInterval == 0.0) SIX_MINUTES_IN_DAYS
                 else max(1.0, currentInterval * 1.2),
-                max(MIN_EASE_FACTOR, currentEase - 0.15),
+                if (isGraduated) max(MIN_EASE_FACTOR, currentEase - 0.15) else currentEase,
                 card.lapseCount
             )
             ReviewRating.GOOD -> Triple(
@@ -49,10 +51,11 @@ object SpacedRepetitionScheduler {
                 card.lapseCount
             )
         }
+        val boundedNextInterval = nextInterval.coerceIn(ONE_MINUTE_IN_DAYS, MAX_INTERVAL_DAYS)
 
         return card.copy(
-            dueAt = now + intervalToMillis(nextInterval),
-            intervalDays = nextInterval,
+            dueAt = addIntervalSafely(now, boundedNextInterval),
+            intervalDays = boundedNextInterval,
             easeFactor = nextEase,
             reviewCount = card.reviewCount + 1,
             lapseCount = nextLapseCount,
@@ -83,9 +86,25 @@ object SpacedRepetitionScheduler {
     }
 
     private fun intervalToMillis(intervalDays: Double): Long {
-        return (intervalDays * MILLIS_PER_DAY)
+        return (sanitizeInterval(intervalDays).coerceAtMost(MAX_INTERVAL_DAYS) * MILLIS_PER_DAY)
             .roundToLong()
             .coerceAtLeast(60_000L)
+    }
+
+    private fun addIntervalSafely(now: Long, intervalDays: Double): Long {
+        val intervalMillis = intervalToMillis(intervalDays)
+        return if (now > Long.MAX_VALUE - intervalMillis) Long.MAX_VALUE else now + intervalMillis
+    }
+
+    private fun sanitizeInterval(intervalDays: Double): Double {
+        return intervalDays.takeIf { it.isFinite() && it > 0.0 } ?: 0.0
+    }
+
+    private fun sanitizeEase(easeFactor: Double): Double {
+        return easeFactor
+            .takeIf { it.isFinite() && it > 0.0 }
+            ?.coerceIn(MIN_EASE_FACTOR, MAX_EASE_FACTOR)
+            ?: DEFAULT_EASE_FACTOR
     }
 
     /**
@@ -93,8 +112,8 @@ object SpacedRepetitionScheduler {
      * Returns a map of ReviewRating -> interval in days.
      */
     fun previewNextIntervals(card: ReviewCard): Map<ReviewRating, Double> {
-        val currentInterval = card.intervalDays
-        val currentEase = card.easeFactor.takeIf { it > 0.0 } ?: DEFAULT_EASE_FACTOR
+        val currentInterval = sanitizeInterval(card.intervalDays)
+        val currentEase = sanitizeEase(card.easeFactor)
         return mapOf(
             ReviewRating.FORGOT to ONE_MINUTE_IN_DAYS,
             ReviewRating.HARD to if (currentInterval == 0.0) SIX_MINUTES_IN_DAYS

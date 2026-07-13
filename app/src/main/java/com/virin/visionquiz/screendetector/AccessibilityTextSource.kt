@@ -14,6 +14,7 @@ import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizManager
 import com.virin.visionquiz.preference.PreferenceUtils
 import com.virin.visionquiz.util.AnswerOptionTextMatcher
+import com.virin.visionquiz.util.OptionCandidateAssignment
 import com.virin.visionquiz.util.QuizGraphicItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -795,10 +796,10 @@ class AccessibilityTextSource(
             .filter { it.rect.top <= questionCandidate.rect.bottom + screenBounds.height() * MAX_ANSWER_VERTICAL_SPAN_RATIO }
             .toList()
 
-        return optionTexts.mapNotNull { optionText ->
+        val matchesByOption = optionTexts.map { optionText ->
             val normalizedOption = normalizeOptionText(optionText)
             if (normalizedOption.isBlank()) {
-                return@mapNotNull null
+                return@map emptyList()
             }
             searchCandidates
                 .mapNotNull { candidate ->
@@ -806,16 +807,21 @@ class AccessibilityTextSource(
                         ?: return@mapNotNull null
                     AnswerCandidateMatch(candidate, score)
                 }
-                .minWithOrNull(
-                    compareBy<AnswerCandidateMatch> { it.score }
-                        .thenBy { it.candidate.nodeCount }
-                        .thenBy { rectArea(it.candidate.rect) }
-                        .thenBy { it.candidate.startNodeIndex }
-                        .thenBy { it.candidate.rect.top }
-                        .thenBy { it.candidate.rect.left }
-                )
-                ?.let { padAndClampRect(it.candidate.rect, screenBounds) }
-        }.distinctBy { it.flattenToString() }
+        }
+        return OptionCandidateAssignment.solve(
+            candidatesByOption = matchesByOption,
+            comparator = ANSWER_CANDIDATE_COMPARATOR,
+            conflicts = { first, second ->
+                first.candidate.overlapsNodes(second.candidate) ||
+                    Rect.intersects(first.candidate.rect, second.candidate.rect)
+            }
+        ).mapNotNull { match ->
+            match?.let { padAndClampRect(it.candidate.rect, screenBounds) }
+        }
+    }
+
+    private fun TextCandidate.overlapsNodes(other: TextCandidate): Boolean {
+        return startNodeIndex <= other.endNodeIndex && other.startNodeIndex <= endNodeIndex
     }
 
     private fun answerCandidateScore(candidateText: String, normalizedOption: String): Int? {
@@ -947,5 +953,12 @@ class AccessibilityTextSource(
         private const val MAX_ANSWER_VERTICAL_SPAN_RATIO = 0.5f
         private const val DISPLAY_RECT_PADDING_PX = 4
         private val WHITESPACE_REGEX = Regex("\\s+")
+        private val ANSWER_CANDIDATE_COMPARATOR =
+            compareBy<AnswerCandidateMatch> { it.score }
+                .thenBy { it.candidate.nodeCount }
+                .thenBy { it.candidate.rect.width().coerceAtLeast(0) * it.candidate.rect.height().coerceAtLeast(0) }
+                .thenBy { it.candidate.startNodeIndex }
+                .thenBy { it.candidate.rect.top }
+                .thenBy { it.candidate.rect.left }
     }
 }

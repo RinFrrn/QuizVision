@@ -2,6 +2,7 @@ package com.virin.visionquiz.vision.questiondetector
 
 import com.virin.visionquiz.dao.QuizManager
 import com.virin.visionquiz.util.AnswerOptionTextMatcher
+import com.virin.visionquiz.util.OptionCandidateAssignment
 import kotlin.math.abs
 
 internal object OcrOptionLocator {
@@ -103,78 +104,65 @@ internal object OcrOptionLocator {
         candidates: List<TextCandidate>,
         minMatchScore: Double
     ): List<Bounds> {
-        val usedOrders = mutableSetOf<Int>()
-        val usedBounds = mutableSetOf<Bounds>()
-        return options.mapNotNull { option ->
+        val candidatesByOption = options.map { option ->
             val normalizedOption = normalizeOptionText(option.text)
             if (normalizedOption.isBlank()) {
-                return@mapNotNull null
+                return@map emptyList()
             }
-            candidates
-                .asSequence()
-                .filterNot { it.order in usedOrders }
-                .filterNot { candidate ->
-                    usedBounds.any { used -> used.intersects(candidate.bounds) }
-                }
-                .mapNotNull { candidate ->
-                    val score = candidateScore(candidate.text, normalizedOption, minMatchScore)
-                        ?: return@mapNotNull null
-                    CandidateMatch(
-                        candidate = candidate,
-                        selectedBounds = candidate.bounds,
-                        score = score,
-                        optionPrefixRank =
-                            if (OPTION_PREFIX_REGEX.containsMatchIn(candidate.text.trim())) 0 else 1,
-                        normalizedLengthDifference = abs(
-                            normalizeOptionText(candidate.text).length - normalizedOption.length
+            buildList {
+                addAll(candidates
+                    .asSequence()
+                    .mapNotNull { candidate ->
+                        val score = candidateScore(candidate.text, normalizedOption, minMatchScore)
+                            ?: return@mapNotNull null
+                        CandidateMatch(
+                            candidate = candidate,
+                            selectedBounds = candidate.bounds,
+                            consumedOrders = setOf(candidate.order),
+                            score = score,
+                            optionPrefixRank =
+                                if (OPTION_PREFIX_REGEX.containsMatchIn(candidate.text.trim())) 0 else 1,
+                            normalizedLengthDifference = abs(
+                                normalizeOptionText(candidate.text).length - normalizedOption.length
+                            )
                         )
-                    )
-                }
-                .plus(
-                    candidates.asSequence()
-                        .filterNot { it.order in usedOrders }
-                        .filterNot { candidate ->
-                            usedBounds.any { used -> used.intersects(candidate.bounds) }
-                        }
-                        .mapNotNull { candidate ->
-                            buildWrappedLineMatch(
-                                candidate = candidate,
-                                candidates = candidates,
-                                normalizedOption = normalizedOption,
-                                minMatchScore = minMatchScore
-                            )
-                        }
-                )
-                .plus(
-                    candidates.asSequence()
-                        .filterNot { it.order in usedOrders }
-                        .filterNot { candidate ->
-                            usedBounds.any { used -> used.intersects(candidate.bounds) }
-                        }
-                        .mapNotNull { candidate ->
-                            buildPrefixAnchoredMatch(
-                                optionIndex = option.index,
-                                candidate = candidate,
-                                candidates = candidates,
-                                normalizedOption = normalizedOption,
-                                minMatchScore = minMatchScore
-                            )
-                        }
-                )
-                .minWithOrNull(
-                    compareBy<CandidateMatch> { it.score }
-                        .thenBy { it.optionPrefixRank }
-                        .thenBy { it.normalizedLengthDifference }
-                        .thenBy { it.candidate.bounds.area }
-                        .thenBy { it.candidate.order }
-                        .thenBy { it.candidate.bounds.left }
-                )
-                ?.also {
-                    usedOrders += it.candidate.order
-                    usedBounds += it.selectedBounds
-                }
-                ?.selectedBounds
+                    }
+                    .toList())
+                addAll(candidates
+                    .asSequence()
+                    .mapNotNull { candidate ->
+                        buildWrappedLineMatch(
+                            candidate = candidate,
+                            candidates = candidates,
+                            normalizedOption = normalizedOption,
+                            minMatchScore = minMatchScore
+                        )
+                    }
+                    .toList())
+                addAll(candidates
+                    .asSequence()
+                    .mapNotNull { candidate ->
+                        buildPrefixAnchoredMatch(
+                            optionIndex = option.index,
+                            candidate = candidate,
+                            candidates = candidates,
+                            normalizedOption = normalizedOption,
+                            minMatchScore = minMatchScore
+                        )
+                    }
+                    .toList())
+            }.distinctBy { match ->
+                Triple(match.candidate.order, match.selectedBounds, match.consumedOrders)
+            }
         }
+        return OptionCandidateAssignment.solve(
+            candidatesByOption = candidatesByOption,
+            comparator = CANDIDATE_MATCH_COMPARATOR,
+            conflicts = { first, second ->
+                first.consumedOrders.any { it in second.consumedOrders } ||
+                    first.selectedBounds.intersects(second.selectedBounds)
+            }
+        ).mapNotNull { it?.selectedBounds }
     }
 
     private fun buildWrappedLineMatch(
@@ -185,6 +173,7 @@ internal object OcrOptionLocator {
     ): CandidateMatch? {
         var selectedBounds = candidate.bounds
         val combinedText = StringBuilder(candidate.text)
+        val consumedOrders = linkedSetOf(candidate.order)
         var continuationCount = 0
         val nextLines = candidates
             .asSequence()
@@ -202,6 +191,7 @@ internal object OcrOptionLocator {
             continuationCount++
             combinedText.append(' ').append(nextLine.text)
             selectedBounds = selectedBounds.union(nextLine.bounds)
+            consumedOrders += nextLine.order
             val normalizedCandidate = normalizeOptionText(combinedText.toString())
             val score = candidateScore(
                 combinedText.toString(),
@@ -217,6 +207,7 @@ internal object OcrOptionLocator {
             return CandidateMatch(
                 candidate = candidate,
                 selectedBounds = selectedBounds,
+                consumedOrders = consumedOrders.toSet(),
                 score = score,
                 optionPrefixRank =
                     if (OPTION_PREFIX_REGEX.containsMatchIn(candidate.text.trim())) 0 else 1,
@@ -267,6 +258,7 @@ internal object OcrOptionLocator {
             return CandidateMatch(
                 candidate = candidate,
                 selectedBounds = candidate.bounds,
+                consumedOrders = setOf(candidate.order),
                 score = score,
                 optionPrefixRank = 0,
                 normalizedLengthDifference = abs(
@@ -304,6 +296,7 @@ internal object OcrOptionLocator {
         return CandidateMatch(
             candidate = candidate,
             selectedBounds = candidate.bounds.union(adjacent.bounds),
+            consumedOrders = setOf(candidate.order, adjacent.order),
             score = score,
             optionPrefixRank = 0,
             normalizedLengthDifference = abs(
@@ -354,6 +347,7 @@ internal object OcrOptionLocator {
     private data class CandidateMatch(
         val candidate: TextCandidate,
         val selectedBounds: Bounds,
+        val consumedOrders: Set<Int>,
         val score: Int,
         val optionPrefixRank: Int,
         val normalizedLengthDifference: Int
@@ -377,6 +371,13 @@ internal object OcrOptionLocator {
     private const val MAX_RECT_HEIGHT_RATIO = 0.18f
     private const val MAX_VERTICAL_SPAN_RATIO = 0.5f
     private val MATCH_EXPECTED_PREFIX = AnswerOptionTextMatcher.MATCH_PREFIX_ANCHOR
+    private val CANDIDATE_MATCH_COMPARATOR =
+        compareBy<CandidateMatch> { it.score }
+            .thenBy { it.optionPrefixRank }
+            .thenBy { it.normalizedLengthDifference }
+            .thenBy { it.candidate.bounds.area }
+            .thenBy { it.candidate.order }
+            .thenBy { it.candidate.bounds.left }
     private val OPTION_PREFIX_REGEX = Regex("^[A-Ha-h](?:[、.．)）]\\s*|\\s+)")
     private val PREFIX_WITH_CONTENT_REGEX =
         Regex("^\\s*([A-Ha-h])(?:[、.．)）:：]\\s*|\\s+)(.+?)\\s*$")

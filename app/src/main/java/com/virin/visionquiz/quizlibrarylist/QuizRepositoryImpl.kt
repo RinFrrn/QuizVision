@@ -2,6 +2,7 @@ package com.virin.visionquiz.quizlibrarylist
 
 import android.content.Context
 import androidx.lifecycle.LiveData
+import androidx.lifecycle.liveData
 import androidx.lifecycle.map
 import androidx.room.withTransaction
 import com.virin.visionquiz.dao.*
@@ -9,6 +10,7 @@ import com.virin.visionquiz.quizstudy.ReviewStats
 import com.virin.visionquiz.quizstudy.SpacedRepetitionScheduler
 import com.virin.visionquiz.quizstudy.buildReviewStats
 import com.virin.visionquiz.util.SimilarQuizStore
+import kotlinx.coroutines.delay
 
 class QuizRepositoryImpl(context: Context) : QuizRepository {
 
@@ -197,12 +199,26 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
     }
 
     override fun getDueReviewCardCount(libraryId: Int): LiveData<Int> {
-        return reviewCardDao.getDueCardCount(libraryId, System.currentTimeMillis())
+        return liveData {
+            while (true) {
+                val source = reviewCardDao.getDueCardCount(libraryId, System.currentTimeMillis())
+                val handle = emitSource(source)
+                delay(REVIEW_TIME_REFRESH_INTERVAL_MS)
+                handle.dispose()
+            }
+        }
     }
 
     override fun getReviewStatsByLibraryId(libraryId: Int): LiveData<ReviewStats> {
-        return reviewCardDao.getCardsByLibraryId(libraryId).map { cards: List<ReviewCard> ->
-            buildReviewStats(cards)
+        return liveData {
+            while (true) {
+                val now = System.currentTimeMillis()
+                val source = reviewCardDao.getCardsByLibraryId(libraryId)
+                    .map { cards: List<ReviewCard> -> buildReviewStats(cards, now) }
+                val handle = emitSource(source)
+                delay(REVIEW_TIME_REFRESH_INTERVAL_MS)
+                handle.dispose()
+            }
         }
     }
 
@@ -281,5 +297,9 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
             newQuizIds = newQuizIds,
             newCardLimit = newCardLimit
         )
+    }
+
+    private companion object {
+        private const val REVIEW_TIME_REFRESH_INTERVAL_MS = 60_000L
     }
 }

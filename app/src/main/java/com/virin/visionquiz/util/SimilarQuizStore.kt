@@ -10,7 +10,7 @@ import com.virin.visionquiz.dao.Quiz
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
-internal const val SIMILAR_QUIZ_ALGORITHM_VERSION = 3
+internal const val SIMILAR_QUIZ_ALGORITHM_VERSION = 4
 
 internal fun isCurrentSimilarAnalysis(hasStoredData: Boolean, storedVersion: Int): Boolean {
     return hasStoredData && storedVersion == SIMILAR_QUIZ_ALGORITHM_VERSION
