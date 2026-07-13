@@ -33,6 +33,7 @@ import android.widget.ImageView
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.annotation.DrawableRes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -56,6 +57,7 @@ class ScreenDetectorService : LifecycleService() {
     private var collapsedStatusIcon: ImageView? = null
     private var collapsedStatusBadge: View? = null
     private var statusView: TextView? = null
+    private var autoCollapseButton: ImageButton? = null
     private var actionButton: ImageButton? = null
     private var answerClickButton: ImageButton? = null
     private var swipeLeftButton: ImageButton? = null
@@ -65,6 +67,8 @@ class ScreenDetectorService : LifecycleService() {
     private var stopButton: ImageButton? = null
     private var controlLayoutParams: WindowManager.LayoutParams? = null
     private var isControlCollapsed = false
+    private var autoCollapseEnabled = true
+    private var autoCollapseScheduled = false
     private var isSnappedToRight = false
     private var latestRenderState: RenderState? = null
     private var lastMarkerRenderKey: MarkerRenderKey? = null
@@ -91,6 +95,18 @@ class ScreenDetectorService : LifecycleService() {
     private var pendingDragY = 0
     private var dragFramePosted = false
     private var snapAnimator: ValueAnimator? = null
+    private val autoCollapseRunnable = Runnable {
+        autoCollapseScheduled = false
+        val renderState = latestRenderState ?: return@Runnable
+        if (FloatingControlAutoCollapsePolicy.decide(
+                enabled = autoCollapseEnabled,
+                detectionState = renderState.state,
+                assistanceState = renderState.assistanceState
+            ) == FloatingControlAutoCollapsePolicy.Decision.COLLAPSE_AFTER_DELAY
+        ) {
+            setControlCollapsed(true)
+        }
+    }
     private val applyPendingDragPosition = Runnable {
         dragFramePosted = false
         val root = controlRootView ?: return@Runnable
@@ -100,6 +116,7 @@ class ScreenDetectorService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
+        autoCollapseEnabled = PreferenceUtils.shouldAutoCollapseFloatingControl(this)
         lifecycleScope.launch {
             ScreenDetectorSession.state
                 .combine(ScreenDetectorSession.matches) { state, matches -> state to matches }
@@ -122,6 +139,7 @@ class ScreenDetectorService : LifecycleService() {
                     latestRenderState = renderState
                     if (showControlWindow) {
                         renderControlBar(renderState)
+                        updateAutoCollapse(renderState)
                     }
                     if (showMarkerOverlayWindow) {
                         renderMarkerOverlay(renderState)
@@ -158,6 +176,7 @@ class ScreenDetectorService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        cancelAutoCollapse()
         cancelSnapAnimator()
         controlRootView?.removeCallbacks(applyPendingDragPosition)
         removeViewIfAttached(markerOverlayView)
@@ -170,6 +189,7 @@ class ScreenDetectorService : LifecycleService() {
         collapsedControlView = null
         collapsedStatusIcon = null
         collapsedStatusBadge = null
+        autoCollapseButton = null
         lastCollapsedRenderState = null
         cancelStatusNotification()
         ScreenDetectorSession.clearOverlayBounds()
@@ -213,6 +233,7 @@ class ScreenDetectorService : LifecycleService() {
         latestRenderState = renderState
         if (showControlWindow) {
             renderControlBar(renderState)
+            updateAutoCollapse(renderState)
         }
         if (showMarkerOverlayWindow) {
             renderMarkerOverlay(renderState)
@@ -232,6 +253,7 @@ class ScreenDetectorService : LifecycleService() {
     }
 
     private fun removeControlWindow() {
+        cancelAutoCollapse()
         cancelSnapAnimator()
         controlRootView?.removeCallbacks(applyPendingDragPosition)
         removeViewIfAttached(controlRootView)
@@ -241,6 +263,7 @@ class ScreenDetectorService : LifecycleService() {
         collapsedStatusIcon = null
         collapsedStatusBadge = null
         statusView = null
+        autoCollapseButton = null
         actionButton = null
         answerClickButton = null
         swipeLeftButton = null
@@ -423,6 +446,20 @@ class ScreenDetectorService : LifecycleService() {
                 LinearLayout.LayoutParams(dpToPx(32), dpToPx(32))
             )
 
+            autoCollapseButton = createControlIconButton(
+                iconRes = R.drawable.round_picture_in_picture_24,
+                description = "关闭自动折叠"
+            ).apply {
+                setOnClickListener { toggleAutoCollapse() }
+            }
+            controlsRow.addView(
+                autoCollapseButton,
+                LinearLayout.LayoutParams(dpToPx(32), dpToPx(32)).apply {
+                    leftMargin = dpToPx(CONTROL_BUTTON_GAP_DP)
+                }
+            )
+            renderAutoCollapseButton()
+
             controlsRow.addView(
                 View(context).apply {
                     setBackgroundColor(TOUCH_CONTROLS_DIVIDER_COLOR)
@@ -437,7 +474,10 @@ class ScreenDetectorService : LifecycleService() {
                 description = "点击正确选项"
             ).apply {
                 visibility = View.GONE
-                setOnClickListener { ScreenDetectorSession.requestToggleAnswerAssistance() }
+                setOnClickListener {
+                    restartAutoCollapseCountdown()
+                    ScreenDetectorSession.requestToggleAnswerAssistance()
+                }
             }
             controlsRow.addView(
                 answerClickButton,
@@ -454,7 +494,10 @@ class ScreenDetectorService : LifecycleService() {
                 description = "左滑翻页"
             ).apply {
                 visibility = View.GONE
-                setOnClickListener { ScreenDetectorSession.requestSwipePageLeft() }
+                setOnClickListener {
+                    restartAutoCollapseCountdown()
+                    ScreenDetectorSession.requestSwipePageLeft()
+                }
             }
             controlsRow.addView(
                 swipeLeftButton,
@@ -472,7 +515,10 @@ class ScreenDetectorService : LifecycleService() {
             ).apply {
                 rotation = -90f
                 visibility = View.GONE
-                setOnClickListener { ScreenDetectorSession.requestSwipePageUp() }
+                setOnClickListener {
+                    restartAutoCollapseCountdown()
+                    ScreenDetectorSession.requestSwipePageUp()
+                }
             }
             controlsRow.addView(
                 swipeUpButton,
@@ -503,7 +549,10 @@ class ScreenDetectorService : LifecycleService() {
                 iconRes = R.drawable.round_pause_24,
                 description = "暂停"
             ).apply {
-                setOnClickListener { ScreenDetectorSession.requestPauseResume() }
+                setOnClickListener {
+                    restartAutoCollapseCountdown()
+                    ScreenDetectorSession.requestPauseResume()
+                }
             }
             controlsRow.addView(
                 actionButton,
@@ -519,7 +568,10 @@ class ScreenDetectorService : LifecycleService() {
                 iconRes = R.drawable.round_replay_24,
                 description = "重试"
             ).apply {
-                setOnClickListener { ScreenDetectorSession.requestRetryOnce() }
+                setOnClickListener {
+                    restartAutoCollapseCountdown()
+                    ScreenDetectorSession.requestRetryOnce()
+                }
             }
             controlsRow.addView(
                 retryButton,
@@ -535,7 +587,10 @@ class ScreenDetectorService : LifecycleService() {
                 iconRes = R.drawable.round_close_24,
                 description = "停止"
             ).apply {
-                setOnClickListener { ScreenDetectorSession.requestStop() }
+                setOnClickListener {
+                    restartAutoCollapseCountdown()
+                    ScreenDetectorSession.requestStop()
+                }
             }
             controlsRow.addView(
                 stopButton,
@@ -599,6 +654,7 @@ class ScreenDetectorService : LifecycleService() {
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                cancelAutoCollapse()
                 cancelSnapAnimator()
                 dragStartRawX = event.rawX
                 dragStartRawY = event.rawY
@@ -638,6 +694,7 @@ class ScreenDetectorService : LifecycleService() {
                     publishControlBounds()
                 }
                 view.parent?.requestDisallowInterceptTouchEvent(false)
+                restartAutoCollapseCountdown()
                 return true
             }
         }
@@ -766,6 +823,7 @@ class ScreenDetectorService : LifecycleService() {
     }
 
     private fun setControlCollapsed(collapsed: Boolean) {
+        cancelAutoCollapse()
         if (isControlCollapsed == collapsed) {
             return
         }
@@ -800,6 +858,70 @@ class ScreenDetectorService : LifecycleService() {
             )
             publishControlBounds()
         }
+    }
+
+    private fun toggleAutoCollapse() {
+        autoCollapseEnabled = !autoCollapseEnabled
+        PreferenceUtils.setAutoCollapseFloatingControl(this, autoCollapseEnabled)
+        renderAutoCollapseButton()
+        Toast.makeText(
+            this,
+            if (autoCollapseEnabled) "自动折叠已开启" else "自动折叠已关闭",
+            Toast.LENGTH_SHORT
+        ).show()
+        restartAutoCollapseCountdown()
+    }
+
+    private fun renderAutoCollapseButton() {
+        autoCollapseButton?.apply {
+            imageTintList = ColorStateList.valueOf(
+                if (autoCollapseEnabled) SELECTED_ICON_COLOR else DEFAULT_ICON_COLOR
+            )
+            isSelected = autoCollapseEnabled
+            contentDescription = if (autoCollapseEnabled) {
+                "自动折叠已开启，点击关闭"
+            } else {
+                "自动折叠已关闭，点击开启"
+            }
+        }
+    }
+
+    private fun updateAutoCollapse(renderState: RenderState) {
+        when (FloatingControlAutoCollapsePolicy.decide(
+            enabled = autoCollapseEnabled,
+            detectionState = renderState.state,
+            assistanceState = renderState.assistanceState
+        )) {
+            FloatingControlAutoCollapsePolicy.Decision.NONE -> cancelAutoCollapse()
+            FloatingControlAutoCollapsePolicy.Decision.EXPAND -> {
+                cancelAutoCollapse()
+                if (isControlCollapsed) {
+                    setControlCollapsed(false)
+                }
+            }
+            FloatingControlAutoCollapsePolicy.Decision.COLLAPSE_AFTER_DELAY -> {
+                if (isControlCollapsed) {
+                    cancelAutoCollapse()
+                } else if (!autoCollapseScheduled) {
+                    val root = controlRootView ?: return
+                    autoCollapseScheduled = true
+                    root.postDelayed(
+                        autoCollapseRunnable,
+                        AUTO_COLLAPSE_DELAY_MS
+                    )
+                }
+            }
+        }
+    }
+
+    private fun restartAutoCollapseCountdown() {
+        cancelAutoCollapse()
+        latestRenderState?.let(::updateAutoCollapse)
+    }
+
+    private fun cancelAutoCollapse() {
+        controlRootView?.removeCallbacks(autoCollapseRunnable)
+        autoCollapseScheduled = false
     }
 
     private fun getControlPositionRanges(
@@ -1383,6 +1505,7 @@ class ScreenDetectorService : LifecycleService() {
         private const val REQUEST_STOP_DETECTION = 2309
         private const val MARKER_WINDOW_ALPHA = 0.74f
         private const val SNAP_ANIMATION_DURATION_MS = 180L
+        private const val AUTO_COLLAPSE_DELAY_MS = 3_000L
         private const val CONTROL_HORIZONTAL_PADDING_DP = 4
         private const val CONTROL_VERTICAL_PADDING_DP = 8
         private const val INITIAL_CONTROL_Y_RATIO = 0.82f

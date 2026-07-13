@@ -418,6 +418,19 @@ public class PreferenceUtils {
         .apply();
   }
 
+  public static boolean shouldAutoCollapseFloatingControl(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_floating_control_auto_collapse);
+    return sharedPreferences.getBoolean(prefKey, true);
+  }
+
+  public static void setAutoCollapseFloatingControl(Context context, boolean enabled) {
+    PreferenceManager.getDefaultSharedPreferences(context)
+        .edit()
+        .putBoolean(context.getString(R.string.pref_key_floating_control_auto_collapse), enabled)
+        .apply();
+  }
+
   public static boolean shouldUseAccessibilitySimplifiedAnswerDisplay(Context context) {
     SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
     String prefKey =
