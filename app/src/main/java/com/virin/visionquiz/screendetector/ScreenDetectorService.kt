@@ -33,7 +33,6 @@ import android.widget.ImageView
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import androidx.annotation.DrawableRes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -983,11 +982,6 @@ class ScreenDetectorService : LifecycleService() {
             "自动折叠已关闭"
         }
         showTransientControlMessage(message)
-        Toast.makeText(
-            this,
-            message,
-            Toast.LENGTH_SHORT
-        ).show()
         restartAutoCollapseCountdown()
     }
 

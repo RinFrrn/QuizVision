@@ -190,7 +190,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             when (request) {
                 is StartRequest.ProcessorTest -> {
                     Log.i(TAG, "Using on-device OCR Processor for screen text")
-                    val source = ScreenSource(activity)
+                    val source = createScreenSource(activity)
                     cameraSource = source
                     source.setMachineLearningFrameProcessor(
                         OriginalRecognitionProcessor(activity) { matches ->
@@ -202,7 +202,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                 }
                 is StartRequest.Quiz -> {
                     Log.i(TAG, "Using on-device Quiz recognition Processor for Quiz")
-                    val source = ScreenSource(activity)
+                    val source = createScreenSource(activity)
                     cameraSource = source
                     source.setMachineLearningFrameProcessor(
                         QuizRecognitionProcessor(
@@ -241,6 +241,26 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             ).show()
             stopScreenDetection()
         }
+    }
+
+    private fun createScreenSource(activity: FragmentActivity): ScreenSource {
+        lateinit var source: ScreenSource
+        source = ScreenSource(activity) { cancelledByUser, message ->
+            activity.runOnUiThread {
+                if (cameraSource !== source) {
+                    return@runOnUiThread
+                }
+                if (!cancelledByUser) {
+                    Toast.makeText(
+                        activity.applicationContext,
+                        "屏幕录制启动失败：$message",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+                stopScreenDetection()
+            }
+        }
+        return source
     }
 
     private fun startCurrentSource() {

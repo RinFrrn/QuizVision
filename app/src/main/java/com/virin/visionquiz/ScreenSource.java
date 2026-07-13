@@ -60,6 +60,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
     private static final String TAG = "MIDemoApp:ScreenSource";
     private static final int OVERLAY_MASK_PADDING_DP = 12;
+    private static final int SCREEN_CAPTURE_CANCELLED_ERROR_CODE = -1;
 
     protected Activity activity;
 
@@ -87,9 +88,19 @@ import java.util.concurrent.atomic.AtomicInteger;
     private final AtomicBoolean isProcessingFrame = new AtomicBoolean(false);
     private final AtomicBoolean processorCallDispatched = new AtomicBoolean(false);
     private final AtomicInteger activeScanGeneration = new AtomicInteger();
+    private final CaptureFailureListener captureFailureListener;
+
+    public interface CaptureFailureListener {
+        void onCaptureFailure(boolean cancelledByUser, String message);
+    }
 
     public ScreenSource(Activity activity) {
+        this(activity, null);
+    }
+
+    public ScreenSource(Activity activity, CaptureFailureListener captureFailureListener) {
         this.activity = activity;
+        this.captureFailureListener = captureFailureListener;
         overlayMaskPaddingPx =
                 Math.round(OVERLAY_MASK_PADDING_DP * activity.getResources().getDisplayMetrics().density);
         screenChangeDetectionEnabled =
@@ -245,7 +256,14 @@ import java.util.concurrent.atomic.AtomicInteger;
         @Override
         public void onError(@NonNull ErrorInfo errorInfo) {
             Log.e(TAG, "onError: " + errorInfo);
-            release();
+            if (captureFailureListener != null) {
+                captureFailureListener.onCaptureFailure(
+                        errorInfo.getCode() == SCREEN_CAPTURE_CANCELLED_ERROR_CODE,
+                        errorInfo.getMessage()
+                );
+            } else {
+                release();
+            }
         }
     }
 
