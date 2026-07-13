@@ -95,6 +95,7 @@ object ScreenDetectorSession {
         fun toggleAnswerAssistance()
         fun swipePageLeft()
         fun swipePageUp()
+        fun setFloatingControlInteractionActive(active: Boolean)
         fun stopScreenDetection()
     }
 
@@ -352,6 +353,10 @@ object ScreenDetectorSession {
         if (canRequestPageDirection(PageDirection.UP)) {
             controller?.swipePageUp()
         }
+    }
+
+    fun setFloatingControlInteractionActive(active: Boolean) {
+        controller?.setFloatingControlInteractionActive(active)
     }
 
     private fun canRequestPageDirection(direction: PageDirection): Boolean {

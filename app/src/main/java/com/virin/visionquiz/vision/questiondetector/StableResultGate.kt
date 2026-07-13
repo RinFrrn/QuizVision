@@ -1,15 +1,19 @@
 package com.virin.visionquiz.vision.questiondetector
 
-/** Prevents a changed non-empty result from being published until it repeats consistently. */
+/** Publishes matches immediately while requiring confirmation before clearing visible results. */
 internal class StableResultGate<T>(
     private val requiredStableResults: Int,
     private val fingerprintOf: (T) -> String,
-    private val isEmpty: (T) -> Boolean
+    private val isEmpty: (T) -> Boolean,
+    private val confirmEmptyResults: Boolean = true
 ) {
     private var candidateFingerprint: String? = null
     private var candidateCount: Int = 0
 
     fun resolve(newValue: T, displayedValue: T): T {
+        if (!confirmEmptyResults) {
+            return newValue
+        }
         val newFingerprint = fingerprintOf(newValue)
         if (candidateFingerprint == newFingerprint) {
             candidateCount++
@@ -19,6 +23,12 @@ internal class StableResultGate<T>(
         }
 
         if (isEmpty(newValue) && isEmpty(displayedValue)) {
+            return newValue
+        }
+        // The screen source has already waited for a stable page before invoking OCR, and normally
+        // emits only one scan per page. Requiring a second identical non-empty result here would
+        // leave the previous page visible indefinitely.
+        if (!isEmpty(newValue) || isEmpty(displayedValue)) {
             return newValue
         }
         if (newFingerprint == fingerprintOf(displayedValue)) {

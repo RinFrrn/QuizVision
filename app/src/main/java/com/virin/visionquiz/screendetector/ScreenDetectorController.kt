@@ -122,6 +122,19 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             clearSelectedPageDirection()
             return
         }
+        val overlayResumeDecision = OverlayPermissionResumePolicy.decide(
+            awaitingOverlayPermission =
+                pendingPermissionPrompt == PendingPermissionPrompt.OVERLAY,
+            requiresAccessibility = request.requiresAccessibility,
+            overlayPermissionGranted = commonROMPermissionCheck(activity)
+        )
+        if (overlayResumeDecision == OverlayPermissionResumePolicy.Decision.CANCEL_PENDING_START) {
+            pendingStartRequest = null
+            pendingPermissionPrompt = null
+            permissionHostActivity = null
+            Toast.makeText(activity, "未授予悬浮窗权限，屏幕搜题未启动", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (request.requiresAccessibility) {
             permissionHostActivity = activity
             if (
@@ -202,7 +215,8 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                             },
                             minMatchScore = PreferenceUtils.getScreenSearchMinMatchScore(activity),
                             locateScreenAnswerRects =
-                                PreferenceUtils.shouldShowScreenOcrAnswerFrames(activity)
+                                PreferenceUtils.shouldShowScreenOcrAnswerFrames(activity),
+                            confirmEmptyResults = false
                         )
                     )
                 }
@@ -473,6 +487,12 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
 
     override fun swipePageUp() {
         selectPageDirectionAndSwipe(QuizAccessibilityService.PageAxis.VERTICAL)
+    }
+
+    override fun setFloatingControlInteractionActive(active: Boolean) {
+        val shouldPauseScanning = active && isDetectionRunning
+        cameraSource?.setUiInteractionPaused(shouldPauseScanning)
+        accessibilitySource?.setFloatingControlInteractionActive(shouldPauseScanning)
     }
 
     private fun handleAccessibilityMatches(

@@ -23,6 +23,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
@@ -34,7 +35,8 @@ class QuizRecognitionProcessor(
     private val quizzes: LiveData<List<Quiz>>,
     private val onMatchesDetected: ((List<QuizGraphicItem>) -> Unit)? = null,
     private val minMatchScore: Double = QuizManager.DEFAULT_MIN_MATCH_SCORE,
-    private val locateScreenAnswerRects: Boolean = false
+    private val locateScreenAnswerRects: Boolean = false,
+    private val confirmEmptyResults: Boolean = true
 ) : VisionProcessorBase<Text>(context) {
 
     private val textRecognizer: TextRecognizer = TextRecognition.getClient(
@@ -46,14 +48,19 @@ class QuizRecognitionProcessor(
     private val useBriefAnswerDisplay: Boolean = PreferenceUtils.shouldUseBriefAnswerDisplay(context)
     private val overlayTextSizeSp: Float = PreferenceUtils.getQuizOverlayTextSizeSp(context)
     private val matchScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val matchGeneration = AtomicInteger()
+    private val matchEpoch = AtomicInteger()
+    private val matchRequests = Channel<MatchRequest>(capacity = Channel.CONFLATED)
+    private val matchingJob: Job = matchScope.launch {
+        for (request in matchRequests) {
+            processMatchRequest(request)
+        }
+    }
     @Volatile
     private var cachedQuizSnapshot: List<Quiz>? = null
     @Volatile
     private var cachedQuizIndex: QuizManager.QuizMatchIndex? = null
     @Volatile
     private var displayedMatches: List<QuizGraphicItem> = emptyList()
-    private var matchingJob: Job? = null
 
     private data class RecognizedTextItem(
         val text: String,
@@ -87,10 +94,21 @@ class QuizRecognitionProcessor(
         val debugLines: List<String>
     )
 
+    private data class MatchRequest(
+        val epoch: Int,
+        val quizSnapshot: List<Quiz>,
+        val recognizedTextItems: List<RecognizedTextItem>,
+        val lineCandidates: List<OcrOptionLocator.TextCandidate>,
+        val imageWidth: Int,
+        val imageHeight: Int,
+        val graphicOverlay: GraphicOverlay
+    )
+
     private val stableResultGate = StableResultGate(
         requiredStableResults = REQUIRED_STABLE_MATCH_FRAMES,
         fingerprintOf = ::buildStableMatchesFingerprint,
-        isEmpty = List<QuizGraphicItem>::isEmpty
+        isEmpty = List<QuizGraphicItem>::isEmpty,
+        confirmEmptyResults = confirmEmptyResults
     )
 
     private fun createRecognizedTextItem(
@@ -594,8 +612,9 @@ class QuizRecognitionProcessor(
     }
 
     override fun stop() {
-        matchingJob?.cancel()
-        matchingJob = null
+        matchEpoch.incrementAndGet()
+        matchRequests.close()
+        matchingJob.cancel()
         matchScope.cancel()
         super.stop()
         textRecognizer.close()
@@ -609,7 +628,6 @@ class QuizRecognitionProcessor(
     override fun onSuccess(results: Text, graphicOverlay: GraphicOverlay) {
         Log.d(TAG, "On-device Text detection successful")
 
-        val generation = matchGeneration.incrementAndGet()
         val quizSnapshot = quizzes.value ?: emptyList()
         val lineCandidates = mutableListOf<OcrOptionLocator.TextCandidate>()
         val recognizedTextItems = buildRecognizedTextItems(results, lineCandidates)
@@ -621,46 +639,58 @@ class QuizRecognitionProcessor(
 
         val imageWidth = graphicOverlay.imageWidth
         val imageHeight = graphicOverlay.imageHeight
-        matchingJob?.cancel()
-        matchingJob = matchScope.launch {
-            val quizIndex = getQuizIndex(quizSnapshot)
-            val matchedQuizs: MutableList<MatchedTextItem> = ArrayList()
-            for (item in recognizedTextItems) {
-                coroutineContext.ensureActive()
-                val matched = getMatchedQuizGraphicItem(item, quizIndex, lineCandidates)
-                matched?.let { matchedQuizs.add(it) }
-            }
-
-            val sortedMatches = buildDisplayMatches(
-                matchedQuizs = matchedQuizs,
+        matchRequests.trySend(
+            MatchRequest(
+                epoch = matchEpoch.get(),
+                quizSnapshot = quizSnapshot,
+                recognizedTextItems = recognizedTextItems,
                 lineCandidates = lineCandidates,
                 imageWidth = imageWidth,
-                imageHeight = imageHeight
+                imageHeight = imageHeight,
+                graphicOverlay = graphicOverlay
             )
-
-            withContext(Dispatchers.Main) {
-                if (generation != matchGeneration.get()) {
-                    return@withContext
-                }
-                val stableMatches = resolveStableMatches(sortedMatches)
-                displayedMatches = stableMatches
-                onMatchesDetected?.invoke(stableMatches)
-//            logExtrasForTesting(text)
-
-                graphicOverlay.clear()
-                addMatchesGraphic(graphicOverlay, stableMatches)
-                graphicOverlay.postInvalidate()
-            }
-        }
+        )
     }
 
     override fun onFailure(e: Exception) {
-        matchingJob?.cancel()
-        matchingJob = null
+        matchEpoch.incrementAndGet()
+        while (matchRequests.tryReceive().isSuccess) {
+            // Drop queued frames; a currently running request is invalidated by the epoch above.
+        }
         displayedMatches = emptyList()
         stableResultGate.reset()
         onMatchesDetected?.invoke(emptyList())
         Log.w(TAG, "Text detection failed.$e")
+    }
+
+    private suspend fun processMatchRequest(request: MatchRequest) {
+        val quizIndex = getQuizIndex(request.quizSnapshot)
+        val matchedQuizs: MutableList<MatchedTextItem> = ArrayList()
+        for (item in request.recognizedTextItems) {
+            coroutineContext.ensureActive()
+            val matched = getMatchedQuizGraphicItem(item, quizIndex, request.lineCandidates)
+            matched?.let(matchedQuizs::add)
+        }
+
+        val sortedMatches = buildDisplayMatches(
+            matchedQuizs = matchedQuizs,
+            lineCandidates = request.lineCandidates,
+            imageWidth = request.imageWidth,
+            imageHeight = request.imageHeight
+        )
+
+        withContext(Dispatchers.Main) {
+            if (request.epoch != matchEpoch.get()) {
+                return@withContext
+            }
+            val stableMatches = resolveStableMatches(sortedMatches)
+            displayedMatches = stableMatches
+            onMatchesDetected?.invoke(stableMatches)
+
+            request.graphicOverlay.clear()
+            addMatchesGraphic(request.graphicOverlay, stableMatches)
+            request.graphicOverlay.postInvalidate()
+        }
     }
 
     private fun resolveStableMatches(newMatches: List<QuizGraphicItem>): List<QuizGraphicItem> {

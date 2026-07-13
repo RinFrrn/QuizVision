@@ -37,6 +37,7 @@ object QuizManager {
     const val TAG = "QuizManager"
     const val DEFAULT_MIN_MATCH_SCORE = 0.76
     const val SEARCH_MIN_MATCH_SCORE = 0.6
+    internal const val MAX_RETRIEVAL_FEATURES_PER_QUIZ = 36
     private const val DEFAULT_MAX_MATCH_RESULTS = 5
     private const val MIN_LENGTH_RATIO = 0.45
     private const val MIN_SIGNATURE_OVERLAP = 0.35
@@ -58,7 +59,7 @@ object QuizManager {
     class QuizMatchIndex internal constructor(
         val candidates: List<QuizMatchCandidate>
     ) {
-        private val featurePostings = buildPromptFeaturePostings(candidates)
+        private val featurePostings = CompactPromptFeaturePostings(candidates)
 
         val isEmpty: Boolean
             get() = candidates.isEmpty()
@@ -69,23 +70,14 @@ object QuizManager {
             maxResults: Int
         ): List<QuizMatchCandidate> {
             if (candidates.isEmpty()) return emptyList()
-            val queryFeatures = buildPromptIndexFeatures(normalizedInput)
-            if (queryFeatures.isEmpty()) return emptyList()
-
-            val scores = IntArray(candidates.size)
-            val touched = linkedSetOf<Int>()
-            queryFeatures.forEach { feature ->
-                val weight = when {
-                    feature.startsWith(TRIGRAM_FEATURE_PREFIX) -> 6
-                    feature.startsWith(BIGRAM_FEATURE_PREFIX) -> 3
-                    else -> 1
-                }
-                featurePostings[feature]?.forEach { index ->
-                    scores[index] += weight
-                    touched += index
-                }
+            if (maxResults == Int.MAX_VALUE || minScore < DEFAULT_MIN_MATCH_SCORE) {
+                return candidates
             }
-            if (touched.isEmpty()) return emptyList()
+
+            val rankedIndexes = featurePostings.rank(normalizedInput)
+            // A full scan is deliberately retained as a rare fallback for very short or heavily
+            // corrupted OCR text. Returning no candidates here creates a hard false negative.
+            if (rankedIndexes.isEmpty()) return candidates
 
             val candidateLimit = retrievalCandidateLimit(
                 inputLength = normalizedInput.length,
@@ -93,13 +85,8 @@ object QuizManager {
                 maxResults = maxResults,
                 candidateCount = candidates.size
             )
-            return touched
+            return rankedIndexes
                 .asSequence()
-                .sortedWith(
-                    compareByDescending<Int> { scores[it] }
-                        .thenBy { abs(candidates[it].normalizedPrompt.length - normalizedInput.length) }
-                        .thenBy { candidates[it].question.id }
-                )
                 .take(candidateLimit)
                 .map(candidates::get)
                 .toList()
@@ -112,6 +99,110 @@ object QuizManager {
                 minScore = DEFAULT_MIN_MATCH_SCORE,
                 maxResults = DEFAULT_MAX_MATCH_RESULTS
             ).size
+        }
+
+        internal fun retrievalPostingCapacityForTesting(): Int = featurePostings.capacity
+    }
+
+    /**
+     * A bounded, primitive-array retrieval index. The former Map<String, IntArray> representation
+     * retained a String and several collection nodes for nearly every n-gram in the library and
+     * could exhaust Android's 256 MB heap. This representation stores at most 36 packed longs per
+     * quiz and creates strings only for the already-required normalized prompt.
+     */
+    private class CompactPromptFeaturePostings(
+        private val candidates: List<QuizMatchCandidate>
+    ) {
+        private val postings = LongArray(
+            (candidates.size.toLong() * MAX_RETRIEVAL_FEATURES_PER_QUIZ)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+        )
+        private var postingCount = 0
+
+        val capacity: Int
+            get() = postings.size
+
+        init {
+            candidates.forEachIndexed { candidateIndex, candidate ->
+                buildSampledFeatureHashes(candidate.normalizedPrompt).forEach { featureHash ->
+                    postings[postingCount++] = packPosting(featureHash, candidateIndex)
+                }
+            }
+            postings.sort(fromIndex = 0, toIndex = postingCount)
+        }
+
+        fun rank(normalizedInput: String): IntArray {
+            if (postingCount == 0) return IntArray(0)
+            val scores = IntArray(candidates.size)
+            val touched = IntArray(candidates.size)
+            var touchedCount = 0
+
+            fun scoreFeatures(featureHashes: IntArray, baseWeight: Int) {
+                featureHashes.forEach { featureHash ->
+                    val start = lowerBound(featureHash)
+                    val end = upperBound(featureHash)
+                    if (start == end) return@forEach
+                    val documentFrequency = end - start
+                    val rarityWeight = (candidates.size / documentFrequency).coerceIn(1, 16)
+                    val scoreIncrement = baseWeight * rarityWeight
+                    for (postingIndex in start until end) {
+                        val candidateIndex = postings[postingIndex].toInt()
+                        if (scores[candidateIndex] == 0) {
+                            touched[touchedCount++] = candidateIndex
+                        }
+                        scores[candidateIndex] += scoreIncrement
+                    }
+                }
+            }
+
+            scoreFeatures(
+                buildNgramHashes(normalizedInput, BIGRAM_SIZE, MAX_QUERY_FEATURES),
+                BIGRAM_RETRIEVAL_WEIGHT
+            )
+            scoreFeatures(
+                buildNgramHashes(normalizedInput, TRIGRAM_SIZE, MAX_QUERY_FEATURES),
+                TRIGRAM_RETRIEVAL_WEIGHT
+            )
+            if (touchedCount == 0) return IntArray(0)
+
+            return touched.copyOf(touchedCount)
+                .sortedWith(
+                    compareByDescending<Int> { scores[it] }
+                        .thenBy {
+                            abs(candidates[it].normalizedPrompt.length - normalizedInput.length)
+                        }
+                        .thenBy { candidates[it].question.id }
+                )
+                .toIntArray()
+        }
+
+        private fun lowerBound(featureHash: Int): Int {
+            var low = 0
+            var high = postingCount
+            while (low < high) {
+                val middle = (low + high).ushr(1)
+                if (unpackFeatureHash(postings[middle]) < featureHash) {
+                    low = middle + 1
+                } else {
+                    high = middle
+                }
+            }
+            return low
+        }
+
+        private fun upperBound(featureHash: Int): Int {
+            var low = 0
+            var high = postingCount
+            while (low < high) {
+                val middle = (low + high).ushr(1)
+                if (unpackFeatureHash(postings[middle]) <= featureHash) {
+                    low = middle + 1
+                } else {
+                    high = middle
+                }
+            }
+            return low
         }
     }
 
@@ -642,34 +733,45 @@ object QuizManager {
         return text.filter(::isMeaningfulQuestionChar).toSet()
     }
 
-    private fun buildPromptFeaturePostings(
-        candidates: List<QuizMatchCandidate>
-    ): Map<String, IntArray> {
-        val postings = mutableMapOf<String, MutableList<Int>>()
-        candidates.forEachIndexed { index, candidate ->
-            buildPromptIndexFeatures(candidate.normalizedPrompt).forEach { feature ->
-                postings.getOrPut(feature) { mutableListOf() }.add(index)
-            }
-        }
-        return postings.mapValues { (_, indexes) -> indexes.toIntArray() }
+    private fun buildSampledFeatureHashes(text: String): IntArray {
+        val features = LinkedHashSet<Int>(MAX_RETRIEVAL_FEATURES_PER_QUIZ)
+        buildNgramHashes(text, BIGRAM_SIZE, MAX_BIGRAM_FEATURES_PER_QUIZ)
+            .forEach(features::add)
+        buildNgramHashes(text, TRIGRAM_SIZE, MAX_TRIGRAM_FEATURES_PER_QUIZ)
+            .forEach(features::add)
+        return features.toIntArray()
     }
 
-    private fun buildPromptIndexFeatures(text: String): Set<String> {
-        if (text.isEmpty()) return emptySet()
-        return buildSet {
-            text.toSet().forEach { add("$CHAR_FEATURE_PREFIX$it") }
-            if (text.length >= 2) {
-                for (index in 0 until text.length - 1) {
-                    add("$BIGRAM_FEATURE_PREFIX${text.substring(index, index + 2)}")
-                }
+    private fun buildNgramHashes(text: String, ngramSize: Int, maxFeatures: Int): IntArray {
+        val featureCount = text.length - ngramSize + 1
+        if (featureCount <= 0 || maxFeatures <= 0) return IntArray(0)
+        val sampleCount = minOf(featureCount, maxFeatures)
+        val hashes = LinkedHashSet<Int>(sampleCount)
+        repeat(sampleCount) { sampleIndex ->
+            val start = if (sampleCount == featureCount || sampleCount == 1) {
+                sampleIndex
+            } else {
+                (sampleIndex.toLong() * (featureCount - 1) / (sampleCount - 1)).toInt()
             }
-            if (text.length >= 3) {
-                for (index in 0 until text.length - 2) {
-                    add("$TRIGRAM_FEATURE_PREFIX${text.substring(index, index + 3)}")
-                }
-            }
+            hashes += hashNgram(text, start, ngramSize)
         }
+        return hashes.toIntArray()
     }
+
+    private fun hashNgram(text: String, start: Int, size: Int): Int {
+        var hash = if (size == BIGRAM_SIZE) BIGRAM_HASH_SEED else TRIGRAM_HASH_SEED
+        repeat(size) { offset ->
+            hash = hash * 31 + text[start + offset].code
+        }
+        return hash and Int.MAX_VALUE
+    }
+
+    private fun packPosting(featureHash: Int, candidateIndex: Int): Long {
+        return (featureHash.toLong() shl Int.SIZE_BITS) or
+            (candidateIndex.toLong() and 0xffff_ffffL)
+    }
+
+    private fun unpackFeatureHash(posting: Long): Int = (posting ushr Int.SIZE_BITS).toInt()
 
     private fun retrievalCandidateLimit(
         inputLength: Int,
@@ -734,9 +836,15 @@ object QuizManager {
     private val QUESTION_PREFIX_REGEX = Regex(
         pattern = """^\s*(第?[0-9一二三四五六七八九十]{1,3}[题章节]?\s*[-.．、:：)）]?\s*)+"""
     )
-    private const val CHAR_FEATURE_PREFIX = "c:"
-    private const val BIGRAM_FEATURE_PREFIX = "b:"
-    private const val TRIGRAM_FEATURE_PREFIX = "t:"
+    private const val BIGRAM_SIZE = 2
+    private const val TRIGRAM_SIZE = 3
+    private const val MAX_BIGRAM_FEATURES_PER_QUIZ = 12
+    private const val MAX_TRIGRAM_FEATURES_PER_QUIZ = 24
+    private const val MAX_QUERY_FEATURES = 256
+    private const val BIGRAM_RETRIEVAL_WEIGHT = 3
+    private const val TRIGRAM_RETRIEVAL_WEIGHT = 6
+    private const val BIGRAM_HASH_SEED = 0x2d2816fe
+    private const val TRIGRAM_HASH_SEED = 0x5f356495
     private const val SHORT_RETRIEVAL_INPUT_LENGTH = 6
     private const val MAX_RETRIEVAL_CANDIDATES = 256
     private const val MAX_SHORT_RETRIEVAL_CANDIDATES = 512

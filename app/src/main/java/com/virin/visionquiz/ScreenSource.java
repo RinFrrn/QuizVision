@@ -149,6 +149,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
         processingThread = new Thread(processingRunnable);
         processingRunnable.setActive(true);
+        processingRunnable.setInteractionPaused(false);
         processingRunnable.setPaused(false);
         processingThread.start();
         started = true;
@@ -157,6 +158,7 @@ import java.util.concurrent.atomic.AtomicInteger;
     }
 
     public synchronized void pause() {
+        processingRunnable.setInteractionPaused(false);
         processingRunnable.setPaused(true);
         cancelCurrentScan();
         frameChangeDetector.reset();
@@ -168,6 +170,19 @@ import java.util.concurrent.atomic.AtomicInteger;
             return;
         }
         processingRunnable.setPaused(false);
+    }
+
+    /** Temporarily yields frame processing while the floating control is being manipulated. */
+    public synchronized void setUiInteractionPaused(boolean paused) {
+        if (!started) {
+            return;
+        }
+        processingRunnable.setInteractionPaused(paused);
+        if (paused) {
+            cancelCurrentScan();
+        } else {
+            frameChangeDetector.reset();
+        }
     }
 
     public synchronized void retryOnce() {
@@ -297,6 +312,7 @@ import java.util.concurrent.atomic.AtomicInteger;
         private final Object lock = new Object();
         private boolean active = true;
         private boolean paused = false;
+        private boolean interactionPaused = false;
         private boolean retryOnceRequested = false;
 
         // These pending variables hold the state associated with the new frame awaiting processing.
@@ -333,7 +349,7 @@ import java.util.concurrent.atomic.AtomicInteger;
                         }
 
                         shouldRetryOnce = paused && retryOnceRequested;
-                        if (paused && !shouldRetryOnce) {
+                        if ((paused && !shouldRetryOnce) || interactionPaused) {
                             pendingFrameData = null;
                             return;
                         }
@@ -390,6 +406,7 @@ import java.util.concurrent.atomic.AtomicInteger;
                             while (
                                     active
                                             && (!paused || shouldRetryOnce)
+                                            && !interactionPaused
                                             && pendingFrameData == null
                             ) {
                                 try {
@@ -400,7 +417,7 @@ import java.util.concurrent.atomic.AtomicInteger;
                                     return;
                                 }
                             }
-                            if (!active || (paused && !shouldRetryOnce)) {
+                            if (!active || (paused && !shouldRetryOnce) || interactionPaused) {
                                 cancelCurrentScan();
                                 return;
                             }
@@ -466,6 +483,7 @@ import java.util.concurrent.atomic.AtomicInteger;
             synchronized (lock) {
                 this.active = active;
                 if (!active) {
+                    interactionPaused = false;
                     if (timerTask != null) {
                         timerTask.cancel();
                         timerTask = null;
@@ -484,6 +502,16 @@ import java.util.concurrent.atomic.AtomicInteger;
             synchronized (lock) {
                 this.paused = paused;
                 retryOnceRequested = false;
+                if (paused) {
+                    pendingFrameData = null;
+                }
+                lock.notifyAll();
+            }
+        }
+
+        void setInteractionPaused(boolean paused) {
+            synchronized (lock) {
+                interactionPaused = paused;
                 if (paused) {
                     pendingFrameData = null;
                 }

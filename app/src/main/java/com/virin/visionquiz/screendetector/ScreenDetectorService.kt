@@ -69,6 +69,9 @@ class ScreenDetectorService : LifecycleService() {
     private var isControlCollapsed = false
     private var autoCollapseEnabled = true
     private var autoCollapseScheduled = false
+    private var transientStatusText: String? = null
+    private var collapseTransitionGeneration = 0
+    private var collapseTransitionTarget: Boolean? = null
     private var isSnappedToRight = false
     private var latestRenderState: RenderState? = null
     private var lastMarkerRenderKey: MarkerRenderKey? = null
@@ -106,6 +109,15 @@ class ScreenDetectorService : LifecycleService() {
         ) {
             setControlCollapsed(true)
         }
+    }
+    private val clearTransientStatusRunnable = Runnable {
+        transientStatusText = null
+        latestRenderState?.let { renderState ->
+            statusView?.text = buildStatusText(renderState)
+        }
+    }
+    private val finishFloatingControlInteractionRunnable = Runnable {
+        ScreenDetectorSession.setFloatingControlInteractionActive(false)
     }
     private val applyPendingDragPosition = Runnable {
         dragFramePosted = false
@@ -177,6 +189,10 @@ class ScreenDetectorService : LifecycleService() {
 
     override fun onDestroy() {
         cancelAutoCollapse()
+        cancelCollapseTransition()
+        controlRootView?.removeCallbacks(finishFloatingControlInteractionRunnable)
+        ScreenDetectorSession.setFloatingControlInteractionActive(false)
+        statusView?.removeCallbacks(clearTransientStatusRunnable)
         cancelSnapAnimator()
         controlRootView?.removeCallbacks(applyPendingDragPosition)
         removeViewIfAttached(markerOverlayView)
@@ -254,6 +270,11 @@ class ScreenDetectorService : LifecycleService() {
 
     private fun removeControlWindow() {
         cancelAutoCollapse()
+        cancelCollapseTransition()
+        controlRootView?.removeCallbacks(finishFloatingControlInteractionRunnable)
+        ScreenDetectorSession.setFloatingControlInteractionActive(false)
+        statusView?.removeCallbacks(clearTransientStatusRunnable)
+        transientStatusText = null
         cancelSnapAnimator()
         controlRootView?.removeCallbacks(applyPendingDragPosition)
         removeViewIfAttached(controlRootView)
@@ -435,17 +456,6 @@ class ScreenDetectorService : LifecycleService() {
                 }
             )
 
-            val collapseButton = createControlIconButton(
-                iconRes = R.drawable.icon_hide_24px,
-                description = "折叠悬浮窗"
-            ).apply {
-                setOnClickListener { setControlCollapsed(true) }
-            }
-            controlsRow.addView(
-                collapseButton,
-                LinearLayout.LayoutParams(dpToPx(32), dpToPx(32))
-            )
-
             autoCollapseButton = createControlIconButton(
                 iconRes = R.drawable.round_picture_in_picture_24,
                 description = "关闭自动折叠"
@@ -454,9 +464,7 @@ class ScreenDetectorService : LifecycleService() {
             }
             controlsRow.addView(
                 autoCollapseButton,
-                LinearLayout.LayoutParams(dpToPx(32), dpToPx(32)).apply {
-                    leftMargin = dpToPx(CONTROL_BUTTON_GAP_DP)
-                }
+                LinearLayout.LayoutParams(dpToPx(32), dpToPx(32))
             )
             renderAutoCollapseButton()
 
@@ -654,6 +662,11 @@ class ScreenDetectorService : LifecycleService() {
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                root.removeCallbacks(finishFloatingControlInteractionRunnable)
+                ScreenDetectorSession.setFloatingControlInteractionActive(true)
+                if (collapseTransitionTarget != null) {
+                    cancelCollapseTransition()
+                }
                 cancelAutoCollapse()
                 cancelSnapAnimator()
                 dragStartRawX = event.rawX
@@ -695,6 +708,11 @@ class ScreenDetectorService : LifecycleService() {
                 }
                 view.parent?.requestDisallowInterceptTouchEvent(false)
                 restartAutoCollapseCountdown()
+                root.removeCallbacks(finishFloatingControlInteractionRunnable)
+                root.postDelayed(
+                    finishFloatingControlInteractionRunnable,
+                    FLOATING_CONTROL_SCAN_RESUME_DELAY_MS
+                )
                 return true
             }
         }
@@ -824,39 +842,134 @@ class ScreenDetectorService : LifecycleService() {
 
     private fun setControlCollapsed(collapsed: Boolean) {
         cancelAutoCollapse()
-        if (isControlCollapsed == collapsed) {
+        if (collapseTransitionTarget == collapsed) {
             return
         }
+        if (collapseTransitionTarget != null) {
+            cancelCollapseTransition()
+        }
+        if (isControlCollapsed == collapsed) return
+
         val root = controlRootView ?: return
         val params = controlLayoutParams ?: return
         val windowBounds = getControlAvailableWindowBounds()
         isSnappedToRight =
             params.x + root.width / 2 > windowBounds.width / 2
-        isControlCollapsed = collapsed
-        expandedControlBar?.visibility = if (collapsed) View.GONE else View.VISIBLE
-        collapsedControlView?.visibility = if (collapsed) View.VISIBLE else View.GONE
-        latestRenderState?.let(::renderControlBar)
-        renderCurrentMarkerOverlay()
-        root.requestLayout()
-        root.post {
-            val currentWindowBounds = getControlAvailableWindowBounds()
-            val positionRanges = getControlPositionRanges(
-                currentWindowBounds,
-                root.width,
-                root.height
-            )
-            val targetX = if (isSnappedToRight) {
-                positionRanges.horizontal.last
-            } else {
-                positionRanges.horizontal.first
+        val outgoing = if (isControlCollapsed) collapsedControlView else expandedControlBar
+        val incoming = if (collapsed) collapsedControlView else expandedControlBar
+        if (outgoing == null || incoming == null) return
+
+        collapseTransitionTarget = collapsed
+        val generation = collapseTransitionGeneration
+        prepareCollapseTransitionPivot(outgoing)
+        outgoing.animate()
+            .alpha(0f)
+            .scaleX(COLLAPSE_EXIT_SCALE)
+            .scaleY(COLLAPSE_EXIT_SCALE)
+            .setDuration(COLLAPSE_EXIT_ANIMATION_DURATION_MS)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                if (generation != collapseTransitionGeneration ||
+                    collapseTransitionTarget != collapsed
+                ) {
+                    return@withEndAction
+                }
+                isControlCollapsed = collapsed
+                outgoing.visibility = View.GONE
+                incoming.visibility = View.VISIBLE
+                incoming.alpha = 0f
+                incoming.scaleX = COLLAPSE_ENTER_SCALE
+                incoming.scaleY = COLLAPSE_ENTER_SCALE
+                latestRenderState?.let(::renderControlBar)
+                renderCurrentMarkerOverlay()
+                root.requestLayout()
+                root.post {
+                    finishCollapseTransition(
+                        collapsed = collapsed,
+                        generation = generation,
+                        root = root,
+                        params = params,
+                        incoming = incoming
+                    )
+                }
             }
-            updateControlBarPosition(
-                root,
-                params,
-                targetX,
-                params.y.coerceIn(positionRanges.vertical)
-            )
-            publishControlBounds()
+            .start()
+    }
+
+    private fun finishCollapseTransition(
+        collapsed: Boolean,
+        generation: Int,
+        root: View,
+        params: WindowManager.LayoutParams,
+        incoming: View
+    ) {
+        if (generation != collapseTransitionGeneration ||
+            collapseTransitionTarget != collapsed
+        ) {
+            return
+        }
+        val currentWindowBounds = getControlAvailableWindowBounds()
+        val positionRanges = getControlPositionRanges(
+            currentWindowBounds,
+            root.width,
+            root.height
+        )
+        val targetX = if (isSnappedToRight) {
+            positionRanges.horizontal.last
+        } else {
+            positionRanges.horizontal.first
+        }
+        updateControlBarPosition(
+            root,
+            params,
+            targetX,
+            params.y.coerceIn(positionRanges.vertical)
+        )
+        prepareCollapseTransitionPivot(incoming)
+        incoming.animate()
+            .alpha(if (collapsed) COLLAPSED_WINDOW_ALPHA else 1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(COLLAPSE_ENTER_ANIMATION_DURATION_MS)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                if (generation == collapseTransitionGeneration &&
+                    collapseTransitionTarget == collapsed
+                ) {
+                    collapseTransitionTarget = null
+                    restoreCollapseTransitionVisuals()
+                    publishControlBounds()
+                    latestRenderState?.let(::updateAutoCollapse)
+                }
+            }
+            .start()
+    }
+
+    private fun prepareCollapseTransitionPivot(view: View) {
+        view.pivotX = if (isSnappedToRight) view.width.toFloat() else 0f
+        view.pivotY = view.height / 2f
+    }
+
+    private fun cancelCollapseTransition() {
+        collapseTransitionGeneration++
+        collapseTransitionTarget = null
+        expandedControlBar?.animate()?.cancel()
+        collapsedControlView?.animate()?.cancel()
+        restoreCollapseTransitionVisuals()
+    }
+
+    private fun restoreCollapseTransitionVisuals() {
+        expandedControlBar?.apply {
+            alpha = 1f
+            scaleX = 1f
+            scaleY = 1f
+            visibility = if (isControlCollapsed) View.GONE else View.VISIBLE
+        }
+        collapsedControlView?.apply {
+            alpha = COLLAPSED_WINDOW_ALPHA
+            scaleX = 1f
+            scaleY = 1f
+            visibility = if (isControlCollapsed) View.VISIBLE else View.GONE
         }
     }
 
@@ -864,12 +977,26 @@ class ScreenDetectorService : LifecycleService() {
         autoCollapseEnabled = !autoCollapseEnabled
         PreferenceUtils.setAutoCollapseFloatingControl(this, autoCollapseEnabled)
         renderAutoCollapseButton()
+        val message = if (autoCollapseEnabled) {
+            "自动折叠已开启"
+        } else {
+            "自动折叠已关闭"
+        }
+        showTransientControlMessage(message)
         Toast.makeText(
             this,
-            if (autoCollapseEnabled) "自动折叠已开启" else "自动折叠已关闭",
+            message,
             Toast.LENGTH_SHORT
         ).show()
         restartAutoCollapseCountdown()
+    }
+
+    private fun showTransientControlMessage(message: String) {
+        val view = statusView ?: return
+        view.removeCallbacks(clearTransientStatusRunnable)
+        transientStatusText = message
+        view.text = message
+        view.postDelayed(clearTransientStatusRunnable, TRANSIENT_STATUS_DURATION_MS)
     }
 
     private fun renderAutoCollapseButton() {
@@ -892,15 +1019,20 @@ class ScreenDetectorService : LifecycleService() {
             detectionState = renderState.state,
             assistanceState = renderState.assistanceState
         )) {
-            FloatingControlAutoCollapsePolicy.Decision.NONE -> cancelAutoCollapse()
+            FloatingControlAutoCollapsePolicy.Decision.NONE -> {
+                cancelAutoCollapse()
+                if (collapseTransitionTarget == true) {
+                    setControlCollapsed(false)
+                }
+            }
             FloatingControlAutoCollapsePolicy.Decision.EXPAND -> {
                 cancelAutoCollapse()
-                if (isControlCollapsed) {
+                if (isControlCollapsed || collapseTransitionTarget == true) {
                     setControlCollapsed(false)
                 }
             }
             FloatingControlAutoCollapsePolicy.Decision.COLLAPSE_AFTER_DELAY -> {
-                if (isControlCollapsed) {
+                if (isControlCollapsed || collapseTransitionTarget == true) {
                     cancelAutoCollapse()
                 } else if (!autoCollapseScheduled) {
                     val root = controlRootView ?: return
@@ -958,12 +1090,13 @@ class ScreenDetectorService : LifecycleService() {
     }
 
     private fun renderControlBar(renderState: RenderState) {
+        updateControlWindowScanVisibility(renderState)
         if (isControlCollapsed) {
             renderCollapsedState(renderState)
             return
         }
         val state = renderState.state
-        statusView?.text = buildStatusText(renderState)
+        statusView?.text = transientStatusText ?: buildStatusText(renderState)
         when (state) {
             ScreenDetectorSession.DetectionState.RUNNING -> {
                 actionButton?.setImageResource(R.drawable.round_pause_24)
@@ -988,6 +1121,29 @@ class ScreenDetectorService : LifecycleService() {
         renderAnswerClickButton(renderState)
         renderManualPageButtons(renderState)
         renderCollapsedState(renderState)
+    }
+
+    private fun updateControlWindowScanVisibility(renderState: RenderState) {
+        val root = controlRootView ?: return
+        val shouldHide =
+            FloatingControlAutoCollapsePolicy.shouldHideCollapsedControlDuringScan(
+                isCollapsed = isControlCollapsed,
+                mode = renderState.mode,
+                screenScanState = renderState.screenScanState
+            )
+        val targetVisibility = if (shouldHide) View.INVISIBLE else View.VISIBLE
+        if (root.visibility == targetVisibility) return
+
+        root.visibility = targetVisibility
+        if (shouldHide) {
+            ScreenDetectorSession.clearOverlayBounds()
+        } else {
+            root.post {
+                if (controlRootView === root && root.visibility == View.VISIBLE) {
+                    publishControlBounds()
+                }
+            }
+        }
     }
 
     private fun renderCollapsedState(renderState: RenderState) {
@@ -1377,6 +1533,10 @@ class ScreenDetectorService : LifecycleService() {
     private fun publishControlBounds() {
         val root = controlRootView ?: return
         val params = controlLayoutParams ?: return
+        if (root.visibility != View.VISIBLE) {
+            ScreenDetectorSession.clearOverlayBounds()
+            return
+        }
         val width = if (root.width > 0) root.width else params.width
         val height = if (root.height > 0) root.height else params.height
         if (width <= 0 || height <= 0) {
@@ -1506,6 +1666,12 @@ class ScreenDetectorService : LifecycleService() {
         private const val MARKER_WINDOW_ALPHA = 0.74f
         private const val SNAP_ANIMATION_DURATION_MS = 180L
         private const val AUTO_COLLAPSE_DELAY_MS = 3_000L
+        private const val TRANSIENT_STATUS_DURATION_MS = 1_800L
+        private const val COLLAPSE_EXIT_ANIMATION_DURATION_MS = 110L
+        private const val COLLAPSE_ENTER_ANIMATION_DURATION_MS = 150L
+        private const val FLOATING_CONTROL_SCAN_RESUME_DELAY_MS = 220L
+        private const val COLLAPSE_EXIT_SCALE = 0.86f
+        private const val COLLAPSE_ENTER_SCALE = 0.82f
         private const val CONTROL_HORIZONTAL_PADDING_DP = 4
         private const val CONTROL_VERTICAL_PADDING_DP = 8
         private const val INITIAL_CONTROL_Y_RATIO = 0.82f

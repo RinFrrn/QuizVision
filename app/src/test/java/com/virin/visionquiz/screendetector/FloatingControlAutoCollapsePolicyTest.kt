@@ -70,4 +70,45 @@ class FloatingControlAutoCollapsePolicyTest {
 
         assertEquals(FloatingControlAutoCollapsePolicy.Decision.NONE, decision)
     }
+
+    @Test
+    fun onlyCollapsedScreenOcrControlIsHiddenDuringScan() {
+        val activeScan = ScreenDetectorSession.ScreenScanState(
+            generation = 3,
+            hideResults = true
+        )
+
+        assertEquals(
+            true,
+            FloatingControlAutoCollapsePolicy.shouldHideCollapsedControlDuringScan(
+                isCollapsed = true,
+                mode = ScreenDetectorSession.DetectionMode.SCREEN_OCR,
+                screenScanState = activeScan
+            )
+        )
+        assertEquals(
+            false,
+            FloatingControlAutoCollapsePolicy.shouldHideCollapsedControlDuringScan(
+                isCollapsed = false,
+                mode = ScreenDetectorSession.DetectionMode.SCREEN_OCR,
+                screenScanState = activeScan
+            )
+        )
+        assertEquals(
+            false,
+            FloatingControlAutoCollapsePolicy.shouldHideCollapsedControlDuringScan(
+                isCollapsed = true,
+                mode = ScreenDetectorSession.DetectionMode.ACCESSIBILITY,
+                screenScanState = activeScan
+            )
+        )
+        assertEquals(
+            false,
+            FloatingControlAutoCollapsePolicy.shouldHideCollapsedControlDuringScan(
+                isCollapsed = true,
+                mode = ScreenDetectorSession.DetectionMode.SCREEN_OCR,
+                screenScanState = activeScan.copy(hideResults = false)
+            )
+        )
+    }
 }

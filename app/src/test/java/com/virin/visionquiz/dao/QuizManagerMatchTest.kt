@@ -55,6 +55,30 @@ class QuizManagerMatchTest {
         assertEquals(listOf(1, 2), results.map { it.first.id })
     }
 
+    @Test
+    fun compactRetrievalIndexHasBoundedStorageForLargeLibraries() {
+        val quizzes = (1..5_000).map { id ->
+            quiz(
+                id,
+                "大型题库中的安全生产技术检查要求${id}号以及电流互感器二次回路运行注意事项"
+            )
+        }
+
+        val index = QuizManager.buildMatchIndex(quizzes)
+
+        assertTrue(
+            index.retrievalPostingCapacityForTesting() <=
+                quizzes.size * QuizManager.MAX_RETRIEVAL_FEATURES_PER_QUIZ
+        )
+        assertEquals(
+            4_321,
+            QuizManager.matchQuiz(
+                input = "安全生产技术检查要求4321号以及电流互感器二次回路运行注意事项",
+                index = index
+            ).first().first.id
+        )
+    }
+
     private fun quiz(id: Int, prompt: String) = Quiz(
         id = id,
         prompt = prompt,

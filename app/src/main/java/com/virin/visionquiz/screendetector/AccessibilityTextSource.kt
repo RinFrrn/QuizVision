@@ -67,6 +67,10 @@ class AccessibilityTextSource(
     private var fastScanPending = false
     private var fastPageActivityNotified = false
     private var fastCandidate: FastCandidate? = null
+    private var floatingControlInteractionActive = false
+    private var deferredRegularScan = false
+    private var deferredFastScan = false
+    private var deferredPageActivityNotification = false
     private var publishedSnapshotVersion = 0
     private var lastPublishedFingerprint: String? = null
 
@@ -104,6 +108,7 @@ class AccessibilityTextSource(
     fun start() {
         active = true
         paused = false
+        resetFloatingControlDeferral()
         lastPageActivityAtMs = 0L
         publishedSnapshotVersion = 0
         lastPublishedFingerprint = null
@@ -117,6 +122,7 @@ class AccessibilityTextSource(
 
     fun pause() {
         paused = true
+        resetFloatingControlDeferral()
         handler.removeCallbacks(eventScanRunnable)
         handler.removeCallbacks(rateLimitedScanRunnable)
         resetFastScan(invalidateGeneration = true)
@@ -152,9 +158,38 @@ class AccessibilityTextSource(
         beginFastPageScan(notifyPageActivity = false)
     }
 
+    fun setFloatingControlInteractionActive(interacting: Boolean) {
+        if (floatingControlInteractionActive == interacting) return
+        floatingControlInteractionActive = interacting
+        if (interacting) {
+            deferredRegularScan = true
+            deferredFastScan = deferredFastScan || fastScanPending
+            handler.removeCallbacks(eventScanRunnable)
+            handler.removeCallbacks(rateLimitedScanRunnable)
+            scheduledScanAtMs = 0L
+            scheduledScanAllowPaused = false
+            resetFastScan(invalidateGeneration = true)
+            return
+        }
+
+        val shouldResumeFastScan = deferredFastScan
+        val shouldNotifyPageActivity = deferredPageActivityNotification
+        val shouldResumeRegularScan = deferredRegularScan
+        deferredRegularScan = false
+        deferredFastScan = false
+        deferredPageActivityNotification = false
+        if (!active || paused) return
+        if (shouldResumeFastScan) {
+            beginFastPageScan(notifyPageActivity = shouldNotifyPageActivity)
+        } else if (shouldResumeRegularScan) {
+            requestFreshScan()
+        }
+    }
+
     fun stop() {
         active = false
         paused = false
+        resetFloatingControlDeferral()
         lastPageActivityAtMs = 0L
         lastPublishedFingerprint = null
         resetFastScan()
@@ -180,6 +215,15 @@ class AccessibilityTextSource(
         if (!active || paused) {
             return
         }
+        if (floatingControlInteractionActive) {
+            if (hasPageMovement) {
+                deferredFastScan = true
+                deferredPageActivityNotification = true
+            } else {
+                deferredRegularScan = true
+            }
+            return
+        }
         if (hasPageMovement) {
             beginFastPageScan(notifyPageActivity = true)
             return
@@ -190,6 +234,10 @@ class AccessibilityTextSource(
 
     private fun scanOnce(allowPaused: Boolean) {
         if (!active || (paused && !allowPaused)) {
+            return
+        }
+        if (floatingControlInteractionActive) {
+            deferredRegularScan = true
             return
         }
         if (fastScanPending && !allowPaused) {
@@ -288,6 +336,12 @@ class AccessibilityTextSource(
 
     private fun beginFastPageScan(notifyPageActivity: Boolean) {
         if (!active || paused) {
+            return
+        }
+        if (floatingControlInteractionActive) {
+            deferredFastScan = true
+            deferredPageActivityNotification =
+                deferredPageActivityNotification || notifyPageActivity
             return
         }
         if (!fastScanPending) {
@@ -510,6 +564,13 @@ class AccessibilityTextSource(
                 matchGeneration.get() + 1
             )
         }
+    }
+
+    private fun resetFloatingControlDeferral() {
+        floatingControlInteractionActive = false
+        deferredRegularScan = false
+        deferredFastScan = false
+        deferredPageActivityNotification = false
     }
 
     private fun isScanInFlight(): Boolean {

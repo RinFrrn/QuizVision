@@ -29,4 +29,14 @@ internal object FloatingControlAutoCollapsePolicy {
             Decision.COLLAPSE_AFTER_DELAY
         }
     }
+
+    fun shouldHideCollapsedControlDuringScan(
+        isCollapsed: Boolean,
+        mode: ScreenDetectorSession.DetectionMode,
+        screenScanState: ScreenDetectorSession.ScreenScanState
+    ): Boolean {
+        return isCollapsed &&
+            mode == ScreenDetectorSession.DetectionMode.SCREEN_OCR &&
+            screenScanState.hideResults
+    }
 }
