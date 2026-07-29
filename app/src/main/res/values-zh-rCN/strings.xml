@@ -3,14 +3,14 @@
     <string name="app_name">题眼识</string>
 
     <string name="quiz_count">%1$d 题</string>
-    <string name="camera_button_description">相机按钮</string>
-    <string name="accessibility_search_button">无障碍搜题</string>
-    <string name="accessibility_search_button_description">无障碍搜题按钮</string>
+    <string name="camera_button_description">相机搜题按钮</string>
+    <string name="accessibility_search_button">无障碍答题</string>
+    <string name="accessibility_search_button_description">无障碍答题按钮</string>
     <string name="accessibility_permission_required">请开启 %1$s 无障碍服务</string>
-    <string name="accessibility_search_intro_title">开启无障碍搜题</string>
+    <string name="accessibility_search_intro_title">开启无障碍答题</string>
     <string name="accessibility_search_intro_message">%1$s 会读取 Android 无障碍系统暴露的屏幕文字，与当前题库匹配，并通过悬浮窗展示结果。使用前需要在系统设置中手动开启 %1$s 无障碍服务。</string>
     <string name="accessibility_search_prompt_message">无障碍服务未开启。开启后即可读取屏幕可访问文字，并与当前题库匹配。</string>
-    <string name="accessibility_search_ready_message">悬浮窗权限为必需，通知权限可选。选择显示方式后开启无障碍搜题。</string>
+    <string name="accessibility_search_ready_message">悬浮窗权限为必需，通知权限可选。选择显示方式后开启无障碍答题。</string>
     <string name="accessibility_search_enable_cta">去开启无障碍权限</string>
     <string name="accessibility_search_start_cta">开启</string>
     <string name="accessibility_search_enable_notifications">开启通知（可选）</string>
@@ -72,15 +72,26 @@
     <string name="import_choose_file">选择文件</string>
     <string name="import_library_fab">导入题库</string>
     <string name="import_library_title">导入题库</string>
+    <string name="import_sheet_description">支持 Word、Excel 文件，也可粘贴文本快速创建。</string>
+    <string name="import_from_file_title">从文件导入</string>
+    <string name="import_from_file_supporting_text">选择 .docx、.xlsx 或 .xls 文件</string>
+    <string name="import_paste_text_title">粘贴文本创建</string>
+    <string name="import_paste_text_supporting_text">自动识别题干、选项与答案</string>
     <string name="import_text_confirm">导入文本</string>
     <string name="import_text_empty_error">请先粘贴题库文本</string>
     <string name="import_text_format_help_content_description">支持的文本格式</string>
     <string name="import_text_format_help_title">支持的文本格式</string>
     <string name="import_text_format_help_message">每道题需要以题号开头，例如 1.、1、（1）、第一题、一、。\n选项支持 A-H，可用 .、顿号、冒号或括号标记，既可以每行一个选项，也可以写成 A. 选项 B. 选项。\n答案行需要以“答案”“正确答案”“参考答案”“标准答案”“正确选项”或“答案为”开头。答案支持 A-H、AC 这类多选，以及“正确”“错误”“对”“错”“√”“×”“TRUE”“FALSE”。</string>
-    <string name="permission_notice_title">部分权限未开启</string>
-    <string name="permission_notice_camera">相机识别需要相机权限。</string>
+    <string name="permission_notice_title">功能权限</string>
+    <string name="permission_notice_description">使用搜题功能需要以下权限，全部允许后此卡片自动隐藏。</string>
+    <string name="permission_camera_title">相机</string>
+    <string name="permission_camera_description">用于相机搜题</string>
+    <string name="permission_overlay_title">悬浮窗</string>
+    <string name="permission_overlay_description">在其他应用上显示屏幕搜题控件</string>
+    <string name="permission_notice_allowed">已允许</string>
+    <string name="permission_notice_camera">相机搜题需要相机权限。</string>
     <string name="permission_notice_overlay">屏幕搜题需要悬浮窗权限。</string>
-    <string name="permission_notice_camera_and_overlay">相机识别需要相机权限，屏幕搜题需要悬浮窗权限。</string>
+    <string name="permission_notice_camera_and_overlay">相机搜题需要相机权限，屏幕搜题需要悬浮窗权限。</string>
     <string name="permission_notice_allow_camera">允许相机</string>
     <string name="permission_notice_open_app_settings">去设置</string>
     <string name="permission_notice_enable_overlay">开启悬浮窗</string>
@@ -99,8 +110,8 @@
     <string name="pref_title_camerax_front_camera_target_resolution">CameraX 前置摄像头目标分辨率</string>
     <string name="pref_title_camera_live_viewport">启用实时视图</string>
     <string name="pref_summary_camera_live_viewport">检测时不阻塞摄像头预览绘制</string>
-    <string name="pref_title_camera_search_performance_panel">显示相机性能面板</string>
-    <string name="pref_summary_camera_search_performance_panel">在摄像头搜题页显示输入分辨率、帧率和延迟信息。</string>
+    <string name="pref_title_camera_search_performance_panel">显示相机搜题性能面板</string>
+    <string name="pref_summary_camera_search_performance_panel">在相机搜题页面显示输入分辨率、帧率和延迟信息。</string>
     <string name="pref_category_text_recognition">文字识别</string>
     <string name="pref_category_general_display">通用显示</string>
     <string name="pref_category_screen_search">屏幕搜题</string>
@@ -108,10 +119,10 @@
     <string name="pref_title_screen_search_detect_changes">仅在屏幕变化时重新识别</string>
     <string name="pref_summary_screen_search_detect_changes">忽略小动画，仅在屏幕出现稳定且明显的变化后重新识别。</string>
     <string name="pref_title_screen_search_show_answer_frames">框出正确答案</string>
-    <string name="pref_summary_screen_search_show_answer_frames">屏幕 OCR 时定位并框出正确选项，不影响无障碍搜题。</string>
+    <string name="pref_summary_screen_search_show_answer_frames">屏幕 OCR 时定位并框出正确选项，不影响无障碍答题。</string>
     <string name="pref_title_screen_capture_frame_rate">屏幕采集帧率</string>
-    <string name="pref_title_accessibility_search_interval">无障碍搜题间隔</string>
-    <string name="pref_category_accessibility_search">无障碍搜题</string>
+    <string name="pref_title_accessibility_search_interval">无障碍答题间隔</string>
+    <string name="pref_category_accessibility_search">无障碍答题</string>
     <string name="pref_title_accessibility_answer_dot_color">答案小点颜色</string>
     <string name="pref_accessibility_answer_dot_color_white">白色</string>
     <string name="pref_accessibility_answer_dot_color_light_gray">浅灰</string>
@@ -120,19 +131,19 @@
     <string name="pref_accessibility_answer_dot_color_medium_gray">中灰</string>
     <string name="pref_accessibility_answer_dot_color_dark_gray">深灰</string>
     <string name="pref_accessibility_answer_dot_color_black">黑色</string>
-    <string name="pref_title_accessibility_vertical_swipe_mode">无障碍上滑方式</string>
+    <string name="pref_title_accessibility_vertical_swipe_mode">无障碍答题上滑方式</string>
     <string name="pref_summary_accessibility_vertical_swipe_mode" formatted="false">智能滑动优先对齐最后一题，无法计算时回退到固定距离。</string>
     <string name="pref_accessibility_vertical_swipe_fixed">固定距离滑动</string>
     <string name="pref_accessibility_vertical_swipe_smart">智能滑动</string>
     <string name="pref_category_match_threshold">匹配阈值</string>
-    <string name="pref_title_camera_search_min_match_score">摄像头搜题匹配阈值</string>
+    <string name="pref_title_camera_search_min_match_score">相机搜题匹配阈值</string>
     <string name="pref_title_screen_search_min_match_score">屏幕搜题匹配阈值</string>
-    <string name="pref_title_accessibility_search_min_match_score">无障碍搜题匹配阈值</string>
+    <string name="pref_title_accessibility_search_min_match_score">无障碍答题匹配阈值</string>
     <string name="pref_summary_search_min_match_score">越高越严格，误匹配更少但可能漏题；越低越宽松，命中更多但误匹配风险更高。</string>
     <string name="pref_threshold_restore_default">恢复默认值</string>
     <string name="search_settings_menu_title">搜题设置</string>
     <string name="settings_hub_title">设置</string>
-    <string name="settings_hub_search_summary">相机、屏幕、无障碍搜题、显示方式与匹配阈值。</string>
+    <string name="settings_hub_search_summary">相机搜题、屏幕搜题、无障碍答题、显示方式与匹配阈值。</string>
     <string name="settings_hub_import_summary">导入时用于识别表头、答案、选项和题型的候选词。</string>
     <string name="settings_hub_ai_summary">AI 配置、提示词、连接测试与生成内容缓存。</string>
     <string name="ai_settings_title">AI 设置</string>
@@ -211,6 +222,6 @@
     <string name="pref_title_brief_answer_display">简略显示答案</string>
     <string name="pref_summary_brief_answer_display">在搜题覆盖层缩短较长答案，减少遮挡。</string>
     <string name="pref_title_quiz_overlay_text_size">搜题覆盖层文字大小</string>
-    <string name="screen_button_description">OCR按钮</string>
+    <string name="screen_button_description">屏幕搜题按钮</string>
 
 </resources>

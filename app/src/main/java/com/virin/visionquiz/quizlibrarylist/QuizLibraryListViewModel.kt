@@ -11,17 +11,58 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.virin.visionquiz.R
 import com.virin.visionquiz.ai.AiExplanationType
 import com.virin.visionquiz.dao.Quiz
+import com.virin.visionquiz.dao.QuizAnswerRecord
 import com.virin.visionquiz.dao.QuizLibrary
 import com.virin.visionquiz.util.await
 import com.virin.visionquiz.util.showProgressAlertDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 data class QuizLibraryWithReviewCount(
     val library: QuizLibrary,
     val reviewCount: Int,
-    val aiExplanationProgress: AiExplanationProgress = AiExplanationProgress()
+    val aiExplanationProgress: AiExplanationProgress = AiExplanationProgress(),
+    val masteryPercent: Int = 0,
+    val todayLearnedCount: Int = 0
 )
+
+internal fun startOfLocalDayMillis(now: Long = System.currentTimeMillis()): Long {
+    return Calendar.getInstance().apply {
+        timeInMillis = now
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+}
+
+internal fun calculateTodayLearnedCount(
+    records: List<QuizAnswerRecord>,
+    todayStartMillis: Long = startOfLocalDayMillis()
+): Int = records.count { it.answeredAt >= todayStartMillis }
+
+internal fun calculateMasteryPercent(
+    records: List<QuizAnswerRecord>,
+    totalQuestionCount: Int
+): Int {
+    if (totalQuestionCount <= 0 || records.isEmpty()) {
+        return 0
+    }
+
+    val masteredCount = records
+        .groupBy { it.quizId }
+        .values
+        .mapNotNull { attempts ->
+            attempts.maxWithOrNull(
+                compareBy<QuizAnswerRecord> { it.answeredAt }
+                    .thenBy { it.id }
+            )
+        }
+        .count { it.isCorrect }
+
+    return (masteredCount * 100 / totalQuestionCount).coerceIn(0, 100)
+}
 
 data class AiExplanationProgress(
     val total: Int = 0,
@@ -106,6 +147,21 @@ class QuizLibraryListViewModel(application: Application) : AndroidViewModel(appl
                             currentList.add(QuizLibraryWithReviewCount(library, count ?: 0))
                         }
                         value = currentList
+                    }
+                    val answerRecordsLiveData = repository.getAnswerRecordsByLibraryId(library.id)
+                    addSource(answerRecordsLiveData) { records ->
+                        val currentList = value.orEmpty().toMutableList()
+                        val index = currentList.indexOfFirst { it.library.id == library.id }
+                        if (index >= 0) {
+                            currentList[index] = currentList[index].copy(
+                                masteryPercent = calculateMasteryPercent(
+                                    records = records.orEmpty(),
+                                    totalQuestionCount = library.quizCount
+                                ),
+                                todayLearnedCount = calculateTodayLearnedCount(records.orEmpty())
+                            )
+                            value = currentList
+                        }
                     }
                     // Fetch AI explanation progress
                     viewModelScope.launch {

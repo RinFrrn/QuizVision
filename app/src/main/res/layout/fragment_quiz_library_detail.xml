@@ -74,7 +74,7 @@
                         android:padding="8dp"
                         android:contentDescription="@string/camera_button_description"
                         android:minHeight="48dp"
-                        android:text="扫描搜题"
+                        android:text="相机搜题"
                         app:icon="@drawable/round_photo_camera_24"
                         app:iconGravity="textStart"
                         app:iconPadding="8dp"

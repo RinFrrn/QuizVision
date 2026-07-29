@@ -3,6 +3,9 @@ package com.virin.visionquiz.quizlibrarylist
 import RenameDialogFragment
 import android.Manifest
 import android.annotation.SuppressLint
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.ClipboardManager
 import android.content.BroadcastReceiver
@@ -13,6 +16,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -27,6 +31,8 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.PathInterpolator
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -36,6 +42,7 @@ import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.MenuCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -48,6 +55,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
@@ -75,6 +83,10 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.max
 
+internal fun shouldShowPermissionNotice(
+    cameraAllowed: Boolean,
+    overlayAllowed: Boolean
+): Boolean = !(cameraAllowed && overlayAllowed)
 
 /**
  * A simple [Fragment] subclass.
@@ -96,8 +108,9 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 
     private var systemBottomInset = 0
     private var baseRecyclerPaddingBottom = 0
-    private var baseFabBottomMargin = 0
-    private var basePermissionNoticeBottomMargin = 0
+    private var permissionLayerTargetVisible = false
+    private val permissionLayerEnterInterpolator = PathInterpolator(0.2f, 0f, 0f, 1f)
+    private val permissionLayerExitInterpolator = PathInterpolator(0.4f, 0f, 1f, 1f)
 
     private val requestCameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -127,6 +140,12 @@ class QuizLibraryListFragment : BaseQuizFragment() {
     }
 
     override fun onDestroyView() {
+        _binding?.let {
+            it.permissionNoticeScrim.animate().setListener(null)
+            it.permissionNoticeCard.animate().setListener(null)
+            it.permissionNoticeScrim.animate().cancel()
+            it.permissionNoticeCard.animate().cancel()
+        }
         super.onDestroyView()
         try {
             requireContext().unregisterReceiver(aiProgressReceiver)
@@ -178,7 +197,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         refreshTopBarMenu()
         setupPermissionNotice()
 
-        // Observe selection state to update toolbar and FAB
+        // Observe selection state to update the toolbar. Compose hides its bottom dock.
         viewModel.isSelectionMode.observe(viewLifecycleOwner) { isSelecting ->
             if (isSelecting) {
                 configureQuizTopBar(
@@ -187,11 +206,9 @@ class QuizLibraryListFragment : BaseQuizFragment() {
                     navigationIconRes = R.drawable.round_close_24,
                     onNavigationClick = { viewModel.exitSelectionMode() }
                 )
-                binding.fabAddQuizLibrary.hide()
                 onBackPressedCallback.isEnabled = true
             } else {
                 configureQuizTopBar(binding.toolbar, TITLE, showNavigation = false)
-                binding.fabAddQuizLibrary.show()
                 onBackPressedCallback.isEnabled = false
             }
             refreshTopBarMenu()
@@ -227,7 +244,8 @@ class QuizLibraryListFragment : BaseQuizFragment() {
                         },
                         onAccessibilitySearchClick = { library ->
                             onItemClickListBtnListener.onButtonClicked(library, QuizLibraryListAdapter.ACCESSIBILITY_SEARCH_BUTTON)
-                        }
+                        },
+                        onImportClick = ::showImportBottomSheet
                     )
                 }
             }
@@ -246,10 +264,6 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 //                    })
 //            }
 //        })
-        binding.fabAddQuizLibrary.setOnClickListener {
-            showImportBottomSheet()
-        }
-
 //        binding.recyclerView.addOnItemTouchListener(object : RecyclerView.OnItemTouchListener {
 //            override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
 ////                val childView = rv.findChildViewUnder(e.x, e.y)
@@ -270,10 +284,6 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 
 
         baseRecyclerPaddingBottom = binding.recyclerView.paddingBottom
-        baseFabBottomMargin =
-            (binding.fabAddQuizLibrary.layoutParams as ViewGroup.MarginLayoutParams).bottomMargin
-        basePermissionNoticeBottomMargin =
-            (binding.permissionNoticeCard.layoutParams as ViewGroup.MarginLayoutParams).bottomMargin
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             // 获取状态栏和导航栏的WindowInsets
             val systemBarsInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -358,93 +368,141 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 
     private fun showImportBottomSheet() {
         val dialog = BottomSheetDialog(requireContext())
+        val surfaceColor = MaterialColors.getColor(
+            requireView(),
+            R.attr.colorSurfaceContainerLow
+        )
+        val outlineColor = MaterialColors.getColor(
+            requireView(),
+            R.attr.colorOutlineVariant
+        )
         val content = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24.dp, 12.dp, 24.dp, 24.dp + systemBottomInset)
+            setPadding(18.dp, 10.dp, 18.dp, 24.dp + systemBottomInset)
+            setBackgroundColor(surfaceColor)
         }
+        content.addView(View(requireContext()).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 2.dp.toFloat()
+                setColor(outlineColor)
+            }
+        }, LinearLayout.LayoutParams(32.dp, 4.dp).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            bottomMargin = 14.dp
+        })
         content.addView(TextView(requireContext()).apply {
             text = getString(R.string.import_library_title)
             setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleLarge)
             setTextColor(MaterialColors.getColor(this, R.attr.colorOnSurface))
-            setPadding(0, 8.dp, 0, 8.dp)
         })
-        content.addView(createImportSheetButton(
-            text = getString(R.string.import_choose_file),
-            iconRes = R.drawable.icon_document_search_24px
+        content.addView(TextView(requireContext()).apply {
+            text = getString(R.string.import_sheet_description)
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
+            setTextColor(MaterialColors.getColor(this, R.attr.colorOnSurfaceVariant))
+            setPadding(0, 4.dp, 0, 14.dp)
+        })
+        content.addView(createImportOptionCard(
+            title = getString(R.string.import_from_file_title),
+            supportingText = getString(R.string.import_from_file_supporting_text),
+            iconRes = R.drawable.icon_document_search_24px,
+            featured = true
         ) {
             dialog.dismiss()
             startChooseFileIntentForResult()
         })
-        content.addView(createImportSheetButton(
-            text = getString(R.string.import_text_input),
+        content.addView(createImportOptionCard(
+            title = getString(R.string.import_paste_text_title),
+            supportingText = getString(R.string.import_paste_text_supporting_text),
             iconRes = R.drawable.icon_edit_square_24px
         ) {
             dialog.dismiss()
             showImportDialog()
-        })
-        content.addView(createImportSheetButton(
-            text = getString(R.string.import_text_from_clipboard),
-            iconRes = R.drawable.icon_content_paste_24px
-        ) {
-            dialog.dismiss()
-            val clipText = readClipboardText()
-            if (clipText.isBlank()) {
-                Snackbar.make(
-                    binding.root,
-                    R.string.import_text_clipboard_empty,
-                    Snackbar.LENGTH_SHORT
-                ).show()
-            } else {
-                showImportDialog(clipText)
-            }
-        })
-        content.addView(View(requireContext()).apply {
-            setBackgroundColor(MaterialColors.getColor(this, R.attr.colorOutlineVariant))
-        }, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            1
-        ).apply {
-            topMargin = 8.dp
-            bottomMargin = 8.dp
-        })
-        content.addView(createImportSheetButton(
-            text = getString(R.string.import_settings_menu_title),
-            iconRes = R.drawable.round_settings_24
-        ) {
-            dialog.dismiss()
-            openImportSettings()
+        }.also {
+            (it.layoutParams as LinearLayout.LayoutParams).topMargin = 8.dp
         })
         dialog.setContentView(content)
         dialog.show()
     }
 
-    private fun createImportSheetButton(
-        text: String,
+    private fun createImportOptionCard(
+        title: String,
+        supportingText: String,
         iconRes: Int,
+        featured: Boolean = false,
         onClick: () -> Unit
-    ): MaterialButton {
-        return MaterialButton(
-            requireContext(),
-            null,
-            com.google.android.material.R.attr.borderlessButtonStyle
-        ).apply {
-            this.text = text
-            icon = ContextCompat.getDrawable(requireContext(), iconRes)
-            iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
-            iconPadding = 16.dp
-            gravity = Gravity.CENTER_VERTICAL
-            minHeight = 56.dp
-            minimumHeight = 56.dp
-            insetTop = 0
-            insetBottom = 0
-            setTextColor(MaterialColors.getColor(this, R.attr.colorOnSurface))
-            iconTint = ColorStateList.valueOf(
-                MaterialColors.getColor(this, R.attr.colorOnSurfaceVariant)
+    ): MaterialCardView {
+        val context = requireContext()
+        val primaryColor = MaterialColors.getColor(requireView(), R.attr.colorPrimary)
+        val containerColor = MaterialColors.getColor(
+            requireView(),
+            if (featured) R.attr.colorPrimaryContainer else R.attr.colorSurfaceContainerLowest
+        )
+        val contentColor = MaterialColors.getColor(
+            requireView(),
+            if (featured) R.attr.colorOnPrimaryContainer else R.attr.colorOnSurface
+        )
+        val supportingColor = if (featured) {
+            ColorUtils.setAlphaComponent(contentColor, 184)
+        } else {
+            MaterialColors.getColor(requireView(), R.attr.colorOnSurfaceVariant)
+        }
+        return MaterialCardView(context).apply {
+            radius = 18.dp.toFloat()
+            cardElevation = 0f
+            strokeWidth = if (featured) 1.dp else 0
+            strokeColor = ColorUtils.setAlphaComponent(primaryColor, 112)
+            minimumHeight = 72.dp
+            setCardBackgroundColor(containerColor)
+            rippleColor = ColorStateList.valueOf(
+                ColorUtils.setAlphaComponent(primaryColor, 24)
             )
+            isClickable = true
+            isFocusable = true
             setOnClickListener { onClick() }
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(16.dp, 13.dp, 16.dp, 13.dp)
+
+                addView(ImageView(context).apply {
+                    setImageResource(iconRes)
+                    imageTintList = ColorStateList.valueOf(
+                        if (featured) contentColor else primaryColor
+                    )
+                    contentDescription = null
+                }, LinearLayout.LayoutParams(24.dp, 24.dp).apply {
+                    marginEnd = 14.dp
+                })
+
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(TextView(context).apply {
+                        text = title
+                        setTextAppearance(
+                            com.google.android.material.R.style.TextAppearance_Material3_TitleMedium
+                        )
+                        setTextColor(contentColor)
+                    })
+                    addView(TextView(context).apply {
+                        text = supportingText
+                        setTextAppearance(
+                            com.google.android.material.R.style.TextAppearance_Material3_BodySmall
+                        )
+                        setTextColor(supportingColor)
+                    })
+                }, LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f
+                ))
+            }, ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                56.dp
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
     }
@@ -644,7 +702,6 @@ class QuizLibraryListFragment : BaseQuizFragment() {
                 navigationIconRes = R.drawable.round_close_24,
                 onNavigationClick = { viewModel.exitSelectionMode() }
             )
-            binding.fabAddQuizLibrary.hide()
             onBackPressedCallback.isEnabled = true
             refreshTopBarMenu()
         }
@@ -655,7 +712,6 @@ class QuizLibraryListFragment : BaseQuizFragment() {
 
         override fun onExitSelection() {
             configureQuizTopBar(binding.toolbar, TITLE, showNavigation = false)
-            binding.fabAddQuizLibrary.show()
             onBackPressedCallback.isEnabled = false
             refreshTopBarMenu()
         }
@@ -916,11 +972,8 @@ class QuizLibraryListFragment : BaseQuizFragment() {
     }
 
     private fun setupPermissionNotice() {
-        binding.permissionNoticeCard.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
-            if (bottom - top != oldBottom - oldTop) {
-                updateBottomSpacing()
-            }
-        }
+        binding.permissionNoticeLayer.bringToFront()
+        binding.permissionNoticeLayer.setOnClickListener { }
         binding.permissionCameraButton.setOnClickListener {
             requestCameraPermissionOrOpenSettings()
         }
@@ -937,37 +990,193 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         if (_binding == null) {
             return
         }
-        val cameraMissing = !hasCameraPermission()
-        val overlayMissing = !hasOverlayPermission()
-        val hasMissingPermission = cameraMissing || overlayMissing
+        val cameraAllowed = hasCameraPermission()
+        val overlayAllowed = hasOverlayPermission()
 
-        binding.permissionNoticeCard.visibility =
-            if (hasMissingPermission) View.VISIBLE else View.GONE
-        binding.permissionCameraButton.visibility =
-            if (cameraMissing) View.VISIBLE else View.GONE
-        binding.permissionCameraButton.setText(
-            if (canRequestCameraPermission()) {
+        updatePermissionButton(
+            button = binding.permissionCameraButton,
+            isAllowed = cameraAllowed,
+            actionTextRes = if (canRequestCameraPermission()) {
                 R.string.permission_notice_allow_camera
             } else {
                 R.string.permission_notice_open_app_settings
             }
         )
-        binding.permissionOverlayButton.visibility =
-            if (overlayMissing) View.VISIBLE else View.GONE
-
-        binding.permissionNoticeMessage.setText(
-            when {
-                cameraMissing && overlayMissing -> R.string.permission_notice_camera_and_overlay
-                cameraMissing -> R.string.permission_notice_camera
-                else -> R.string.permission_notice_overlay
-            }
+        updatePermissionButton(
+            button = binding.permissionOverlayButton,
+            isAllowed = overlayAllowed,
+            actionTextRes = R.string.permission_notice_enable_overlay
         )
 
-        binding.permissionNoticeCard.post {
-            if (_binding != null) {
-                updateBottomSpacing()
+        setPermissionLayerVisible(
+            shouldShowPermissionNotice(
+                cameraAllowed = cameraAllowed,
+                overlayAllowed = overlayAllowed
+            )
+        )
+    }
+
+    private fun setPermissionLayerVisible(visible: Boolean) {
+        if (visible) {
+            showPermissionLayer()
+        } else {
+            hidePermissionLayer()
+        }
+    }
+
+    private fun showPermissionLayer() {
+        if (_binding == null) {
+            return
+        }
+        val layer = binding.permissionNoticeLayer
+        val scrim = binding.permissionNoticeScrim
+        val card = binding.permissionNoticeCard
+        val wasHidden = layer.visibility != View.VISIBLE
+
+        permissionLayerTargetVisible = true
+        cancelPermissionLayerAnimations()
+        layer.bringToFront()
+        layer.visibility = View.VISIBLE
+        setHomeContentBlockedForAccessibility(true)
+
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            scrim.alpha = 1f
+            card.alpha = 1f
+            card.scaleX = 1f
+            card.scaleY = 1f
+            card.translationY = 0f
+        } else {
+            if (wasHidden) {
+                scrim.alpha = 0f
+                card.alpha = 0f
+                card.scaleX = 0.97f
+                card.scaleY = 0.97f
+                card.translationY = 20.dp.toFloat()
+            }
+            scrim.animate()
+                .alpha(1f)
+                .setDuration(220L)
+                .setInterpolator(permissionLayerEnterInterpolator)
+                .setListener(null)
+                .start()
+            card.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .translationY(0f)
+                .setDuration(320L)
+                .setInterpolator(permissionLayerEnterInterpolator)
+                .setListener(null)
+                .start()
+        }
+
+        if (wasHidden) {
+            card.post {
+                if (_binding != null && permissionLayerTargetVisible) {
+                    card.requestFocus()
+                }
             }
         }
+    }
+
+    private fun hidePermissionLayer() {
+        if (_binding == null) {
+            return
+        }
+        permissionLayerTargetVisible = false
+        cancelPermissionLayerAnimations()
+
+        if (binding.permissionNoticeLayer.visibility != View.VISIBLE) {
+            setHomeContentBlockedForAccessibility(false)
+            return
+        }
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            completePermissionLayerHide()
+            return
+        }
+
+        binding.permissionNoticeScrim.animate()
+            .alpha(0f)
+            .setDuration(180L)
+            .setInterpolator(permissionLayerExitInterpolator)
+            .setListener(null)
+            .start()
+        binding.permissionNoticeCard.animate()
+            .alpha(0f)
+            .scaleX(0.985f)
+            .scaleY(0.985f)
+            .translationY(12.dp.toFloat())
+            .setDuration(200L)
+            .setInterpolator(permissionLayerExitInterpolator)
+            .setListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (!permissionLayerTargetVisible) {
+                        completePermissionLayerHide()
+                    }
+                }
+            })
+            .start()
+    }
+
+    private fun cancelPermissionLayerAnimations() {
+        binding.permissionNoticeScrim.animate().setListener(null)
+        binding.permissionNoticeCard.animate().setListener(null)
+        binding.permissionNoticeScrim.animate().cancel()
+        binding.permissionNoticeCard.animate().cancel()
+    }
+
+    private fun completePermissionLayerHide() {
+        if (_binding == null) {
+            return
+        }
+        binding.permissionNoticeLayer.visibility = View.GONE
+        binding.permissionNoticeScrim.alpha = 1f
+        binding.permissionNoticeCard.alpha = 1f
+        binding.permissionNoticeCard.scaleX = 1f
+        binding.permissionNoticeCard.scaleY = 1f
+        binding.permissionNoticeCard.translationY = 0f
+        setHomeContentBlockedForAccessibility(false)
+    }
+
+    private fun setHomeContentBlockedForAccessibility(blocked: Boolean) {
+        val importance = if (blocked) {
+            View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        } else {
+            View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        }
+        listOf(
+            binding.toolbar,
+            binding.recyclerView,
+            binding.libraryListContainer,
+            binding.emptyLl
+        ).forEach { view ->
+            view.importantForAccessibility = importance
+        }
+    }
+
+    private fun updatePermissionButton(
+        button: MaterialButton,
+        isAllowed: Boolean,
+        actionTextRes: Int
+    ) {
+        val primaryColor = MaterialColors.getColor(button, R.attr.colorPrimary)
+        button.isEnabled = !isAllowed
+        button.alpha = 1f
+        button.setText(
+            if (isAllowed) {
+                R.string.permission_notice_allowed
+            } else {
+                actionTextRes
+            }
+        )
+        button.icon = if (isAllowed) {
+            ContextCompat.getDrawable(requireContext(), R.drawable.round_check_circle_outline_24)
+        } else {
+            null
+        }
+        button.iconPadding = if (isAllowed) 6.dp else 0
+        button.iconTint = ColorStateList.valueOf(primaryColor)
+        button.setTextColor(ColorStateList.valueOf(primaryColor))
     }
 
     private fun requestCameraPermissionIfNeeded(): Boolean {
@@ -1035,23 +1244,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
         if (_binding == null) {
             return
         }
-        val permissionCardLayoutParams =
-            binding.permissionNoticeCard.layoutParams as ViewGroup.MarginLayoutParams
-        val permissionCardBottomMargin = basePermissionNoticeBottomMargin + systemBottomInset
-        if (permissionCardLayoutParams.bottomMargin != permissionCardBottomMargin) {
-            permissionCardLayoutParams.bottomMargin = permissionCardBottomMargin
-            binding.permissionNoticeCard.layoutParams = permissionCardLayoutParams
-        }
-
-        val permissionNoticeLift =
-            if (binding.permissionNoticeCard.visibility == View.VISIBLE) {
-                max(binding.permissionNoticeCard.height, 0) + 16.dp
-            } else {
-                0
-            }
-
-        val recyclerPaddingBottom =
-            baseRecyclerPaddingBottom + systemBottomInset + permissionNoticeLift
+        val recyclerPaddingBottom = baseRecyclerPaddingBottom + systemBottomInset
         if (binding.recyclerView.paddingBottom != recyclerPaddingBottom) {
             binding.recyclerView.setPadding(
                 binding.recyclerView.paddingLeft,
@@ -1061,12 +1254,6 @@ class QuizLibraryListFragment : BaseQuizFragment() {
             )
         }
 
-        val fabLayoutParams = binding.fabAddQuizLibrary.layoutParams as ViewGroup.MarginLayoutParams
-        val fabBottomMargin = baseFabBottomMargin + systemBottomInset + permissionNoticeLift
-        if (fabLayoutParams.bottomMargin != fabBottomMargin) {
-            fabLayoutParams.bottomMargin = fabBottomMargin
-            binding.fabAddQuizLibrary.layoutParams = fabLayoutParams
-        }
     }
 
     private fun startScreenDetection(libId: Int) {
@@ -1180,7 +1367,7 @@ class QuizLibraryListFragment : BaseQuizFragment() {
     companion object {
         private const val TAG = "QuizLibraryListFragment"
         private const val REQUEST_CHOOSE_FILE = 10001
-        private const val TITLE = "全部题库"
+        private const val TITLE = "学习概览"
         private const val SORT_PREF_NAME = "quiz_library_sort"
         private const val SORT_BY_KEY = "sort_by"
         private const val SORT_ASC_KEY = "sort_ascending"

@@ -281,7 +281,7 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
             hostActivity?.applicationContext?.let { context ->
                 Toast.makeText(
                     context,
-                    e.message ?: "Unable to start accessibility search",
+                    e.message ?: "Unable to start accessibility answering",
                     Toast.LENGTH_LONG
                 ).show()
             }

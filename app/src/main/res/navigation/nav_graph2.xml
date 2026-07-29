@@ -8,7 +8,7 @@
     <fragment
         android:id="@+id/QuizLibListFragment"
         android:name="com.virin.visionquiz.quizlibrarylist.QuizLibraryListFragment"
-        android:label="全部题库"
+        android:label="学习概览"
         tools:layout="@layout/fragment_quiz_library_list">
 
         <action

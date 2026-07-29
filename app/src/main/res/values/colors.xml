@@ -117,6 +117,7 @@
     <color name="md_theme_light_surfaceTint">#276c2b</color>
     <color name="md_theme_light_outlineVariant">#c2c9bd</color>
     <color name="md_theme_light_scrim">#000000</color>
+    <color name="permission_notice_scrim">#52000000</color>
     <color name="md_theme_light_surface">#f9faf3</color>
     <color name="md_theme_light_onSurface">#1a1c19</color>
     <color name="md_theme_light_surfaceVariant">#dee5d8</color>

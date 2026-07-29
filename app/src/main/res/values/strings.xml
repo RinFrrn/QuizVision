@@ -46,15 +46,26 @@
     <string name="import_choose_file">Choose file</string>
     <string name="import_library_fab">Import library</string>
     <string name="import_library_title">Import library</string>
+    <string name="import_sheet_description">Import Word or Excel files, or quickly create a library by pasting text.</string>
+    <string name="import_from_file_title">Import from file</string>
+    <string name="import_from_file_supporting_text">Choose a .docx, .xlsx, or .xls file</string>
+    <string name="import_paste_text_title">Create from pasted text</string>
+    <string name="import_paste_text_supporting_text">Automatically detect questions, options, and answers</string>
     <string name="import_text_confirm">Import text</string>
     <string name="import_text_empty_error">Paste quiz text first</string>
     <string name="import_text_format_help_content_description">Supported text formats</string>
     <string name="import_text_format_help_title">Supported text formats</string>
     <string name="import_text_format_help_message">Each question should start with a number, such as 1., 1、, (1), 第一题, or 一、.\nOptions can use A-H with ., 、, :, or parentheses, one per line or inline, such as A. Option B. Option.\nThe answer line should start with 答案, 正确答案, 参考答案, 标准答案, 正确选项, or 答案为. Answers support A-H, multiple letters such as AC, and judgement values like 正确, 错误, 对, 错, √, ×, TRUE, or FALSE.</string>
-    <string name="permission_notice_title">Some permissions are off</string>
-    <string name="permission_notice_camera">Camera recognition needs camera access.</string>
+    <string name="permission_notice_title">Feature permissions</string>
+    <string name="permission_notice_description">These permissions enable search features. This card disappears after all are allowed.</string>
+    <string name="permission_camera_title">Camera</string>
+    <string name="permission_camera_description">Used for camera search</string>
+    <string name="permission_overlay_title">Floating window</string>
+    <string name="permission_overlay_description">Show screen-search controls over other apps</string>
+    <string name="permission_notice_allowed">Allowed</string>
+    <string name="permission_notice_camera">Camera search needs camera access.</string>
     <string name="permission_notice_overlay">Screen search needs floating window access.</string>
-    <string name="permission_notice_camera_and_overlay">Camera recognition needs camera access, and screen search needs floating window access.</string>
+    <string name="permission_notice_camera_and_overlay">Camera search needs camera access, and screen search needs floating window access.</string>
     <string name="permission_notice_allow_camera">Allow camera</string>
     <string name="permission_notice_open_app_settings">Open settings</string>
     <string name="permission_notice_enable_overlay">Enable floating window</string>
@@ -112,16 +123,16 @@
     <string name="pref_title_camerax_front_camera_target_resolution" translatable="true">CameraX front camera target resolution</string>
     <string name="pref_title_camera_live_viewport" translatable="true">Enable live viewport</string>
     <string name="pref_summary_camera_live_viewport" translatable="true">Do not block camera preview drawing on detection</string>
-    <string name="pref_title_camera_search_performance_panel" translatable="true">Show camera performance panel</string>
+    <string name="pref_title_camera_search_performance_panel" translatable="true">Show camera search performance panel</string>
     <string name="pref_summary_camera_search_performance_panel" translatable="true">Show input resolution, frame rate, and latency on the camera search screen.</string>
     <string name="pref_title_screen_search_interval" translatable="true">Screen search interval</string>
     <string name="pref_title_screen_search_detect_changes" translatable="true">Recognize only when the screen changes</string>
     <string name="pref_summary_screen_search_detect_changes" translatable="true">Ignore small animations and repeat OCR only after a stable, significant screen change.</string>
     <string name="pref_title_screen_search_show_answer_frames" translatable="true">Highlight correct answers</string>
-    <string name="pref_summary_screen_search_show_answer_frames" translatable="true">Locate and outline correct options during screen OCR. This does not affect accessibility search.</string>
+    <string name="pref_summary_screen_search_show_answer_frames" translatable="true">Locate and outline correct options during screen OCR. This does not affect accessibility answering.</string>
     <string name="pref_title_screen_capture_frame_rate" translatable="true">Screen capture frame rate</string>
-    <string name="pref_title_accessibility_search_interval" translatable="true">Accessibility search interval</string>
-    <string name="pref_category_accessibility_search" translatable="true">Accessibility search</string>
+    <string name="pref_title_accessibility_search_interval" translatable="true">Accessibility answering interval</string>
+    <string name="pref_category_accessibility_search" translatable="true">Accessibility answering</string>
     <string name="pref_title_accessibility_answer_dot_color" translatable="true">Answer dot color</string>
     <string name="pref_accessibility_answer_dot_color_white" translatable="true">White</string>
     <string name="pref_accessibility_answer_dot_color_light_gray" translatable="true">Light gray</string>
@@ -130,18 +141,18 @@
     <string name="pref_accessibility_answer_dot_color_medium_gray" translatable="true">Medium gray</string>
     <string name="pref_accessibility_answer_dot_color_dark_gray" translatable="true">Dark gray</string>
     <string name="pref_accessibility_answer_dot_color_black" translatable="true">Black</string>
-    <string name="pref_title_accessibility_vertical_swipe_mode" translatable="true">Accessibility swipe method</string>
+    <string name="pref_title_accessibility_vertical_swipe_mode" translatable="true">Accessibility answering swipe method</string>
     <string name="pref_summary_accessibility_vertical_swipe_mode" translatable="true" formatted="false">Fixed distance always swipes 60% of the screen height. Smart swipe aligns to the last question when possible and falls back to 60%.</string>
     <string name="pref_accessibility_vertical_swipe_fixed" translatable="true">Fixed distance swipe</string>
     <string name="pref_accessibility_vertical_swipe_smart" translatable="true">Smart swipe</string>
     <string name="pref_title_camera_search_min_match_score" translatable="true">Camera search match threshold</string>
     <string name="pref_title_screen_search_min_match_score" translatable="true">Screen search match threshold</string>
-    <string name="pref_title_accessibility_search_min_match_score" translatable="true">Accessibility search match threshold</string>
+    <string name="pref_title_accessibility_search_min_match_score" translatable="true">Accessibility answering match threshold</string>
     <string name="pref_summary_search_min_match_score" translatable="true">Higher is stricter with fewer false matches but may miss questions. Lower is looser with more hits and more false-match risk.</string>
     <string name="pref_threshold_restore_default" translatable="true">Restore default</string>
     <string name="search_settings_menu_title" translatable="true">Search settings</string>
     <string name="settings_hub_title" translatable="true">Settings</string>
-    <string name="settings_hub_search_summary" translatable="true">Camera, screen, accessibility search, display, and match thresholds.</string>
+    <string name="settings_hub_search_summary" translatable="true">Camera search, screen search, accessibility answering, display, and match thresholds.</string>
     <string name="settings_hub_import_summary" translatable="true">Header, answer, option, and question type candidates for imports.</string>
     <string name="settings_hub_ai_summary" translatable="true">AI profiles, prompts, connection testing, and generated-content cache.</string>
     <string name="ai_settings_title">AI settings</string>
@@ -334,15 +345,15 @@
 
 
     <string name="quiz_count">%1$d questions</string>
-    <string name="camera_button_description">camera button</string>
-    <string name="screen_button_description">ocr button</string>
-    <string name="accessibility_search_button">Accessibility search</string>
-    <string name="accessibility_search_button_description">accessibility search button</string>
+    <string name="camera_button_description">camera search button</string>
+    <string name="screen_button_description">screen search button</string>
+    <string name="accessibility_search_button">Accessibility answering</string>
+    <string name="accessibility_search_button_description">accessibility answering button</string>
     <string name="accessibility_permission_required">Please enable %1$s accessibility service</string>
-    <string name="accessibility_search_intro_title">Enable accessibility search</string>
+    <string name="accessibility_search_intro_title">Enable accessibility answering</string>
     <string name="accessibility_search_intro_message">%1$s can read visible text exposed by Android accessibility, match it with the selected quiz library, and show results in a floating window. Turn on the %1$s accessibility service in system settings to use it.</string>
-    <string name="accessibility_search_prompt_message">Accessibility search is not enabled yet. Turn on the %1$s accessibility service to match visible screen text with the selected quiz library.</string>
-    <string name="accessibility_search_ready_message">Floating window permission is required; notifications are optional. Choose the display options, then start accessibility search.</string>
+    <string name="accessibility_search_prompt_message">Accessibility answering is not enabled yet. Turn on the %1$s accessibility service to match visible screen text with the selected quiz library.</string>
+    <string name="accessibility_search_ready_message">Floating window permission is required; notifications are optional. Choose the display options, then start accessibility answering.</string>
     <string name="accessibility_search_enable_cta">Open permission settings</string>
     <string name="accessibility_search_start_cta">Start</string>
     <string name="accessibility_search_enable_notifications">Enable notifications (optional)</string>
