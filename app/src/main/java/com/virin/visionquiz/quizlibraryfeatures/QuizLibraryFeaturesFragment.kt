@@ -23,7 +23,6 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.graphics.ColorUtils
-import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.os.bundleOf
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
@@ -838,7 +837,7 @@ internal sealed class QuizLibraryFeatureListItem {
 internal fun buildLibraryStudyFeatures(): List<QuizLibraryFeaturesFragment.StudyFeature> {
     return listOf(
         QuizLibraryFeaturesFragment.StudyFeature(
-            "开始学习",
+            "今日学习",
             "待复习 0 题 · 待学习 0 题",
             R.drawable.icon_history_edu_24px,
             QuizLibraryFeaturesFragment.FeatureAction.REVIEW
@@ -922,7 +921,6 @@ internal fun buildGroupedFeatureItems(
     ) = byAction[this]?.let { QuizLibraryFeatureListItem.FeatureItem(it, fullSpan, compact) }
 
     return buildList {
-        add(QuizLibraryFeatureListItem.SectionHeader("Today"))
         QuizLibraryFeaturesFragment.FeatureAction.REVIEW.featureItem(fullSpan = true)?.let(::add)
 
         add(QuizLibraryFeatureListItem.SectionHeader("自主练习"))
@@ -932,18 +930,18 @@ internal fun buildGroupedFeatureItems(
 
         add(QuizLibraryFeatureListItem.SectionHeader("题库概览"))
         add(QuizLibraryFeatureListItem.Stats)
-        QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST.featureItem(fullSpan = true)?.let(::add)
 
-        add(QuizLibraryFeatureListItem.SectionHeader("复盘巩固"))
+        add(QuizLibraryFeatureListItem.SectionHeader("巩固复盘"))
         QuizLibraryFeaturesFragment.FeatureAction.FAVORITES.featureItem()?.let(::add)
         QuizLibraryFeaturesFragment.FeatureAction.WRONG.featureItem()?.let(::add)
         QuizLibraryFeaturesFragment.FeatureAction.HISTORY.featureItem()?.let(::add)
         QuizLibraryFeaturesFragment.FeatureAction.EXAM_HISTORY.featureItem()?.let(::add)
 
         add(QuizLibraryFeatureListItem.SectionHeader("题库工具"))
-        QuizLibraryFeaturesFragment.FeatureAction.EXPORT.featureItem()?.let(::add)
-        QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS.featureItem()?.let(::add)
-        QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN.featureItem()?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST.featureItem(fullSpan = true)?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS.featureItem(fullSpan = true)?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN.featureItem(fullSpan = true)?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.EXPORT.featureItem(fullSpan = true)?.let(::add)
     }
 }
 
@@ -993,7 +991,6 @@ class QuizLibFeaturesAdapter(
         val iconView: ImageView = itemView.findViewById(R.id.feature_icon)
         val attentionDot: View? = itemView.findViewById(R.id.feature_attention_dot)
         val endChevron: ImageView? = itemView.findViewById(R.id.feature_end_chevron)
-        var showInlineTitleChevron: Boolean = false
         val accuracyGroup: View? = itemView.findViewById(R.id.feature_accuracy_group)
         val accuracyValue: TextView? = itemView.findViewById(R.id.feature_accuracy_value)
         val accuracyProgress: LinearProgressIndicator? =
@@ -1003,12 +1000,10 @@ class QuizLibFeaturesAdapter(
     class StatsViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val todayAnsweredValue: TextView = itemView.findViewById(R.id.today_answered_value)
         val todayWrongValue: TextView = itemView.findViewById(R.id.today_wrong_value)
-        val totalAnsweredValue: TextView = itemView.findViewById(R.id.total_answered_value)
-        val totalWrongValue: TextView = itemView.findViewById(R.id.total_wrong_value)
+        val accuracyValue: TextView = itemView.findViewById(R.id.accuracy_value)
         val reviewDueValue: TextView = itemView.findViewById(R.id.review_due_value)
-        val reviewTodayValue: TextView = itemView.findViewById(R.id.review_today_value)
-        val reviewTotalCardsValue: TextView = itemView.findViewById(R.id.review_total_cards_value)
-        val reviewLapsesValue: TextView = itemView.findViewById(R.id.review_lapses_value)
+        val masteryProgressValue: TextView = itemView.findViewById(R.id.mastery_progress_value)
+        val masteryProgress: LinearProgressIndicator = itemView.findViewById(R.id.mastery_progress)
     }
 
     fun submitList(newFeatures: List<QuizLibraryFeaturesFragment.StudyFeature>) {
@@ -1073,10 +1068,13 @@ class QuizLibFeaturesAdapter(
         return when (items[position]) {
             is QuizLibraryFeatureListItem.SectionHeader -> VIEW_TYPE_SECTION
             is QuizLibraryFeatureListItem.FeatureItem -> {
-                if ((items[position] as QuizLibraryFeatureListItem.FeatureItem).compact) {
-                    VIEW_TYPE_COMPACT_FEATURE
-                } else {
-                    VIEW_TYPE_FEATURE
+                val item = items[position] as QuizLibraryFeatureListItem.FeatureItem
+                when {
+                    item.feature.action == QuizLibraryFeaturesFragment.FeatureAction.REVIEW ->
+                        VIEW_TYPE_PRIMARY_FEATURE
+                    item.compact -> VIEW_TYPE_COMPACT_FEATURE
+                    item.fullSpan -> VIEW_TYPE_ROW_FEATURE
+                    else -> VIEW_TYPE_FEATURE
                 }
             }
             QuizLibraryFeatureListItem.Stats -> VIEW_TYPE_STATS
@@ -1097,6 +1095,14 @@ class QuizLibFeaturesAdapter(
                 LayoutInflater.from(parent.context)
                     .inflate(R.layout.item_quiz_library_feature_compact, parent, false)
             )
+            VIEW_TYPE_PRIMARY_FEATURE -> FeatureViewHolder(
+                LayoutInflater.from(parent.context)
+                    .inflate(R.layout.item_quiz_library_feature_primary, parent, false)
+            )
+            VIEW_TYPE_ROW_FEATURE -> FeatureViewHolder(
+                LayoutInflater.from(parent.context)
+                    .inflate(R.layout.item_quiz_library_feature_row, parent, false)
+            )
             else -> FeatureViewHolder(
                 LayoutInflater.from(parent.context)
                     .inflate(R.layout.item_quiz_library_feature, parent, false)
@@ -1107,7 +1113,8 @@ class QuizLibFeaturesAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val item = items[position]) {
             is QuizLibraryFeatureListItem.SectionHeader -> {
-                (holder as SectionViewHolder).titleText.text = item.title
+                holder as SectionViewHolder
+                holder.titleText.text = item.title
             }
             is QuizLibraryFeatureListItem.FeatureItem -> {
                 bindFeature(holder as FeatureViewHolder, item.feature, item.fullSpan, item.compact)
@@ -1116,12 +1123,12 @@ class QuizLibFeaturesAdapter(
                 holder as StatsViewHolder
                 holder.todayAnsweredValue.text = answerStats.todayAnswered.toString()
                 holder.todayWrongValue.text = answerStats.todayWrong.toString()
-                holder.totalAnsweredValue.text = answerStats.totalAnswered.toString()
-                holder.totalWrongValue.text = answerStats.totalWrong.toString()
                 holder.reviewDueValue.text = reviewStats.dueToday.toString()
-                holder.reviewTodayValue.text = reviewStats.reviewedToday.toString()
-                holder.reviewTotalCardsValue.text = reviewStats.totalCards.toString()
-                holder.reviewLapsesValue.text = reviewStats.totalLapses.toString()
+                val accuracyPercent = answerStats.accuracyPercent?.coerceIn(0, 100)
+                val accuracyText = accuracyPercent?.let { "$it%" } ?: "--"
+                holder.accuracyValue.text = accuracyText
+                holder.masteryProgressValue.text = accuracyText
+                holder.masteryProgress.setProgressCompat(accuracyPercent ?: 0, false)
             }
         }
     }
@@ -1141,19 +1148,18 @@ class QuizLibFeaturesAdapter(
             showSimilarAnalysisBadge &&
                 feature.action == QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS
         holder.cardView.setOnClickListener { onItemClick(feature) }
-        holder.showInlineTitleChevron = feature.showsInlineTitleChevron()
-        holder.endChevron?.isVisible = feature.action == QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST
+        holder.endChevron?.isVisible =
+            feature.action != QuizLibraryFeaturesFragment.FeatureAction.REVIEW && !compact
         bindFeatureAccuracy(holder, feature)
         if (
             fullSpan &&
-            feature.action == QuizLibraryFeaturesFragment.FeatureAction.REVIEW &&
-            reviewEntryState.hasPendingWork
+            feature.action == QuizLibraryFeaturesFragment.FeatureAction.REVIEW
         ) {
             applyPrimaryFeatureStyle(holder)
         } else if (compact && feature.isSelfPracticeAction()) {
             applyTonalFeatureStyle(holder)
         } else {
-            applyDefaultFeatureStyle(holder)
+            applyDefaultFeatureStyle(holder, showStroke = !fullSpan)
         }
     }
 
@@ -1194,6 +1200,7 @@ class QuizLibFeaturesAdapter(
     private fun applyPrimaryFeatureStyle(holder: FeatureViewHolder) {
         val backgroundColor = MaterialColors.getColor(holder.itemView, R.attr.colorPrimaryContainer)
         val contentColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnPrimaryContainer)
+        val iconColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnPrimary)
         val strokeColor = MaterialColors.getColor(holder.itemView, R.attr.colorPrimary)
         holder.cardView.setCardBackgroundColor(backgroundColor)
         holder.cardView.strokeColor = strokeColor
@@ -1201,22 +1208,21 @@ class QuizLibFeaturesAdapter(
         holder.cardView.cardElevation = holder.itemView.dp(1).toFloat()
         holder.titleText.setTextColor(contentColor)
         holder.descriptionText.setTextColor(contentColor)
-        ImageViewCompat.setImageTintList(holder.iconView, ColorStateList.valueOf(contentColor))
+        ImageViewCompat.setImageTintList(holder.iconView, ColorStateList.valueOf(iconColor))
         holder.endChevron?.let {
             ImageViewCompat.setImageTintList(it, ColorStateList.valueOf(contentColor))
         }
-        bindTitleChevron(holder, contentColor)
     }
 
-    private fun applyDefaultFeatureStyle(holder: FeatureViewHolder) {
+    private fun applyDefaultFeatureStyle(holder: FeatureViewHolder, showStroke: Boolean) {
         val backgroundColor = MaterialColors.getColor(holder.itemView, R.attr.colorSurfaceContainer)
         val titleColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnSurface)
         val descriptionColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnSurfaceVariant)
-        val iconColor = MaterialColors.getColor(holder.itemView, R.attr.colorPrimary)
+        val iconColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnPrimaryContainer)
         val strokeColor = MaterialColors.getColor(holder.itemView, R.attr.colorOutlineVariant)
         holder.cardView.setCardBackgroundColor(backgroundColor)
         holder.cardView.strokeColor = strokeColor
-        holder.cardView.strokeWidth = holder.itemView.dp(1)
+        holder.cardView.strokeWidth = if (showStroke) holder.itemView.dp(1) else 0
         holder.cardView.cardElevation = 0f
         holder.titleText.setTextColor(titleColor)
         holder.descriptionText.setTextColor(descriptionColor)
@@ -1224,55 +1230,27 @@ class QuizLibFeaturesAdapter(
         holder.endChevron?.let {
             ImageViewCompat.setImageTintList(it, ColorStateList.valueOf(descriptionColor))
         }
-        bindTitleChevron(holder, descriptionColor)
     }
 
     private fun applyTonalFeatureStyle(holder: FeatureViewHolder) {
-        val backgroundColor = MaterialColors.getColor(holder.itemView, R.attr.colorSecondaryContainer)
-        val contentColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnSecondaryContainer)
+        val backgroundColor = MaterialColors.getColor(holder.itemView, R.attr.colorSurfaceContainerHigh)
+        val contentColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnSurface)
+        val iconColor = MaterialColors.getColor(holder.itemView, R.attr.colorOnPrimaryContainer)
         holder.cardView.setCardBackgroundColor(backgroundColor)
         holder.cardView.strokeWidth = 0
         holder.cardView.cardElevation = 0f
         holder.titleText.setTextColor(contentColor)
         holder.descriptionText.setTextColor(contentColor)
-        ImageViewCompat.setImageTintList(holder.iconView, ColorStateList.valueOf(contentColor))
+        ImageViewCompat.setImageTintList(holder.iconView, ColorStateList.valueOf(iconColor))
         holder.endChevron?.let {
             ImageViewCompat.setImageTintList(it, ColorStateList.valueOf(contentColor))
         }
-        bindTitleChevron(holder, contentColor)
     }
 
     private fun QuizLibraryFeaturesFragment.StudyFeature.isSelfPracticeAction(): Boolean {
         return action == QuizLibraryFeaturesFragment.FeatureAction.ORDERED_PRACTICE ||
             action == QuizLibraryFeaturesFragment.FeatureAction.RANDOM_PRACTICE ||
             action == QuizLibraryFeaturesFragment.FeatureAction.EXAM
-    }
-
-    private fun QuizLibraryFeaturesFragment.StudyFeature.showsInlineTitleChevron(): Boolean {
-        return action == QuizLibraryFeaturesFragment.FeatureAction.FAVORITES ||
-            action == QuizLibraryFeaturesFragment.FeatureAction.WRONG ||
-            action == QuizLibraryFeaturesFragment.FeatureAction.HISTORY ||
-            action == QuizLibraryFeaturesFragment.FeatureAction.EXAM_HISTORY
-    }
-
-    private fun bindTitleChevron(holder: FeatureViewHolder, tintColor: Int) {
-        if (!holder.showInlineTitleChevron) {
-            holder.titleText.setCompoundDrawablesRelative(null, null, null, null)
-            return
-        }
-        val chevron = ContextCompat.getDrawable(
-            holder.itemView.context,
-            R.drawable.icon_chevron_forward_24px
-        )?.mutate()?.let(DrawableCompat::wrap)
-        if (chevron == null) {
-            holder.titleText.setCompoundDrawablesRelative(null, null, null, null)
-            return
-        }
-        val iconSize = holder.itemView.dp(18)
-        DrawableCompat.setTint(chevron, tintColor)
-        chevron.setBounds(0, 0, iconSize, iconSize)
-        holder.titleText.compoundDrawablePadding = holder.itemView.dp(2)
-        holder.titleText.setCompoundDrawablesRelative(null, null, chevron, null)
     }
 
     private fun notifyStatsChanged() {
@@ -1304,5 +1282,7 @@ class QuizLibFeaturesAdapter(
         private const val VIEW_TYPE_FEATURE = 1
         private const val VIEW_TYPE_STATS = 2
         private const val VIEW_TYPE_COMPACT_FEATURE = 3
+        private const val VIEW_TYPE_PRIMARY_FEATURE = 4
+        private const val VIEW_TYPE_ROW_FEATURE = 5
     }
 }

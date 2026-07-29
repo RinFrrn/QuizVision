@@ -2,6 +2,24 @@ package com.virin.visionquiz.util
 
 import android.content.Context
 import org.json.JSONArray
+import java.util.Locale
+
+internal fun findImportCandidateOwner(
+    candidate: String,
+    groups: List<Pair<String, List<String>>>
+): String? {
+    val candidateKey = candidate.importCandidateKey()
+    if (candidateKey.isBlank()) return null
+    return groups.firstOrNull { (_, items) ->
+        items.any { it.importCandidateKey() == candidateKey }
+    }?.first
+}
+
+private fun String.importCandidateKey(): String {
+    return trim()
+        .replace(Regex("""\s+"""), "")
+        .uppercase(Locale.ROOT)
+}
 
 data class ImportCandidateConfig(
     val promptHeaders: List<String> = ImportCandidateSettings.DEFAULT_PROMPT_HEADERS,
@@ -18,6 +36,8 @@ data class ImportCandidateConfig(
 
 object ImportCandidateSettings {
     private const val PREFS_NAME = "quiz_import_candidate_settings"
+    private const val KEY_DEFAULTS_VERSION = "defaults_version"
+    private const val CURRENT_DEFAULTS_VERSION = 1
 
     private const val KEY_PROMPT_HEADERS = "prompt_headers"
     private const val KEY_TYPE_HEADERS = "type_headers"
@@ -31,7 +51,8 @@ object ImportCandidateSettings {
     private const val KEY_SUBJECTIVE_TYPES = "subjective_types"
 
     val DEFAULT_PROMPT_HEADERS = listOf(
-        "题干", "题目", "标题", "问题", "试题", "题目内容", "试题内容", "问题描述", "题干内容", "题目描述"
+        "题干", "题目", "标题", "问题", "试题", "题目内容", "试题内容", "试题正文",
+        "问题描述", "题干内容", "题目描述"
     )
     val DEFAULT_TYPE_HEADERS = listOf(
         "题型", "类型", "题目类型", "试题类型", "题目题型", "试题题型", "分类"
@@ -63,8 +84,19 @@ object ImportCandidateSettings {
 
     fun load(context: Context): ImportCandidateConfig {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        var promptHeaders = readList(
+            prefs.getString(KEY_PROMPT_HEADERS, null),
+            DEFAULT_PROMPT_HEADERS
+        )
+        if (prefs.getInt(KEY_DEFAULTS_VERSION, 0) < CURRENT_DEFAULTS_VERSION) {
+            promptHeaders = normalizeItems(promptHeaders + "试题正文")
+            prefs.edit()
+                .putString(KEY_PROMPT_HEADERS, encodeList(promptHeaders))
+                .putInt(KEY_DEFAULTS_VERSION, CURRENT_DEFAULTS_VERSION)
+                .apply()
+        }
         return ImportCandidateConfig(
-            promptHeaders = readList(prefs.getString(KEY_PROMPT_HEADERS, null), DEFAULT_PROMPT_HEADERS),
+            promptHeaders = promptHeaders,
             typeHeaders = readList(prefs.getString(KEY_TYPE_HEADERS, null), DEFAULT_TYPE_HEADERS),
             answerHeaders = readList(prefs.getString(KEY_ANSWER_HEADERS, null), DEFAULT_ANSWER_HEADERS),
             optionPrefixes = readList(prefs.getString(KEY_OPTION_PREFIXES, null), DEFAULT_OPTION_PREFIXES),
@@ -90,6 +122,7 @@ object ImportCandidateSettings {
             .putString(KEY_JUDGEMENT_TYPES, encodeList(settings.judgementTypes))
             .putString(KEY_FILL_BLANK_TYPES, encodeList(settings.fillBlankTypes))
             .putString(KEY_SUBJECTIVE_TYPES, encodeList(settings.subjectiveTypes))
+            .putInt(KEY_DEFAULTS_VERSION, CURRENT_DEFAULTS_VERSION)
             .apply()
     }
 

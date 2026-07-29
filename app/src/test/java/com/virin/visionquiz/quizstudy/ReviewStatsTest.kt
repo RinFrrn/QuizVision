@@ -58,7 +58,7 @@ class ReviewStatsTest {
             newCardLimit = 2
         )
 
-        assertEquals("开始学习", state.title)
+        assertEquals("今日学习", state.title)
         assertEquals("待复习 3 题 · 待学习 2 题", state.description)
         assertEquals(3, state.dueReviewCount)
         assertEquals(2, state.newLearningCount)

@@ -25,7 +25,8 @@
     <string name="import_settings_reset_message">This will restore the default header and question type candidates.</string>
     <string name="import_settings_reset_done">Defaults restored</string>
     <string name="import_settings_add">Add</string>
-    <string name="import_settings_add_hint">Candidate</string>
+    <string name="import_settings_add_hint">Enter candidate</string>
+    <string name="import_settings_duplicate_error">“%1$s” already exists in “%2$s”</string>
     <string name="import_settings_prompt_headers">Question headers</string>
     <string name="import_settings_type_headers">Type headers</string>
     <string name="import_settings_answer_headers">Answer headers</string>
@@ -345,10 +346,10 @@
 
 
     <string name="quiz_count">%1$d questions</string>
-    <string name="camera_button_description">camera search button</string>
-    <string name="screen_button_description">screen search button</string>
+    <string name="camera_button_description">相机搜题</string>
+    <string name="screen_button_description">屏幕搜题</string>
     <string name="accessibility_search_button">Accessibility answering</string>
-    <string name="accessibility_search_button_description">accessibility answering button</string>
+    <string name="accessibility_search_button_description">无障碍答题</string>
     <string name="accessibility_permission_required">Please enable %1$s accessibility service</string>
     <string name="accessibility_search_intro_title">Enable accessibility answering</string>
     <string name="accessibility_search_intro_message">%1$s can read visible text exposed by Android accessibility, match it with the selected quiz library, and show results in a floating window. Turn on the %1$s accessibility service in system settings to use it.</string>

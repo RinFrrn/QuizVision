@@ -7,7 +7,7 @@
     android:layout_height="wrap_content"
     android:layout_margin="8dp"
     app:cardBackgroundColor="?attr/colorSurfaceContainer"
-    app:cardCornerRadius="12dp"
+    app:cardCornerRadius="18dp"
     app:cardElevation="0dp"
     app:strokeColor="?attr/colorOutlineVariant"
     app:strokeWidth="1dp">
@@ -16,19 +16,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="14dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="学习统计"
-            android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
-            android:textColor="?attr/colorOnSurface" />
+        android:padding="16dp">
 
         <GridLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
             android:columnCount="4"
             android:rowCount="1"
             android:useDefaultMargins="false">
@@ -39,7 +31,7 @@
                 android:layout_columnWeight="1"
                 android:gravity="center_horizontal"
                 android:orientation="vertical"
-                android:paddingHorizontal="4dp">
+                android:paddingHorizontal="3dp">
 
                 <TextView
                     android:id="@+id/today_answered_value"
@@ -47,14 +39,17 @@
                     android:layout_height="wrap_content"
                     android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
                     android:textColor="?attr/colorOnSurface"
+                    android:textStyle="bold"
                     tools:text="12" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
+                    android:gravity="center"
+                    android:maxLines="1"
                     android:text="今日答题"
-                    android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                    android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
 
@@ -64,7 +59,7 @@
                 android:layout_columnWeight="1"
                 android:gravity="center_horizontal"
                 android:orientation="vertical"
-                android:paddingHorizontal="4dp">
+                android:paddingHorizontal="3dp">
 
                 <TextView
                     android:id="@+id/today_wrong_value"
@@ -72,14 +67,17 @@
                     android:layout_height="wrap_content"
                     android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
                     android:textColor="?attr/colorOnSurface"
+                    android:textStyle="bold"
                     tools:text="2" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
+                    android:gravity="center"
+                    android:maxLines="1"
                     android:text="今日错题"
-                    android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                    android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
 
@@ -89,22 +87,25 @@
                 android:layout_columnWeight="1"
                 android:gravity="center_horizontal"
                 android:orientation="vertical"
-                android:paddingHorizontal="4dp">
+                android:paddingHorizontal="3dp">
 
                 <TextView
-                    android:id="@+id/total_answered_value"
+                    android:id="@+id/accuracy_value"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
                     android:textColor="?attr/colorOnSurface"
-                    tools:text="158" />
+                    android:textStyle="bold"
+                    tools:text="68%" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="总计答题"
-                    android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="正确率"
+                    android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
 
@@ -114,49 +115,7 @@
                 android:layout_columnWeight="1"
                 android:gravity="center_horizontal"
                 android:orientation="vertical"
-                android:paddingHorizontal="4dp">
-
-                <TextView
-                    android:id="@+id/total_wrong_value"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
-                    android:textColor="?attr/colorOnSurface"
-                    tools:text="23" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="总计错题"
-                    android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
-                    android:textColor="?attr/colorOnSurfaceVariant" />
-            </LinearLayout>
-        </GridLayout>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="复习进度"
-            android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
-            android:textColor="?attr/colorOnSurfaceVariant" />
-
-        <GridLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:columnCount="4"
-            android:rowCount="1"
-            android:useDefaultMargins="false">
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_columnWeight="1"
-                android:gravity="center_horizontal"
-                android:orientation="vertical"
-                android:paddingHorizontal="4dp">
+                android:paddingHorizontal="3dp">
 
                 <TextView
                     android:id="@+id/review_due_value"
@@ -164,91 +123,59 @@
                     android:layout_height="wrap_content"
                     android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
                     android:textColor="?attr/colorOnSurface"
+                    android:textStyle="bold"
                     tools:text="8" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
+                    android:gravity="center"
+                    android:maxLines="1"
                     android:text="待复习"
-                    android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
-                    android:textColor="?attr/colorOnSurfaceVariant" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_columnWeight="1"
-                android:gravity="center_horizontal"
-                android:orientation="vertical"
-                android:paddingHorizontal="4dp">
-
-                <TextView
-                    android:id="@+id/review_today_value"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
-                    android:textColor="?attr/colorOnSurface"
-                    tools:text="5" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="今日复习"
-                    android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
-                    android:textColor="?attr/colorOnSurfaceVariant" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_columnWeight="1"
-                android:gravity="center_horizontal"
-                android:orientation="vertical"
-                android:paddingHorizontal="4dp">
-
-                <TextView
-                    android:id="@+id/review_total_cards_value"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
-                    android:textColor="?attr/colorOnSurface"
-                    tools:text="42" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="复习卡片"
-                    android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
-                    android:textColor="?attr/colorOnSurfaceVariant" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_columnWeight="1"
-                android:gravity="center_horizontal"
-                android:orientation="vertical"
-                android:paddingHorizontal="4dp">
-
-                <TextView
-                    android:id="@+id/review_lapses_value"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
-                    android:textColor="?attr/colorOnSurface"
-                    tools:text="3" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="遗忘次数"
-                    android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                    android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
         </GridLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="掌握进度"
+                android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+
+            <TextView
+                android:id="@+id/mastery_progress_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
+                android:textColor="?attr/colorOnSurface"
+                android:textStyle="bold"
+                tools:text="68%" />
+        </LinearLayout>
+
+        <com.google.android.material.progressindicator.LinearProgressIndicator
+            android:id="@+id/mastery_progress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="7dp"
+            android:indeterminate="false"
+            android:max="100"
+            app:indicatorColor="?attr/colorPrimary"
+            app:trackColor="?attr/colorSurfaceContainerHighest"
+            app:trackCornerRadius="3dp"
+            app:trackThickness="6dp"
+            tools:progress="68" />
+
     </LinearLayout>
+
 </com.google.android.material.card.MaterialCardView>

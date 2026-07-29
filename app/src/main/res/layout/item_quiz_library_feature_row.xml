@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/feature_card"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="8dp"
+    android:layout_marginVertical="4dp"
+    android:stateListAnimator="@animator/quiz_feature_press_state"
+    app:cardBackgroundColor="?attr/colorSurfaceContainer"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="72dp"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="12dp">
+
+        <ImageView
+            android:id="@+id/feature_icon"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_quiz_feature_icon_well"
+            android:contentDescription="功能图标"
+            android:padding="9dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:tint="?attr/colorOnPrimaryContainer" />
+
+        <View
+            android:id="@+id/feature_attention_dot"
+            android:layout_width="9dp"
+            android:layout_height="9dp"
+            android:background="@drawable/bg_feature_attention_dot"
+            android:importantForAccessibility="no"
+            android:translationX="2dp"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="@id/feature_icon"
+            app:layout_constraintTop_toTopOf="@id/feature_icon"
+            tools:visibility="visible" />
+
+        <TextView
+            android:id="@+id/feature_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+            android:textColor="?attr/colorOnSurface"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toTopOf="@id/feature_description"
+            app:layout_constraintEnd_toStartOf="@id/feature_end_chevron"
+            app:layout_constraintStart_toEndOf="@id/feature_icon"
+            app:layout_constraintTop_toTopOf="@id/feature_icon"
+            tools:text="浏览题目" />
+
+        <TextView
+            android:id="@+id/feature_description"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            app:layout_constraintBottom_toBottomOf="@id/feature_icon"
+            app:layout_constraintEnd_toStartOf="@id/feature_end_chevron"
+            app:layout_constraintStart_toEndOf="@id/feature_icon"
+            app:layout_constraintTop_toBottomOf="@id/feature_title"
+            tools:text="查看和搜索全部题型" />
+
+        <ImageView
+            android:id="@+id/feature_end_chevron"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:srcCompat="@drawable/icon_chevron_forward_24px"
+            app:tint="?attr/colorOnSurfaceVariant" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>

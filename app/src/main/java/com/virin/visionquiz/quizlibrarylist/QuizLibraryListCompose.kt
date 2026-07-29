@@ -322,7 +322,9 @@ private fun HomeDockAction(
         pressedScale = 0.96f
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(y = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -339,7 +341,7 @@ private fun HomeDockAction(
                     modifier = Modifier.size(22.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.labelMedium,

@@ -36,6 +36,7 @@ android {
         }
         debug {
             isDefault true
+            applicationIdSuffix ".debug"
             minifyEnabled false
             proguardFiles 'proguard-rules.pro'
         }

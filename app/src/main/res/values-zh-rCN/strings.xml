@@ -51,7 +51,8 @@
     <string name="import_settings_reset_message">这会还原默认的表头和题型候选词。</string>
     <string name="import_settings_reset_done">已恢复默认</string>
     <string name="import_settings_add">添加</string>
-    <string name="import_settings_add_hint">候选词</string>
+    <string name="import_settings_add_hint">输入候选词</string>
+    <string name="import_settings_duplicate_error">“%1$s”已存在于“%2$s”</string>
     <string name="import_settings_prompt_headers">题目表头</string>
     <string name="import_settings_type_headers">题型表头</string>
     <string name="import_settings_answer_headers">答案表头</string>

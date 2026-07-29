@@ -62,7 +62,7 @@ data class ReviewEntryState(
     val newLearningCount: Int = 0
 ) {
     val title: String
-        get() = "开始学习"
+        get() = "今日学习"
     val description: String
         get() = "待复习 $dueReviewCount 题 · 待学习 $newLearningCount 题"
     val hasPendingWork: Boolean

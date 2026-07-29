@@ -30,8 +30,8 @@ class QuizLibraryFeatureListBuilderTest {
             }
         }
 
-        assertEquals(listOf("Today", "自主练习", "题库概览", "复盘巩固", "题库工具"), sectionTitles)
-        assertEquals("开始学习", reviewItem.feature.title)
+        assertEquals(listOf("自主练习", "题库概览", "巩固复盘", "题库工具"), sectionTitles)
+        assertEquals("今日学习", reviewItem.feature.title)
         assertEquals("浏览题目", quizListItem.feature.title)
         assertEquals(
             listOf(
@@ -40,14 +40,14 @@ class QuizLibraryFeatureListBuilderTest {
                 "RANDOM_PRACTICE",
                 "EXAM",
                 "STATS",
-                "QUIZ_LIST",
                 "FAVORITES",
                 "WRONG",
                 "HISTORY",
                 "EXAM_HISTORY",
+                "QUIZ_LIST",
+                "SIMILAR_ANALYSIS",
                 "BATCH_AI_EXPLAIN",
-                "EXPORT",
-                "SIMILAR_ANALYSIS"
+                "EXPORT"
             ),
             itemOrder
         )
@@ -79,8 +79,8 @@ class QuizLibraryFeatureListBuilderTest {
         assertTrue(isFullSpanFeatureItem(statsItem))
         assertTrue(isFullSpanFeatureItem(quizListItem))
         assertFalse(isFullSpanFeatureItem(orderedItem))
-        assertFalse(isFullSpanFeatureItem(exportItem))
-        assertFalse(isFullSpanFeatureItem(similarAnalysisItem))
+        assertTrue(isFullSpanFeatureItem(exportItem))
+        assertTrue(isFullSpanFeatureItem(similarAnalysisItem))
         assertTrue(orderedItem.compact)
         assertTrue(randomItem.compact)
         assertTrue(examItem.compact)
@@ -93,12 +93,12 @@ class QuizLibraryFeatureListBuilderTest {
         assertEquals(6, quizLibraryFeatureSpanSize(statsItem, 6))
         assertEquals(6, quizLibraryFeatureSpanSize(quizListItem, 6))
         assertEquals(3, quizLibraryFeatureSpanSize(favoriteItem, 6))
-        assertEquals(3, quizLibraryFeatureSpanSize(exportItem, 6))
-        assertEquals(3, quizLibraryFeatureSpanSize(similarAnalysisItem, 6))
+        assertEquals(6, quizLibraryFeatureSpanSize(exportItem, 6))
+        assertEquals(6, quizLibraryFeatureSpanSize(similarAnalysisItem, 6))
 
         val batchAiItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
             .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN }
-        assertFalse(isFullSpanFeatureItem(batchAiItem))
-        assertEquals(3, quizLibraryFeatureSpanSize(batchAiItem, 6))
+        assertTrue(isFullSpanFeatureItem(batchAiItem))
+        assertEquals(6, quizLibraryFeatureSpanSize(batchAiItem, 6))
     }
 }

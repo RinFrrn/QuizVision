@@ -5,8 +5,9 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="6dp"
+    android:stateListAnimator="@animator/quiz_feature_press_state"
     app:cardBackgroundColor="?attr/colorSurfaceContainer"
-    app:cardCornerRadius="12dp"
+    app:cardCornerRadius="16dp"
     app:cardElevation="0dp"
     app:strokeColor="?attr/colorOutlineVariant"
     app:strokeWidth="1dp">
@@ -15,23 +16,25 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:minHeight="88dp"
+        android:minHeight="96dp"
         android:orientation="vertical"
         android:paddingHorizontal="8dp"
         android:paddingVertical="12dp">
 
         <ImageView
             android:id="@+id/feature_icon"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="@drawable/bg_quiz_feature_icon_well"
             android:contentDescription="功能图标"
-            app:tint="?attr/colorPrimary" />
+            android:padding="9dp"
+            app:tint="?attr/colorOnPrimaryContainer" />
 
         <TextView
             android:id="@+id/feature_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="9dp"
             android:ellipsize="end"
             android:gravity="center"
             android:maxLines="1"
