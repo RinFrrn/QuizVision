@@ -16,8 +16,8 @@ android {
         targetSdkVersion 33
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        versionCode 283
-        versionName "2.9.1"
+        versionCode 284
+        versionName "2.9.5"
         vectorDrawables.useSupportLibrary = true
         setProperty("archivesBaseName", "vision-quiz")
 
@@ -36,7 +36,6 @@ android {
         }
         debug {
             isDefault true
-            applicationIdSuffix ".debug"
             minifyEnabled false
             proguardFiles 'proguard-rules.pro'
         }

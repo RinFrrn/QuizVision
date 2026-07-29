@@ -533,7 +533,8 @@ private fun LibrarySectionHeading(
         Text(
             text = if (hasLibraries) "题库进度" else "开始使用",
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
         )
         if (hasLibraries) {
             Text(
