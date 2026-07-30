@@ -130,7 +130,7 @@ class CramQuizMemoryPointExtractorTest {
     fun doesNotTurnPureIndexesOrWeakYearCitationsIntoMemoryPoints() {
         val markdown = """
             ## 题号索引
-            - 供电中止：题号 12
+            - 供电中止：12
 
             ## 补充
             - 参考年份 [2024]

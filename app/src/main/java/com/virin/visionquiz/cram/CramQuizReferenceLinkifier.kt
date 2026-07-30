@@ -93,10 +93,24 @@ internal object CramQuizReferenceParser {
         )
     )
     private val numberRegex = Regex("""\d{1,10}""")
+    private val questionIndexHeadingRegex = Regex(
+        """(?m)^[ \t]*(?:#{1,6}[ \t]+)?题号索引[ \t]*#*[ \t]*$"""
+    )
+    private val markdownHeadingRegex = Regex(
+        """(?m)^[ \t]{0,3}#{1,6}[ \t]+.+$"""
+    )
+    private val questionIndexEntryRegex = Regex(
+        """(?m)^[^\r\n：:]{1,120}[：:][ \t]*""" +
+            """((?:\d{1,10})(?:[ \t]*[、，,;/；][ \t]*\d{1,10})*)""" +
+            """[ \t]*[。.]?[ \t]*$"""
+    )
 
-    fun find(text: CharSequence): List<CramQuizTextLink> {
+    fun find(
+        text: CharSequence,
+        insideQuestionIndexSection: Boolean = false
+    ): List<CramQuizTextLink> {
         val source = text.toString()
-        return referencePatterns
+        val explicitLinks = referencePatterns
             .flatMap { pattern ->
                 pattern.regex.findAll(source).flatMap { match ->
                     val valueGroup = match.groups[1] ?: return@flatMap emptySequence()
@@ -116,8 +130,74 @@ internal object CramQuizReferenceParser {
                     }
                 }.toList()
             }
+        return (explicitLinks + findQuestionIndexLinks(source, insideQuestionIndexSection))
             .distinctBy { it.start to it.endExclusive }
             .sortedBy(CramQuizTextLink::start)
+    }
+
+    /**
+     * Final reports generated before references were strictly formatted often
+     * contain entries such as "供电服务：28660、28661". Bare numbers remain
+     * ignored everywhere else; the "题号索引" heading makes them explicit.
+     */
+    private fun findQuestionIndexLinks(
+        source: String,
+        insideQuestionIndexSection: Boolean
+    ): List<CramQuizTextLink> {
+        val sectionStart: Int
+        val sectionEnd: Int
+        if (insideQuestionIndexSection) {
+            sectionStart = 0
+            sectionEnd = source.length
+        } else {
+            val heading = questionIndexHeadingRegex.find(source) ?: return emptyList()
+            sectionStart = heading.range.last + 1
+            sectionEnd = markdownHeadingRegex.find(source, sectionStart)
+                ?.range
+                ?.first
+                ?: source.length
+        }
+        if (sectionStart >= sectionEnd) return emptyList()
+
+        val links = mutableListOf<CramQuizTextLink>()
+        var lineStart = sectionStart
+        while (lineStart < sectionEnd) {
+            val newlineIndex = source.indexOf('\n', lineStart)
+                .takeIf { it in lineStart until sectionEnd }
+                ?: sectionEnd
+            val lineEnd = if (
+                newlineIndex > lineStart && source[newlineIndex - 1] == '\r'
+            ) {
+                newlineIndex - 1
+            } else {
+                newlineIndex
+            }
+            val line = source.substring(lineStart, lineEnd)
+            if (line.isNotBlank()) {
+                val match = questionIndexEntryRegex.matchEntire(line) ?: break
+                val valueGroup = match.groups[1] ?: break
+                numberRegex.findAll(valueGroup.value).forEach { numberMatch ->
+                    val value = numberMatch.value.toIntOrNull()
+                        ?.takeIf { it > 0 }
+                        ?: return@forEach
+                    val start = lineStart + valueGroup.range.first + numberMatch.range.first
+                    links += CramQuizTextLink(
+                        target = CramQuizReferenceTarget(
+                            kind = CramQuizReferenceKind.LEGACY_NUMBER,
+                            value = value
+                        ),
+                        start = start,
+                        endExclusive = start + numberMatch.value.length,
+                        referenceStart = lineStart + match.range.first,
+                        referenceEndExclusive = lineStart + match.range.last + 1,
+                        isWeakReference = true
+                    )
+                }
+            }
+            if (newlineIndex >= sectionEnd) break
+            lineStart = newlineIndex + 1
+        }
+        return links
     }
 
     fun removeReferences(
@@ -179,7 +259,12 @@ internal object CramQuizMemoryPointExtractor {
         val occurrenceCounts = mutableMapOf<CramQuizReferenceTarget, Int>()
         val sourceId = sourceKey.hashCode().toString()
         return markdownBlocks(visibleMarkdownForReferences(markdown)).flatMap { block ->
-            val links = CramQuizReferenceParser.find(block.text)
+            val links = CramQuizReferenceParser.find(
+                text = block.text,
+                insideQuestionIndexSection = block.sectionTitle
+                    ?.contains("题号索引")
+                    ?: false
+            )
             links.map { link ->
                 val ordinal = occurrenceCounts.getOrDefault(link.target, 0)
                 occurrenceCounts[link.target] = ordinal + 1

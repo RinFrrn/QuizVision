@@ -9,3 +9,13 @@ object CramCacheType {
 object CramCacheSubKey {
     const val MAIN = "main"
 }
+
+/**
+ * A final report is specific to the local study plan that was used to build it.
+ *
+ * Keeping that identity in [LibraryInsightCache.subKey] lets several reversible
+ * daily-duration plans coexist without changing the database schema.
+ */
+internal fun finalReportCacheSubKey(localFingerprint: String): String {
+    return "plan-v1:$localFingerprint"
+}

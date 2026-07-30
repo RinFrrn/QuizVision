@@ -80,6 +80,30 @@ class CramPriorityModuleMappingTest {
         assertTrue(result.reason.contains("答案依据"))
     }
 
+    @Test
+    fun priorityModuleAddsItsContextToTheSharedQuizSheet() {
+        val module = CramPriorityModuleUi(
+            id = "__type__multiple_choice",
+            title = "多选题·清单组合",
+            questionCount = 6,
+            rank = 2,
+            coveragePercent = 42,
+            isFallback = true,
+            typeSummary = "多选 6题",
+            quizIds = listOf(8, 9, 8, -1)
+        )
+
+        val extras = buildCramPriorityModuleQuizContentExtras(module)
+        val memoryPoint = extras.memoryPointsByQuizId.getValue(8).single()
+
+        assertEquals(setOf(8, 9), extras.memoryPointsByQuizId.keys)
+        assertEquals(memoryPoint.id, extras.preferredMemoryPointId)
+        assertTrue(extras.showMemoryPointEmptyState)
+        assertEquals("本题所在题型分组", memoryPoint.sourceLabel)
+        assertTrue(memoryPoint.cue.contains("第 2 优先"))
+        assertTrue(memoryPoint.context.contains("占题库 42%"))
+    }
+
     private fun priority(
         quizId: Int,
         score: Double

@@ -52,6 +52,58 @@ class CramQuizReferenceParserTest {
     }
 
     @Test
+    fun parsesBareNumbersOnlyInsideRenderedQuestionIndex() {
+        val text = """
+            数字与时限速记
+            报装时限：22，32
+            题号索引
+            供电服务承诺：28660， 28661，28538
+            营业规则：28624
+        """.trimIndent()
+
+        val links = CramQuizReferenceParser.find(text)
+
+        assertEquals(
+            listOf(28660, 28661, 28538, 28624),
+            links.map { it.target.value }
+        )
+        assertTrue(links.all { it.target.kind == CramQuizReferenceKind.LEGACY_NUMBER })
+        assertTrue(links.all(CramQuizTextLink::isWeakReference))
+    }
+
+    @Test
+    fun rawMarkdownQuestionIndexStopsAtTheNextHeading() {
+        val text = """
+            ## 题号索引
+            * **信息公开**：28694，28695
+
+            ## 备注
+            发布年份：2025
+        """.trimIndent()
+
+        assertEquals(
+            listOf(28694, 28695),
+            CramQuizReferenceParser.find(text).map { it.target.value }
+        )
+    }
+
+    @Test
+    fun renderedQuestionIndexStopsAtTheFirstNonEntryLine() {
+        val text = """
+            题号索引
+            供电服务：28660
+
+            附录
+            发布年份：2025
+        """.trimIndent()
+
+        assertEquals(
+            listOf(28660),
+            CramQuizReferenceParser.find(text).map { it.target.value }
+        )
+    }
+
+    @Test
     fun referenceIndexUsesTheCorrectNamespace() {
         val databaseIdTwelve = quiz(id = 12, sourceRow = 99)
         val sourceRowTwelve = quiz(id = 99, sourceRow = 12)

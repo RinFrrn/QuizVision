@@ -92,6 +92,30 @@ class CramDashboardStateTest {
     }
 
     @Test
+    fun dailyMinutesMapToTheActualPlanQuestionLimit() {
+        assertEquals(20, dailyQuestionLimit(15))
+        assertEquals(60, dailyQuestionLimit(60))
+        assertEquals(180, dailyQuestionLimit(180))
+        assertEquals(180, dailyQuestionLimit(240))
+    }
+
+    @Test
+    fun finalReportCacheKeyIsStablePerLocalPlan() {
+        val plan60 = buildLocalAnalysisFingerprint("quiz", 60, 30)
+        val plan90 = buildLocalAnalysisFingerprint("quiz", 90, 30)
+
+        assertEquals(
+            finalReportCacheSubKey(plan60),
+            finalReportCacheSubKey(plan60)
+        )
+        assertNotEquals(
+            finalReportCacheSubKey(plan60),
+            finalReportCacheSubKey(plan90)
+        )
+        assertNotEquals(CramCacheSubKey.MAIN, finalReportCacheSubKey(plan60))
+    }
+
+    @Test
     fun finalReportFingerprintIsBoundToTheCurrentLocalPlan() {
         val fingerprint = buildFinalReportCacheFingerprint("local-a", "prompt")
         assertTrue(isFinalReportBoundToLocalFingerprint(fingerprint, "local-a"))

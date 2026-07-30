@@ -136,8 +136,11 @@ internal fun CramDashboardScreen(
     onOpenQuizReference: (CramQuizReferenceTarget, String) -> Unit,
     onOpenPriorityModule: (String) -> Unit
 ) {
-    var prioritySheetTarget by rememberSaveable {
-        mutableStateOf<String?>(null)
+    var priorityHelpSheetVisible by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var dailyDurationSheetVisible by rememberSaveable {
+        mutableStateOf(false)
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -159,7 +162,7 @@ internal fun CramDashboardScreen(
         item(key = "daily-duration") {
             DailyDurationCard(
                 dailyMinutes = state.dailyMinutes,
-                onDailyMinutesChanged = onDailyMinutesChanged,
+                onAdjust = { dailyDurationSheetVisible = true },
                 configurationEnabled = !state.isAnalysisInProgress
             )
         }
@@ -192,7 +195,7 @@ internal fun CramDashboardScreen(
                     state.content.priorityGroupingMode
                 ),
                 actionLabel = "排序说明",
-                onAction = { prioritySheetTarget = PRIORITY_HELP_SHEET_KEY }
+                onAction = { priorityHelpSheetVisible = true }
             )
         }
         if (state.content.priorityModules.isEmpty()) {
@@ -210,9 +213,7 @@ internal fun CramDashboardScreen(
             ) { module ->
                 PriorityModuleCard(
                     module = module,
-                    onClick = {
-                        prioritySheetTarget = priorityModuleSheetKey(module.id)
-                    }
+                    onClick = { onOpenPriorityModule(module.id) }
                 )
             }
         }
@@ -268,24 +269,21 @@ internal fun CramDashboardScreen(
         }
     }
 
-    prioritySheetTarget?.let { target ->
-        val detailRequested = target.startsWith(PRIORITY_MODULE_SHEET_PREFIX)
-        val moduleId = target
-            .takeIf { detailRequested }
-            ?.removePrefix(PRIORITY_MODULE_SHEET_PREFIX)
-        val module = moduleId?.let { id ->
-            state.content.priorityModules.firstOrNull { it.id == id }
-        }
+    if (dailyDurationSheetVisible) {
+        DailyDurationAdjustmentSheet(
+            currentMinutes = state.dailyMinutes,
+            configurationEnabled = !state.isAnalysisInProgress,
+            onApply = onDailyMinutesChanged,
+            onDismiss = { dailyDurationSheetVisible = false }
+        )
+    }
+
+    if (priorityHelpSheetVisible) {
         CramPriorityExplanationSheet(
             groupingMode = state.content.priorityGroupingMode,
             totalQuestionCount = state.questionCount,
             moduleCount = state.content.priorityModules.size,
-            module = module,
-            detailRequested = detailRequested,
-            onDismiss = { prioritySheetTarget = null },
-            onBrowseModule = {
-                onOpenPriorityModule(it.id)
-            }
+            onDismiss = { priorityHelpSheetVisible = false }
         )
     }
 }
@@ -369,11 +367,13 @@ private fun CountdownCard(
 @Composable
 private fun DailyDurationCard(
     dailyMinutes: Int,
-    onDailyMinutesChanged: (Int) -> Unit,
+    onAdjust: () -> Unit,
     configurationEnabled: Boolean
 ) {
     val colors = MaterialTheme.colorScheme
     Card(
+        onClick = onAdjust,
+        enabled = configurationEnabled,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer)
@@ -406,21 +406,188 @@ private fun DailyDurationCard(
                     fontWeight = FontWeight.SemiBold
                 )
             }
-            IconButton(
-                onClick = {
-                    onDailyMinutesChanged(dailyMinutes - DAILY_MINUTES_STEP)
+            Text(
+                text = "调整",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (configurationEnabled) {
+                    colors.primary
+                } else {
+                    colors.onSurface.copy(alpha = 0.38f)
+                }
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = if (configurationEnabled) {
+                    colors.primary
+                } else {
+                    colors.onSurface.copy(alpha = 0.38f)
                 },
-                enabled = configurationEnabled && dailyMinutes > MIN_DAILY_MINUTES
-            ) {
-                Icon(Icons.Default.Remove, contentDescription = "减少15分钟")
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DailyDurationAdjustmentSheet(
+    currentMinutes: Int,
+    configurationEnabled: Boolean,
+    onApply: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    var draftMinutes by rememberSaveable(currentMinutes) {
+        mutableStateOf(currentMinutes)
+    }
+    var isClosing by remember { mutableStateOf(false) }
+    val currentLimit = dailyQuestionLimit(currentMinutes)
+    val draftLimit = dailyQuestionLimit(draftMinutes)
+    val planChanges = currentLimit != draftLimit
+    val hasChanges = draftMinutes != currentMinutes
+    val closeSheet: (Int?) -> Unit = { minutesToApply ->
+        if (!isClosing) {
+            isClosing = true
+            scope.launch {
+                try {
+                    sheetState.hide()
+                } finally {
+                    onDismiss()
+                }
+                minutesToApply?.let(onApply)
             }
-            IconButton(
-                onClick = {
-                    onDailyMinutesChanged(dailyMinutes + DAILY_MINUTES_STEP)
-                },
-                enabled = configurationEnabled && dailyMinutes < MAX_DAILY_MINUTES
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = {
+            if (!isClosing) onDismiss()
+        },
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { paneTitle = "调整每日学习时间" }
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(start = 24.dp, end = 24.dp, bottom = 24.dp)
+        ) {
+            Text(
+                text = "调整每日学习时间",
+                modifier = Modifier.semantics { heading() },
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "先预览影响，应用后才会更新任务。",
+                style = MaterialTheme.typography.bodyLarge,
+                color = colors.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = colors.surfaceContainerHigh
             ) {
-                Icon(Icons.Default.Add, contentDescription = "增加15分钟")
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(
+                        onClick = {
+                            draftMinutes = (draftMinutes - DAILY_MINUTES_STEP)
+                                .coerceAtLeast(MIN_DAILY_MINUTES)
+                        },
+                        enabled = configurationEnabled &&
+                            draftMinutes > MIN_DAILY_MINUTES &&
+                            !isClosing
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Remove,
+                            contentDescription = "减少15分钟"
+                        )
+                    }
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "$draftMinutes 分钟",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "每天最多安排 $draftLimit 题",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            draftMinutes = (draftMinutes + DAILY_MINUTES_STEP)
+                                .coerceAtMost(MAX_DAILY_MINUTES)
+                        },
+                        enabled = configurationEnabled &&
+                            draftMinutes < MAX_DAILY_MINUTES &&
+                            !isClosing
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "增加15分钟"
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "每次调整 15 分钟；180 分钟以上均按每天最多 180 题安排。",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            PrioritySheetSectionTitle("应用后会发生什么")
+            Spacer(modifier = Modifier.height(8.dp))
+            PriorityNotice(
+                text = if (!hasChanges) {
+                    "当前没有修改。"
+                } else if (planChanges) {
+                    "每日任务上限将从 $currentLimit 题变为 $draftLimit 题。" +
+                        "题目队列变化时，今天的进度会按新任务重新计算；" +
+                        "历史答题记录和独立的 30 题自测不会删除。"
+                } else {
+                    "调整前后均为每天最多 $draftLimit 题，" +
+                        "不会重排每日任务，也不会切换 AI 总稿。"
+                }
+            )
+            if (hasChanges && planChanges) {
+                Spacer(modifier = Modifier.height(10.dp))
+                PriorityNotice(
+                    text = "AI 总稿会按学习计划分别保存。" +
+                        "调回生成过的计划会自动恢复；" +
+                        "当前计划没有缓存时，才需要重新生成 AI 分析。"
+                )
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+            Button(
+                onClick = { closeSheet(draftMinutes) },
+                enabled = configurationEnabled && hasChanges && !isClosing,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (planChanges) "应用并更新计划" else "应用调整")
+            }
+            TextButton(
+                onClick = { closeSheet(null) },
+                enabled = !isClosing,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("取消")
             }
         }
     }
@@ -436,6 +603,8 @@ private fun AnalysisActionCard(
     onOpenFullReport: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
+    val hasAiReport = !state.content.aiReportMarkdown.isNullOrBlank()
+    val hasLocalReport = state.content.localReportMarkdown.isNotBlank()
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -487,17 +656,28 @@ private fun AnalysisActionCard(
                 }
             }
             Spacer(modifier = Modifier.height(14.dp))
-            if (state.aiConfigured) {
+            if (hasAiReport) {
                 Button(
-                    onClick = onStartAiAnalysis,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.isAnalysisInProgress && state.questionCount > 0
+                    onClick = onOpenFullReport,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
+                    Text("查看完整冲刺总稿")
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            if (state.aiConfigured) {
+                val analysisButtonContent: @Composable () -> Unit = {
                     if (state.isAnalysisInProgress) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp,
-                            color = colors.onPrimary
+                            color = if (hasAiReport) colors.primary else colors.onPrimary
                         )
                     } else {
                         Icon(
@@ -508,6 +688,23 @@ private fun AnalysisActionCard(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(analysisActionLabel(state.analysisPhase))
+                }
+                if (hasAiReport) {
+                    OutlinedButton(
+                        onClick = onStartAiAnalysis,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !state.isAnalysisInProgress && state.questionCount > 0
+                    ) {
+                        analysisButtonContent()
+                    }
+                } else {
+                    Button(
+                        onClick = onStartAiAnalysis,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !state.isAnalysisInProgress && state.questionCount > 0
+                    ) {
+                        analysisButtonContent()
+                    }
                 }
                 if (state.isAnalysisInProgress) {
                     TextButton(
@@ -542,19 +739,13 @@ private fun AnalysisActionCard(
                     }
                 }
             }
-            if (state.content.localReportMarkdown.isNotBlank()) {
+            if (hasLocalReport && !hasAiReport) {
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = onOpenFullReport,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        if (state.content.aiReportMarkdown.isNullOrBlank()) {
-                            "查看本地冲刺指南"
-                        } else {
-                            "查看完整冲刺总稿"
-                        }
-                    )
+                    Text("查看本地冲刺指南")
                     Spacer(modifier = Modifier.width(6.dp))
                     Icon(
                         imageVector = Icons.Default.ChevronRight,
@@ -744,12 +935,8 @@ private fun CramPriorityExplanationSheet(
     groupingMode: CramPriorityGroupingMode,
     totalQuestionCount: Int,
     moduleCount: Int,
-    module: CramPriorityModuleUi?,
-    detailRequested: Boolean,
-    onDismiss: () -> Unit,
-    onBrowseModule: (CramPriorityModuleUi) -> Unit
+    onDismiss: () -> Unit
 ) {
-    val colors = MaterialTheme.colorScheme
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     var isClosing by remember { mutableStateOf(false) }
@@ -775,60 +962,17 @@ private fun CramPriorityExplanationSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .semantics {
-                    paneTitle = if (detailRequested) {
-                        "复习分组详情"
-                    } else {
-                        "复习优先级说明"
-                    }
+                    paneTitle = "复习优先级说明"
                 }
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .padding(start = 24.dp, end = 24.dp, bottom = 24.dp)
         ) {
-            when {
-                detailRequested && module == null -> {
-                    Text(
-                        text = "分组已更新",
-                        modifier = Modifier.semantics { heading() },
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "分析结果刚刚发生变化，这个分组已不存在。关闭后可查看最新排序。",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = colors.onSurfaceVariant
-                    )
-                }
-                module != null -> {
-                    PriorityModuleDetailContent(
-                        module = module,
-                        groupingMode = groupingMode,
-                        totalQuestionCount = totalQuestionCount,
-                        browseEnabled = !isClosing,
-                        onBrowseModule = { selectedModule ->
-                            if (!isClosing) {
-                                isClosing = true
-                                scope.launch {
-                                    try {
-                                        sheetState.hide()
-                                    } finally {
-                                        onDismiss()
-                                    }
-                                    onBrowseModule(selectedModule)
-                                }
-                            }
-                        }
-                    )
-                }
-                else -> {
-                    PriorityHelpContent(
-                        groupingMode = groupingMode,
-                        totalQuestionCount = totalQuestionCount,
-                        moduleCount = moduleCount
-                    )
-                }
-            }
+            PriorityHelpContent(
+                groupingMode = groupingMode,
+                totalQuestionCount = totalQuestionCount,
+                moduleCount = moduleCount
+            )
             Spacer(modifier = Modifier.height(16.dp))
             TextButton(
                 onClick = closeSheet,
@@ -904,137 +1048,6 @@ private fun PriorityHelpContent(
 }
 
 @Composable
-private fun PriorityModuleDetailContent(
-    module: CramPriorityModuleUi,
-    groupingMode: CramPriorityGroupingMode,
-    totalQuestionCount: Int,
-    browseEnabled: Boolean,
-    onBrowseModule: (CramPriorityModuleUi) -> Unit
-) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        shape = RoundedCornerShape(999.dp),
-        color = colors.primaryContainer,
-        contentColor = colors.onPrimaryContainer
-    ) {
-        Text(
-            text = "第 ${module.rank.coerceAtLeast(1)} 优先",
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold
-        )
-    }
-    Spacer(modifier = Modifier.height(12.dp))
-    Text(
-        text = module.title,
-        modifier = Modifier.semantics { heading() },
-        style = MaterialTheme.typography.headlineSmall,
-        fontWeight = FontWeight.Bold
-    )
-    Spacer(modifier = Modifier.height(8.dp))
-    Text(
-        text = if (module.isFallback) {
-            "这是题型兜底分组，不是官方知识章节。"
-        } else {
-            "这是根据题库“出处/依据”字段形成的知识模块。"
-        },
-        style = MaterialTheme.typography.bodyLarge,
-        color = colors.onSurfaceVariant
-    )
-    Spacer(modifier = Modifier.height(18.dp))
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = colors.surfaceContainer
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            PriorityMetric(
-                label = "覆盖范围",
-                value = buildString {
-                    append("${module.questionCount} 题")
-                    module.coveragePercent?.let { append(" · 占题库 $it%") }
-                }
-            )
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 12.dp),
-                color = colors.outlineVariant
-            )
-            PriorityMetric(
-                label = "分组方式",
-                value = module.reason.ifBlank {
-                    cramPriorityGroupingDescription(groupingMode, totalQuestionCount)
-                }
-            )
-            if (module.typeSummary.isNotBlank()) {
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 12.dp),
-                    color = colors.outlineVariant
-                )
-                PriorityMetric(
-                    label = "题型构成",
-                    value = module.typeSummary
-                )
-            }
-            if (module.numericFactCount > 0) {
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 12.dp),
-                    color = colors.outlineVariant
-                )
-                PriorityMetric(
-                    label = "数字与时限信号",
-                    value = "提取到 ${module.numericFactCount} 处数字/时限表达"
-                )
-            }
-            if (!module.isFallback && module.sourceReferenceCount > 0) {
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 12.dp),
-                    color = colors.outlineVariant
-                )
-                PriorityMetric(
-                    label = "题库依据",
-                    value = "涉及 ${module.sourceReferenceCount} 个不同出处"
-                )
-            }
-        }
-    }
-    Spacer(modifier = Modifier.height(20.dp))
-    PrioritySheetSectionTitle("为什么排在这里")
-    Spacer(modifier = Modifier.height(8.dp))
-    Text(
-        text = "先按覆盖题量决定顺序；只有题量相同时，才比较数字/时限、" +
-            "题型、重复规则、解析与依据等复习信号。",
-        style = MaterialTheme.typography.bodyMedium,
-        color = colors.onSurfaceVariant
-    )
-    Spacer(modifier = Modifier.height(12.dp))
-    PriorityNotice(
-        text = "这是冲刺安排，不代表官方权重、真实难度或考试命中概率。"
-    )
-    Spacer(modifier = Modifier.height(20.dp))
-    Button(
-        onClick = { onBrowseModule(module) },
-        enabled = browseEnabled && module.quizIds.isNotEmpty(),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            if (module.quizIds.isEmpty()) {
-                "暂无可浏览题目"
-            } else {
-                "浏览本组 ${module.quizIds.size} 道题"
-            }
-        )
-        if (module.quizIds.isNotEmpty()) {
-            Spacer(modifier = Modifier.width(6.dp))
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-    }
-}
-
-@Composable
 private fun PrioritySheetSectionTitle(text: String) {
     Text(
         text = text,
@@ -1100,24 +1113,6 @@ private fun PriorityRule(
             )
         }
     }
-}
-
-@Composable
-private fun PriorityMetric(
-    label: String,
-    value: String
-) {
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    Spacer(modifier = Modifier.height(3.dp))
-    Text(
-        text = value,
-        style = MaterialTheme.typography.bodyLarge,
-        fontWeight = FontWeight.Medium
-    )
 }
 
 @Composable
@@ -1194,7 +1189,7 @@ private fun PriorityModuleCard(
                     text = if (module.quizIds.isEmpty()) {
                         "暂无可浏览题目"
                     } else {
-                        "查看依据与本组题目"
+                        "浏览本组 ${module.quizIds.size} 道题"
                     },
                     style = MaterialTheme.typography.labelMedium,
                     color = if (module.quizIds.isEmpty()) {
@@ -1367,6 +1362,8 @@ private fun ActionCard(
         MaterialTheme.colorScheme.onSurface
 ) {
     Card(
+        onClick = onClick,
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
@@ -1400,15 +1397,11 @@ private fun ActionCard(
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
-            IconButton(
-                onClick = onClick,
-                enabled = enabled
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = buttonLabel
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = buttonLabel,
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }
@@ -1465,9 +1458,3 @@ private fun analysisActionLabel(phase: CramAnalysisPhase): String {
 
 private const val MAX_VISIBLE_MODULES = 8
 private const val MAX_VISIBLE_MNEMONICS = 8
-private const val PRIORITY_HELP_SHEET_KEY = "help"
-private const val PRIORITY_MODULE_SHEET_PREFIX = "module:"
-
-private fun priorityModuleSheetKey(moduleId: String): String {
-    return "$PRIORITY_MODULE_SHEET_PREFIX$moduleId"
-}

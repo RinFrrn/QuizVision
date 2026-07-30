@@ -278,16 +278,23 @@ class CramAnalysisService : Service() {
                 localFingerprint = studyPack.localFingerprint,
                 promptFingerprint = CramAiPromptBuilder.fingerprint(finalPrompt, config)
             )
-            val existingReport = cacheDao.getCache(
+            val reportSubKey = finalReportCacheSubKey(studyPack.localFingerprint)
+            val existingPlanReport = cacheDao.getCache(
+                libraryId,
+                CramCacheType.FINAL_REPORT,
+                reportSubKey
+            )
+            val legacyReport = cacheDao.getCache(
                 libraryId,
                 CramCacheType.FINAL_REPORT,
                 CramCacheSubKey.MAIN
             )
-            val report = if (!forceRefresh &&
-                existingReport?.fingerprint == finalFingerprint &&
-                existingReport.content.isNotBlank()
-            ) {
-                existingReport.content
+            val reusableReport = listOfNotNull(existingPlanReport, legacyReport)
+                .firstOrNull {
+                    it.fingerprint == finalFingerprint && it.content.isNotBlank()
+                }
+            val report = if (!forceRefresh && reusableReport != null) {
+                reusableReport.content
             } else {
                 completeWithRetry(
                     client = OpenAiCompatibleClient(buildCramHttpClient()),
@@ -306,13 +313,13 @@ class CramAnalysisService : Service() {
                     val now = System.currentTimeMillis()
                     cacheDao.upsertCache(
                         LibraryInsightCache(
-                            id = existingReport?.id ?: 0,
+                            id = existingPlanReport?.id ?: 0,
                             libraryId = libraryId,
                             type = CramCacheType.FINAL_REPORT,
-                            subKey = CramCacheSubKey.MAIN,
+                            subKey = reportSubKey,
                             fingerprint = finalFingerprint,
                             content = generated,
-                            createdAt = existingReport?.createdAt ?: now,
+                            createdAt = existingPlanReport?.createdAt ?: now,
                             updatedAt = now
                         )
                     )

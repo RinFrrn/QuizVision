@@ -88,6 +88,36 @@ internal fun buildCramMnemonicQuizContentExtras(
     )
 }
 
+internal fun buildCramPriorityModuleQuizContentExtras(
+    module: CramPriorityModuleUi
+): QuizContentExtras {
+    val memoryPoint = QuizContentMemoryPoint(
+        id = "cram-priority-${module.id}",
+        sourceLabel = if (module.isFallback) {
+            "本题所在题型分组"
+        } else {
+            "本题所在复习模块"
+        },
+        cue = "${module.title} · 第 ${module.rank.coerceAtLeast(1)} 优先",
+        context = buildString {
+            append("${module.questionCount.coerceAtLeast(0)} 题")
+            module.coveragePercent?.let { append(" · 占题库 ${it.coerceIn(0, 100)}%") }
+            module.typeSummary.takeIf(String::isNotBlank)?.let { append(" · $it") }
+        },
+        supportingText = "先按覆盖题量排序；只有题量相同时，才比较数字/时限、" +
+            "题型、重复规则、解析与依据。这是冲刺顺序，不代表官方权重。"
+    )
+    return QuizContentExtras(
+        memoryPointsByQuizId = module.quizIds
+            .asSequence()
+            .filter { it > 0 }
+            .distinct()
+            .associateWith { listOf(memoryPoint) },
+        preferredMemoryPointId = memoryPoint.id,
+        showMemoryPointEmptyState = true
+    )
+}
+
 /**
  * UI-shaped analysis output. The local analyzer / AI repository can map its
  * persisted domain model into this object without coupling the dashboard to
@@ -382,7 +412,7 @@ class CramDashboardViewModel(
         if (_state.value?.dailyMinutes == normalized) return
         preferences.edit().putInt(dailyMinutesKey(), normalized).apply()
         updateState { it.copy(dailyMinutes = normalized) }
-        refresh(forceLocal = true)
+        refresh(forceLocal = false)
     }
 
     /**
@@ -542,13 +572,16 @@ class CramDashboardViewModel(
     internal fun priorityModuleQuizSheetSelection(
         moduleId: String
     ): CramQuizSheetSelection? {
-        val quizIds = _state.value
+        val module = _state.value
             ?.content
             ?.priorityModules
             ?.firstOrNull { it.id == moduleId }
-            ?.quizIds
-            .orEmpty()
-        return quizReferenceIndex.selectionForDatabaseIds(quizIds)
+            ?: return null
+        val selection = quizReferenceIndex.selectionForDatabaseIds(module.quizIds)
+            ?: return null
+        return selection.copy(
+            extras = buildCramPriorityModuleQuizContentExtras(module)
+        )
     }
 
     private fun loadInitialState(): CramDashboardUiState {

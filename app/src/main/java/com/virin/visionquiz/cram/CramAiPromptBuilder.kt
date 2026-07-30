@@ -158,7 +158,10 @@ object CramAiPromptBuilder {
                 appendLine("## 完全不会时的最后策略")
                 appendLine("把可靠排除法与弱统计观察明确分开，并强调统计不能替代知识。")
                 appendLine("## 题号索引")
-                appendLine("按主题列出最值得回看的源题号。")
+                appendLine(
+                    "按主题列出最值得回看的题号；每行必须使用 [题#88、题#89] 或 " +
+                        "[ID:28660、ID:28661]，禁止裸数字和数字范围。"
+                )
                 appendLine()
                 appendLine("本地统计摘要：")
                 appendLine(localSummary.take(MAX_LOCAL_SUMMARY_CHARS))

@@ -69,9 +69,6 @@ class CramAnalysisRepository(context: Context) {
                 selfTestSize = SELF_TEST_SIZE
             )
         ).also { result ->
-            if (existingLocal != null && existingLocal.fingerprint != localFingerprint) {
-                cacheDao.deleteByLibraryAndType(libraryId, CramCacheType.FINAL_REPORT)
-            }
             val now = System.currentTimeMillis()
             localUpdatedAt = now
             cacheDao.upsertCache(
@@ -88,16 +85,23 @@ class CramAnalysisRepository(context: Context) {
             )
         }
 
-        val reportCache = cacheDao.getCache(
+        val planReportCache = cacheDao.getCache(
+            libraryId,
+            CramCacheType.FINAL_REPORT,
+            finalReportCacheSubKey(localFingerprint)
+        )
+        val legacyReportCache = cacheDao.getCache(
             libraryId,
             CramCacheType.FINAL_REPORT,
             CramCacheSubKey.MAIN
         )
-        val matchingReportCache = reportCache?.takeIf {
-            isFinalReportBoundToLocalFingerprint(it.fingerprint, localFingerprint)
-        }
+        val matchingReportCache = listOfNotNull(planReportCache, legacyReportCache)
+            .firstOrNull {
+                it.content.isNotBlank() &&
+                    isFinalReportBoundToLocalFingerprint(it.fingerprint, localFingerprint)
+            }
         val localMarkdown = CramLocalContentRenderer.renderReport(analysis)
-        val aiReport = matchingReportCache?.content?.takeIf(String::isNotBlank)
+        val aiReport = matchingReportCache?.content
         val quickCard = CramLocalContentRenderer.extractQuickCard(aiReport.orEmpty())
             ?: CramLocalContentRenderer.renderQuickCard(analysis)
         val validIds = quizzes.asSequence()
@@ -135,7 +139,7 @@ class CramAnalysisRepository(context: Context) {
                 currentQuizIds = validTodayQuizIds
             ),
             selfTestQuizIds = selfTestIds,
-            generatedAt = maxOf(localUpdatedAt, matchingReportCache?.updatedAt ?: 0L)
+            generatedAt = (matchingReportCache?.updatedAt ?: localUpdatedAt)
                 .takeIf { it > 0L }
                 ?: System.currentTimeMillis()
         )
@@ -143,18 +147,19 @@ class CramAnalysisRepository(context: Context) {
 
     fun readProgress(libraryId: Int): CramAnalysisProgress = progressStore.read(libraryId)
 
-    private fun dailyQuestionLimit(dailyMinutes: Int): Int {
-        return (dailyMinutes.coerceIn(15, 240) * QUESTIONS_PER_HOUR / 60)
-            .coerceIn(MIN_DAILY_QUESTIONS, MAX_DAILY_QUESTIONS)
-    }
-
     companion object {
         private const val SELF_TEST_SIZE = 30
-        private const val QUESTIONS_PER_HOUR = 60
-        private const val MIN_DAILY_QUESTIONS = 20
-        private const val MAX_DAILY_QUESTIONS = 180
     }
 }
+
+internal fun dailyQuestionLimit(dailyMinutes: Int): Int {
+    return (dailyMinutes.coerceIn(15, 240) * QUESTIONS_PER_HOUR / 60)
+        .coerceIn(MIN_DAILY_QUESTIONS, MAX_DAILY_QUESTIONS)
+}
+
+private const val QUESTIONS_PER_HOUR = 60
+private const val MIN_DAILY_QUESTIONS = 20
+private const val MAX_DAILY_QUESTIONS = 180
 
 internal fun buildLocalAnalysisFingerprint(
     quizFingerprint: String,

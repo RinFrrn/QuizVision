@@ -91,6 +91,9 @@ class CramAiPromptBuilderTest {
         assertTrue(prompt.user.contains("# 3天及格冲刺总纲"))
         assertTrue(prompt.user.contains("## 考前20分钟口令"))
         assertTrue(prompt.user.contains("## 完全不会时的最后策略"))
+        assertTrue(prompt.user.contains("[题#88、题#89]"))
+        assertTrue(prompt.user.contains("[ID:28660、ID:28661]"))
+        assertTrue(prompt.user.contains("禁止裸数字和数字范围"))
         assertTrue(prompt.user.contains("有 2 个分块分析失败"))
     }
 
