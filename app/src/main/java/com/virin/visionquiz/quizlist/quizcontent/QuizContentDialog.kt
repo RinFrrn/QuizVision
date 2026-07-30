@@ -8,6 +8,7 @@ import android.util.TypedValue
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
+import androidx.annotation.MainThread
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -110,37 +111,88 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // ---------------------------------------------------------------------------
-// Public entry points (API unchanged)
+// Public entry points
 // ---------------------------------------------------------------------------
+
+data class QuizContentMemoryPoint(
+    val id: String,
+    val sourceLabel: String,
+    val cue: String,
+    val context: String = "",
+    val supportingText: String? = null
+)
+
+data class QuizContentExtras(
+    val memoryPointsByQuizId: Map<Int, List<QuizContentMemoryPoint>> = emptyMap(),
+    val preferredMemoryPointId: String? = null,
+    val showMemoryPointEmptyState: Boolean = false
+)
+
+internal fun orderedQuizContentMemoryPoints(
+    quizId: Int,
+    extras: QuizContentExtras
+): List<QuizContentMemoryPoint> {
+    val points = extras.memoryPointsByQuizId[quizId]
+        .orEmpty()
+        .distinctBy(QuizContentMemoryPoint::id)
+    val preferredId = extras.preferredMemoryPointId
+    return if (preferredId == null || points.none { it.id == preferredId }) {
+        points
+    } else {
+        points.sortedByDescending { it.id == preferredId }
+    }
+}
+
+class QuizContentDialogHandle internal constructor(
+    private val dismissAction: () -> Unit
+) {
+    private var dismissed = false
+
+    @MainThread
+    fun dismiss() {
+        if (dismissed) return
+        dismissed = true
+        dismissAction()
+    }
+}
 
 fun showQuizContentDialog(
     context: Context,
     quiz: Quiz,
-    allQuizzes: List<Quiz> = listOf(quiz)
-) {
-    showQuizContentDialog(context, listOf(quiz), 0, allQuizzes)
-}
+    allQuizzes: List<Quiz> = listOf(quiz),
+    extras: QuizContentExtras = QuizContentExtras()
+): QuizContentDialogHandle? =
+    showQuizContentDialog(context, listOf(quiz), 0, allQuizzes, extras)
 
 fun showQuizContentDialog(
     context: Context,
     quizzes: List<Quiz>,
     initialIndex: Int,
-    allQuizzes: List<Quiz> = quizzes
-) {
-    if (quizzes.isEmpty()) return
+    allQuizzes: List<Quiz> = quizzes,
+    extras: QuizContentExtras = QuizContentExtras(),
+    onDismissed: (() -> Unit)? = null
+): QuizContentDialogHandle? {
+    if (quizzes.isEmpty()) return null
 
-    val activity = context as? Activity ?: return
-    val decorView = activity.window.decorView as? ViewGroup ?: return
+    val activity = context as? Activity ?: return null
+    val decorView = activity.window.decorView as? ViewGroup ?: return null
 
     val overlay = FrameLayout(context).apply {
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         )
+        isClickable = true
+    }
+    val handle = QuizContentDialogHandle {
+        (overlay.parent as? ViewGroup)?.removeView(overlay)
+        onDismissed?.invoke()
     }
 
     val composeView = ComposeView(context).apply {
-        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool
+        )
         (context as? LifecycleOwner)?.let(::setViewTreeLifecycleOwner)
         (context as? ViewModelStoreOwner)?.let(::setViewTreeViewModelStoreOwner)
         (context as? SavedStateRegistryOwner)?.let(::setViewTreeSavedStateRegistryOwner)
@@ -151,7 +203,8 @@ fun showQuizContentDialog(
                     quizzes = quizzes,
                     allQuizzes = allQuizzes,
                     initialIndex = initialIndex,
-                    onDismiss = { (overlay.parent as? ViewGroup)?.removeView(overlay) }
+                    extras = extras,
+                    onDismiss = handle::dismiss
                 )
             }
         }
@@ -159,6 +212,7 @@ fun showQuizContentDialog(
 
     overlay.addView(composeView)
     decorView.addView(overlay)
+    return handle
 }
 
 fun showSimilarQuizContentDialog(
@@ -186,7 +240,9 @@ fun showSimilarQuizContentDialog(
     }
 
     val composeView = ComposeView(context).apply {
-        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool
+        )
         (context as? LifecycleOwner)?.let(::setViewTreeLifecycleOwner)
         (context as? ViewModelStoreOwner)?.let(::setViewTreeViewModelStoreOwner)
         (context as? SavedStateRegistryOwner)?.let(::setViewTreeSavedStateRegistryOwner)
@@ -226,6 +282,7 @@ private fun QuizContentBottomSheet(
     quizzes: List<Quiz>,
     allQuizzes: List<Quiz>,
     initialIndex: Int,
+    extras: QuizContentExtras,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -273,6 +330,7 @@ private fun QuizContentBottomSheet(
                 quizzes = quizzes,
                 allQuizzes = allQuizzes,
                 initialIndex = initialIndex,
+                extras = extras,
                 onDismiss = ::closeSheet
             )
         }
@@ -383,6 +441,7 @@ private fun QuizContentCard(
     quizzes: List<Quiz>,
     allQuizzes: List<Quiz>,
     initialIndex: Int,
+    extras: QuizContentExtras,
     onDismiss: () -> Unit
 ) {
     val originalIndex = remember(initialIndex, quizzes) {
@@ -457,7 +516,6 @@ private fun QuizContentCard(
                 duration = SnackbarDuration.Indefinite
             )
             if (result == SnackbarResult.ActionPerformed) {
-                currentIndex = originalIndex
                 selectedSimilarQuiz = null
             }
             snackbarJob = null
@@ -608,6 +666,10 @@ private fun QuizContentCard(
                 } else {
                     "相似题目"
                 }
+            )
+            QuizContentMemoryPointSection(
+                quizId = quiz.id,
+                extras = extras
             )
             Spacer(Modifier.height(14.dp))
             Text(
@@ -871,6 +933,130 @@ private fun QuizHeader(quiz: Quiz, positionText: String) {
             fontWeight = FontWeight.Bold
         )
         QuizTypePill(quiz = quiz)
+    }
+}
+
+@Composable
+private fun QuizContentMemoryPointSection(
+    quizId: Int,
+    extras: QuizContentExtras
+) {
+    val points = orderedQuizContentMemoryPoints(quizId, extras)
+    if (points.isEmpty() && !extras.showMemoryPointEmptyState) return
+
+    var expanded by remember(quizId) { mutableStateOf(false) }
+    val visiblePoints = if (expanded) points else points.take(2)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 18.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "本题记忆点",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
+            )
+            if (points.size > 1) {
+                Text(
+                    text = "${points.size} 条",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+
+        if (points.isEmpty()) {
+            OutlinedCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                colors = CardDefaults.outlinedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text(
+                        text = "这题暂无关联记忆点",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "先看标准答案和题库解析，不要套用上一题的口诀。",
+                        modifier = Modifier.padding(top = 3.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        } else {
+            visiblePoints.forEach { point ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Text(
+                            text = point.sourceLabel,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = point.cue,
+                            modifier = Modifier.padding(top = 4.dp),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (point.context.isNotBlank()) {
+                            Text(
+                                text = point.context,
+                                modifier = Modifier.padding(top = 4.dp),
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        point.supportingText
+                            ?.takeIf(String::isNotBlank)
+                            ?.let { supportingText ->
+                                Text(
+                                    text = supportingText,
+                                    modifier = Modifier.padding(top = 5.dp),
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        .copy(alpha = 0.74f),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                    }
+                }
+            }
+            if (points.size > 2) {
+                TextButton(
+                    onClick = { expanded = !expanded },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(
+                        if (expanded) {
+                            "收起"
+                        } else {
+                            "展开其余 ${points.size - 2} 条"
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 

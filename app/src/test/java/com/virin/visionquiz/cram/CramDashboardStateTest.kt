@@ -97,4 +97,67 @@ class CramDashboardStateTest {
         assertTrue(isFinalReportBoundToLocalFingerprint(fingerprint, "local-a"))
         assertTrue(!isFinalReportBoundToLocalFingerprint(fingerprint, "local-b"))
     }
+
+    @Test
+    fun priorityGroupingModeAndTitleDescribeTheActualAvailableData() {
+        val knowledgeModule = priorityModule(id = "rules", isFallback = false)
+        val fallbackModule = priorityModule(id = "types", isFallback = true)
+
+        assertEquals(
+            CramPriorityGroupingMode.UNAVAILABLE,
+            resolveCramPriorityGroupingMode(emptyList())
+        )
+        assertEquals(
+            CramPriorityGroupingMode.KNOWLEDGE_MODULES,
+            resolveCramPriorityGroupingMode(listOf(knowledgeModule))
+        )
+        assertEquals(
+            CramPriorityGroupingMode.MIXED,
+            resolveCramPriorityGroupingMode(listOf(knowledgeModule, fallbackModule))
+        )
+        val fallbackMode = resolveCramPriorityGroupingMode(listOf(fallbackModule))
+        assertEquals(CramPriorityGroupingMode.QUESTION_TYPE_FALLBACK, fallbackMode)
+        assertEquals("题型复习顺序", cramPrioritySectionTitle(fallbackMode))
+        assertTrue(cramPrioritySectionSupportingText(fallbackMode).contains("题库未标模块"))
+    }
+
+    @Test
+    fun fallbackPriorityExplanationDoesNotPretendToBeKnowledgeCoverage() {
+        val description = cramPriorityGroupingDescription(
+            mode = CramPriorityGroupingMode.QUESTION_TYPE_FALLBACK,
+            totalQuestionCount = 657
+        )
+
+        assertTrue(description.contains("657 道题"))
+        assertTrue(description.contains("按题型自动分组"))
+        assertTrue(description.contains("不是知识章节排名"))
+    }
+
+    @Test
+    fun unavailablePriorityExplanationDistinguishesEmptyAndPendingBanks() {
+        assertTrue(
+            cramPriorityGroupingDescription(
+                CramPriorityGroupingMode.UNAVAILABLE,
+                totalQuestionCount = 0
+            ).contains("暂无可分析题目")
+        )
+        assertTrue(
+            cramPriorityGroupingDescription(
+                CramPriorityGroupingMode.UNAVAILABLE,
+                totalQuestionCount = 12
+            ).contains("分析完成后")
+        )
+    }
+
+    private fun priorityModule(
+        id: String,
+        isFallback: Boolean
+    ): CramPriorityModuleUi {
+        return CramPriorityModuleUi(
+            id = id,
+            title = id,
+            questionCount = 1,
+            isFallback = isFallback
+        )
+    }
 }

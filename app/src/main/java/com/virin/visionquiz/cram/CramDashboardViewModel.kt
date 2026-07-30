@@ -13,6 +13,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.virin.visionquiz.ai.AiConfigStore
+import com.virin.visionquiz.quizlist.quizcontent.QuizContentExtras
+import com.virin.visionquiz.quizlist.quizcontent.QuizContentMemoryPoint
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -35,20 +37,56 @@ enum class CramPracticeEntry {
     SELF_TEST
 }
 
+enum class CramPriorityGroupingMode {
+    UNAVAILABLE,
+    KNOWLEDGE_MODULES,
+    MIXED,
+    QUESTION_TYPE_FALLBACK
+}
+
 data class CramPriorityModuleUi(
     val id: String,
     val title: String,
     val questionCount: Int,
+    val rank: Int = 0,
     val coveragePercent: Int? = null,
-    val reason: String = ""
+    val reason: String = "",
+    val isFallback: Boolean = false,
+    val typeSummary: String = "",
+    val numericFactCount: Int = 0,
+    val sourceReferenceCount: Int = 0,
+    val quizIds: List<Int> = emptyList()
 )
 
 data class CramMnemonicUi(
     val id: String,
     val title: String,
     val numberChain: String,
-    val explanation: String
+    val explanation: String,
+    val quizIds: List<Int> = emptyList()
 )
+
+internal fun cramMnemonicMemoryPointId(mnemonicId: String): String {
+    return "cram-mnemonic-$mnemonicId"
+}
+
+internal fun buildCramMnemonicQuizContentExtras(
+    pointsWithQuizIds: List<Pair<QuizContentMemoryPoint, List<Int>>>
+): QuizContentExtras {
+    val pointsByQuizId = linkedMapOf<Int, MutableList<QuizContentMemoryPoint>>()
+    pointsWithQuizIds.forEach { (memoryPoint, quizIds) ->
+        quizIds.forEach { quizId ->
+            val points = pointsByQuizId.getOrPut(quizId, ::mutableListOf)
+            if (points.none { it.id == memoryPoint.id }) {
+                points += memoryPoint
+            }
+        }
+    }
+    return QuizContentExtras(
+        memoryPointsByQuizId = pointsByQuizId.mapValues { (_, points) -> points.toList() },
+        showMemoryPointEmptyState = true
+    )
+}
 
 /**
  * UI-shaped analysis output. The local analyzer / AI repository can map its
@@ -62,6 +100,8 @@ data class CramDashboardContentUi(
     val todayCompletedCount: Int = 0,
     val todayQuizIds: List<Int> = emptyList(),
     val priorityModules: List<CramPriorityModuleUi> = emptyList(),
+    val priorityGroupingMode: CramPriorityGroupingMode =
+        CramPriorityGroupingMode.UNAVAILABLE,
     val mnemonics: List<CramMnemonicUi> = emptyList(),
     val quickCardPreview: String? = null,
     val quickCardMarkdown: String = "",
@@ -131,6 +171,78 @@ internal fun buildInitialCramDashboardState(
     )
 }
 
+internal fun resolveCramPriorityGroupingMode(
+    modules: List<CramPriorityModuleUi>
+): CramPriorityGroupingMode {
+    if (modules.isEmpty()) return CramPriorityGroupingMode.UNAVAILABLE
+    val fallbackCount = modules.count(CramPriorityModuleUi::isFallback)
+    return when (fallbackCount) {
+        0 -> CramPriorityGroupingMode.KNOWLEDGE_MODULES
+        modules.size -> CramPriorityGroupingMode.QUESTION_TYPE_FALLBACK
+        else -> CramPriorityGroupingMode.MIXED
+    }
+}
+
+internal fun buildCramPriorityModules(
+    modules: List<ModuleStat>,
+    identities: List<CramQuestionIdentity>,
+    priorities: List<QuestionPriority>,
+    availableDatabaseIds: Set<Int>
+): List<CramPriorityModuleUi> {
+    val storedQuizIdByAnalysisId = identities.associate {
+        it.analysisQuizId to it.storedQuizId
+    }
+    val priorityScoreByQuizId = priorities.associate {
+        it.quizId to it.score
+    }
+    return modules.mapIndexed { index, module ->
+        val isFallback = module.sourceReferences.isEmpty()
+        val orderedQuizIds = module.quizIds
+            .distinct()
+            .sortedWith(
+                compareByDescending<Int> { priorityScoreByQuizId[it] ?: 0.0 }
+                    .thenBy { it }
+            )
+            .mapNotNull(storedQuizIdByAnalysisId::get)
+            .filter { it > 0 && it in availableDatabaseIds }
+            .distinct()
+        CramPriorityModuleUi(
+            id = module.key,
+            title = module.displayName,
+            questionCount = module.questionCount,
+            rank = index + 1,
+            coveragePercent = (module.ratioOfBank.coerceIn(0.0, 1.0) * 100)
+                .roundToInt(),
+            reason = if (isFallback) {
+                "题库未标模块，按题型自动分组"
+            } else {
+                "按题库的答案依据归入该模块"
+            },
+            isFallback = isFallback,
+            typeSummary = module.typeCounts.joinToString(" · ") {
+                "${it.type.displayName} ${it.questionCount}题"
+            },
+            numericFactCount = module.numericFactCount,
+            sourceReferenceCount = module.sourceReferences.size,
+            quizIds = orderedQuizIds
+        )
+    }
+}
+
+internal fun resolveCramMnemonicDatabaseIds(
+    analysisQuizIds: List<Int>,
+    storedQuizIdByAnalysisId: Map<Int, Int>,
+    availableDatabaseIds: Set<Int>
+): List<Int> {
+    return analysisQuizIds
+        .mapNotNull { analysisQuizId ->
+            storedQuizIdByAnalysisId[analysisQuizId]
+                ?: analysisQuizId.takeIf { it in availableDatabaseIds }
+        }
+        .filter { it > 0 && it in availableDatabaseIds }
+        .distinct()
+}
+
 internal fun cramCountdownLabel(daysRemaining: Int): String {
     return when (daysRemaining.coerceAtLeast(0)) {
         0 -> "今天考试"
@@ -156,6 +268,8 @@ class CramDashboardViewModel(
     )
     private val aiConfigStore = AiConfigStore(application)
     private val repository = CramAnalysisRepository(application)
+    private var quizReferenceIndex = CramQuizReferenceIndex(emptyList())
+    private var mnemonicQuizContentExtras = QuizContentExtras()
     private var refreshJob: Job? = null
     private val _state = MutableLiveData(loadInitialState())
     val state: LiveData<CramDashboardUiState> = _state
@@ -229,13 +343,16 @@ class CramDashboardViewModel(
             }
             val (pack, aiConfigured, progress) = snapshot
             if (pack == null) {
+                quizReferenceIndex = CramQuizReferenceIndex(emptyList())
+                mnemonicQuizContentExtras = QuizContentExtras()
                 updateState {
                     it.copy(
                         questionCount = 0,
                         aiConfigured = aiConfigured,
                         analysisPhase = CramAnalysisPhase.NOT_STARTED,
                         analysisMessage = "题库中暂无可分析题目",
-                        analysisProgress = null
+                        analysisProgress = null,
+                        content = CramDashboardContentUi()
                     )
                 }
             } else {
@@ -385,6 +502,55 @@ class CramDashboardViewModel(
         }.distinct().toIntArray()
     }
 
+    internal fun hasQuizReference(target: CramQuizReferenceTarget): Boolean {
+        return quizReferenceIndex.contains(target)
+    }
+
+    internal fun quizSheetSelection(
+        target: CramQuizReferenceTarget
+    ): CramQuizSheetSelection? {
+        return quizReferenceIndex.selection(target)
+    }
+
+    internal fun reportQuizSheetSelection(
+        clickedReference: CramQuizReferenceContext,
+        reportReferences: List<CramQuizReferenceContext>
+    ): CramQuizSheetSelection? {
+        val selection = quizReferenceIndex.selection(clickedReference.target) ?: return null
+        return selection.copy(
+            extras = quizReferenceIndex.extrasFor(
+                contexts = reportReferences,
+                preferredMemoryPointId = clickedReference.memoryPoint?.id,
+                showMemoryPointEmptyState = true
+            )
+        )
+    }
+
+    internal fun mnemonicQuizSheetSelection(
+        target: CramQuizReferenceTarget,
+        preferredMemoryPointId: String
+    ): CramQuizSheetSelection? {
+        val selection = quizReferenceIndex.selection(target) ?: return null
+        return selection.copy(
+            extras = mnemonicQuizContentExtras.copy(
+                preferredMemoryPointId = preferredMemoryPointId,
+                showMemoryPointEmptyState = true
+            )
+        )
+    }
+
+    internal fun priorityModuleQuizSheetSelection(
+        moduleId: String
+    ): CramQuizSheetSelection? {
+        val quizIds = _state.value
+            ?.content
+            ?.priorityModules
+            ?.firstOrNull { it.id == moduleId }
+            ?.quizIds
+            .orEmpty()
+        return quizReferenceIndex.selectionForDatabaseIds(quizIds)
+    }
+
     private fun loadInitialState(): CramDashboardUiState {
         val todayEpochDay = LocalDate.now().toEpochDay()
         return buildInitialCramDashboardState(
@@ -426,26 +592,38 @@ class CramDashboardViewModel(
     private fun dailyMinutesKey() = "library_${libraryId}_daily_minutes"
 
     private fun applyStudyPack(pack: CramStudyPack, aiConfigured: Boolean) {
+        quizReferenceIndex = CramQuizReferenceIndex(pack.quizzes)
         val targetDayNumber = planDayForDaysRemaining(
             _state.value?.daysRemaining ?: DEFAULT_CRAM_DAYS
         )
         val firstDay = pack.analysis.threeDayPlan.days
             .firstOrNull { it.day == targetDayNumber }
             ?: pack.analysis.threeDayPlan.days.firstOrNull()
-        val priorityModules = pack.analysis.modules.map { module ->
-            CramPriorityModuleUi(
-                id = module.key,
-                title = module.displayName,
-                questionCount = module.questionCount,
-                coveragePercent = (module.ratioOfBank.coerceIn(0.0, 1.0) * 100).roundToInt()
-            )
+        val priorityModules = buildCramPriorityModules(
+            modules = pack.analysis.modules,
+            identities = pack.analysis.identities,
+            priorities = pack.analysis.priorities,
+            availableDatabaseIds = pack.quizzes
+                .asSequence()
+                .map { it.id }
+                .filter { it > 0 }
+                .toSet()
+        )
+        val priorityGroupingMode = resolveCramPriorityGroupingMode(priorityModules)
+        val storedQuizIdByAnalysisId = pack.analysis.identities.associate {
+            it.analysisQuizId to it.storedQuizId
         }
-        val mnemonics = pack.analysis.numericFactSummaries
+        val availableDatabaseIds = pack.quizzes
+            .asSequence()
+            .map { it.id }
+            .filter { it > 0 }
+            .toSet()
+        val resolvedMnemonicFacts = pack.analysis.numericFactSummaries
             .asSequence()
             .filter {
                 it.correctOrSupportedCount > 0 &&
                     it.incorrectCount == 0 &&
-                    it.contexts.isNotEmpty()
+                    it.contexts.any(String::isNotBlank)
             }
             .sortedWith(
                 compareByDescending<NumericFactSummary> { it.correctOrSupportedCount }
@@ -453,20 +631,41 @@ class CramDashboardViewModel(
             )
             .take(MAX_UI_NUMERIC_FACTS)
             .map { fact ->
-                CramMnemonicUi(
+                val allQuizIds = resolveCramMnemonicDatabaseIds(
+                    analysisQuizIds = fact.quizIds,
+                    storedQuizIdByAnalysisId = storedQuizIdByAnalysisId,
+                    availableDatabaseIds = availableDatabaseIds
+                )
+                val memoryContext = fact.contexts.first(String::isNotBlank)
+                    .replace(Regex("""\s+"""), " ")
+                    .trim()
+                val ui = CramMnemonicUi(
                     id = fact.key,
-                    title = fact.contexts.first().replace(Regex("""\s+"""), " ").take(48),
+                    title = memoryContext.take(48),
                     numberChain = "${fact.normalizedValue}${fact.unit}",
-                    explanation = buildString {
-                        append("${fact.category.displayName} · 题库支持 ${fact.correctOrSupportedCount} 次")
-                        if (fact.quizIds.isNotEmpty()) {
-                            append(" · 题号 ")
-                            append(fact.quizIds.take(6).joinToString("、"))
-                        }
-                    }
+                    explanation = "${fact.category.displayName} · " +
+                        "题库支持 ${fact.correctOrSupportedCount} 次",
+                    quizIds = allQuizIds.take(6)
+                )
+                Triple(
+                    ui,
+                    allQuizIds,
+                    QuizContentMemoryPoint(
+                        id = cramMnemonicMemoryPointId(ui.id),
+                        sourceLabel = "数字速记",
+                        cue = ui.numberChain,
+                        context = memoryContext,
+                        supportingText = ui.explanation
+                    )
                 )
             }
             .toList()
+        val mnemonics = resolvedMnemonicFacts.map { it.first }
+        mnemonicQuizContentExtras = buildCramMnemonicQuizContentExtras(
+            resolvedMnemonicFacts.map { (_, allQuizIds, memoryPoint) ->
+                memoryPoint to allQuizIds
+            }
+        )
         val quickCardMarkdown = pack.quickCardMarkdown
         val content = CramDashboardContentUi(
             libraryName = pack.libraryName,
@@ -475,6 +674,7 @@ class CramDashboardViewModel(
             todayCompletedCount = pack.todayCompletedCount,
             todayQuizIds = pack.todayQuizIds,
             priorityModules = priorityModules,
+            priorityGroupingMode = priorityGroupingMode,
             mnemonics = mnemonics,
             quickCardPreview = markdownPreview(quickCardMarkdown),
             quickCardMarkdown = quickCardMarkdown,

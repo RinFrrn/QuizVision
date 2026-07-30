@@ -136,6 +136,7 @@ object CramAiPromptBuilder {
                 appendLine("总目标：面向当前不足 50 分、3 天后考试的用户，优先保住高覆盖、易混淆、可快速记忆的得分点。")
                 appendLine("不要平均讲解全部模块，不要用空泛鼓励占篇幅。不得根据答案字母规律猜题。")
                 appendLine("合并重复规则；有冲突时列出冲突题号并提醒核对，不得擅自选边。")
+                appendLine("题号引用必须原样保留为 [题#源序号] 或 [ID:数据库题号]；不得简写成 [纯数字]。")
                 appendLine()
                 appendLine("输出格式（标题与顺序必须保持）：")
                 appendLine("# 3天及格冲刺总纲")

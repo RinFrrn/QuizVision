@@ -2,6 +2,7 @@ package com.virin.visionquiz.cram
 
 import android.content.Context
 import com.virin.visionquiz.dao.LibraryInsightCache
+import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizDatabase
 import com.virin.visionquiz.dao.QuizStudyMode
 import com.virin.visionquiz.dao.isSupportedStudyType
@@ -12,6 +13,7 @@ data class CramStudyPack(
     val libraryId: Int,
     val libraryName: String,
     val questionCount: Int,
+    val quizzes: List<Quiz>,
     val localFingerprint: String,
     val analysis: CramAnalysisResult,
     val localMarkdown: String,
@@ -120,6 +122,7 @@ class CramAnalysisRepository(context: Context) {
             libraryId = libraryId,
             libraryName = library.name,
             questionCount = quizzes.size,
+            quizzes = quizzes,
             localFingerprint = localFingerprint,
             analysis = analysis,
             localMarkdown = localMarkdown,
