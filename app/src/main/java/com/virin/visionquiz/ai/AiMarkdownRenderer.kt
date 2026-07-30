@@ -14,6 +14,7 @@ import io.noties.markwon.core.spans.HeadingSpan
 
 internal class AiMarkdownRenderer(
     context: Context,
+    private val preserveHeadingBodySpacing: Boolean = false,
     private val renderAction: ((TextView, String) -> Unit)? = null
 ) {
     private val markwon = if (renderAction == null) Markwon.create(context) else null
@@ -30,7 +31,9 @@ internal class AiMarkdownRenderer(
             } else {
                 markwon?.let { renderer ->
                     val spanned = SpannableStringBuilder(renderer.toMarkdown(markdown))
-                    compactHeadingBodySpacing(spanned)
+                    if (!preserveHeadingBodySpacing) {
+                        compactHeadingBodySpacing(spanned)
+                    }
                     renderer.setParsedMarkdown(textView, spanned)
                     applyHeadingThemeColor(textView)
                 }

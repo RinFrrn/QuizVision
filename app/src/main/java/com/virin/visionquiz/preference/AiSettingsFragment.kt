@@ -49,6 +49,7 @@ class AiSettingsFragment : Fragment() {
     private lateinit var profileContainer: LinearLayout
     private lateinit var quickReviewInput: TextInputEditText
     private lateinit var detailedAnalysisInput: TextInputEditText
+    private lateinit var cramAnalysisInput: TextInputEditText
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
     override fun onCreateView(
@@ -106,6 +107,7 @@ class AiSettingsFragment : Fragment() {
 
         quickReviewInput.setText(configStore.quickReviewPrompt())
         detailedAnalysisInput.setText(configStore.analysisPrompt())
+        cramAnalysisInput.setText(configStore.cramAnalysisPrompt())
         renderProfiles()
         return ScrollView(context).apply {
             setBackgroundColor(resolveColor(com.google.android.material.R.attr.colorSurface))
@@ -498,6 +500,7 @@ class AiSettingsFragment : Fragment() {
             analysisPrompt = detailedAnalysisInput.text?.toString().orEmpty(),
             techniquePrompt = configStore.techniquePrompt(),
             mnemonicPrompt = configStore.mnemonicPrompt(),
+            cramAnalysisPrompt = cramAnalysisInput.text?.toString().orEmpty(),
             profileId = profile.id,
             profileName = profile.name
         )
@@ -538,7 +541,7 @@ class AiSettingsFragment : Fragment() {
     }
 
     private fun savePrompts(): Boolean {
-        val prompts = listOf(quickReviewInput, detailedAnalysisInput)
+        val prompts = listOf(quickReviewInput, detailedAnalysisInput, cramAnalysisInput)
         if (prompts.any { it.text?.toString().orEmpty().isBlank() }) {
             Toast.makeText(requireContext(), R.string.ai_settings_required, Toast.LENGTH_SHORT).show()
             return false
@@ -547,7 +550,8 @@ class AiSettingsFragment : Fragment() {
             quickReviewPrompt = quickReviewInput.text.toString(),
             analysisPrompt = detailedAnalysisInput.text.toString(),
             techniquePrompt = configStore.techniquePrompt(),
-            mnemonicPrompt = configStore.mnemonicPrompt()
+            mnemonicPrompt = configStore.mnemonicPrompt(),
+            cramAnalysisPrompt = cramAnalysisInput.text.toString()
         )
         return true
     }
@@ -566,6 +570,12 @@ class AiSettingsFragment : Fragment() {
                 context,
                 R.string.ai_settings_detailed_analysis_prompt,
                 AiPromptBuilder.DEFAULT_ANALYSIS_PROMPT
+            )
+            cramAnalysisInput = addPromptEditor(
+                column,
+                context,
+                R.string.ai_settings_cram_analysis_prompt,
+                AiPromptBuilder.DEFAULT_CRAM_ANALYSIS_PROMPT
             )
             column.addView(MaterialButton(context).apply {
                 setText(R.string.ai_settings_save_prompts)

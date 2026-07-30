@@ -58,6 +58,7 @@
     <string name="import_settings_answer_headers">答案表头</string>
     <string name="import_settings_option_prefixes">选项前缀</string>
     <string name="import_settings_analysis_headers">解析表头</string>
+    <string name="import_settings_reference_headers">依据表头</string>
     <string name="import_settings_single_choice_types">单选题型</string>
     <string name="import_settings_multiple_choice_types">多选题型</string>
     <string name="import_settings_judgement_types">判断题型</string>

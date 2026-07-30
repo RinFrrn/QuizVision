@@ -20,7 +20,10 @@ data class Quiz(
     val answer: Set<Int>, // 答案，多选题可以有多个答案，例如 setOf(0, 1)
     @ColumnInfo(name = "is_multiple_choice") val isMultipleChoice: Boolean, // 是否为多选题
     @ColumnInfo(name = "question_type") val questionType: String? = null,
-    @ColumnInfo(name = "library_id") val libraryId: Int
+    @ColumnInfo(name = "library_id") val libraryId: Int,
+    val explanation: String? = null,
+    val reference: String? = null,
+    @ColumnInfo(name = "source_row") val sourceRow: Int? = null
 ) {
     init {
         if (answer.isEmpty()) {
@@ -126,9 +129,27 @@ data class AiExplanationCache(
     @ColumnInfo(name = "updated_at") val updatedAt: Long = System.currentTimeMillis()
 )
 
+@Entity(
+    indices = [
+        Index(value = ["library_id", "type", "sub_key"], unique = true)
+    ]
+)
+data class LibraryInsightCache(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @ColumnInfo(name = "library_id") val libraryId: Int,
+    val type: String,
+    @ColumnInfo(name = "sub_key") val subKey: String,
+    val fingerprint: String,
+    val content: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "updated_at") val updatedAt: Long = System.currentTimeMillis()
+)
+
 enum class QuizStudyMode(val value: String, val label: String) {
     ORDERED_PRACTICE("ordered_practice", "顺序背题"),
     RANDOM_PRACTICE("random_practice", "随机背题"),
+    CRAM_PRACTICE("cram_practice", "冲刺练习"),
+    CRAM_SELF_TEST("cram_self_test", "冲刺自测"),
     REVIEW("review", "间隔复习"),
     EXAM("exam", "模拟考试")
 }

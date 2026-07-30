@@ -329,6 +329,39 @@ class AiModelsTest {
         assertTrue(tested.copy(apiKey = "changed").isTestResultStale())
     }
 
+    @Test
+    fun dataSharingSignatureMatchesProfileAndChangesWithEveryDestinationField() {
+        val profile = AiProfile(
+            id = "profile-1",
+            name = "测试",
+            baseUrl = "https://example.com/v1",
+            apiKey = "secret",
+            model = "model-a"
+        )
+        val config = AiConfig(
+            enabled = true,
+            baseUrl = profile.baseUrl,
+            apiKey = profile.apiKey,
+            model = profile.model,
+            analysisPrompt = "analysis",
+            techniquePrompt = "technique",
+            mnemonicPrompt = "mnemonic",
+            profileId = profile.id
+        )
+        val signature = requireNotNull(config.dataSharingDestinationSignature())
+
+        assertEquals("${profile.id}:${profile.connectionFingerprint()}", signature)
+        assertTrue(config.copy(baseUrl = "https://other.example/v1")
+            .dataSharingDestinationSignature() != signature)
+        assertTrue(config.copy(model = "model-b")
+            .dataSharingDestinationSignature() != signature)
+        assertTrue(config.copy(apiKey = "changed")
+            .dataSharingDestinationSignature() != signature)
+        assertTrue(config.copy(profileId = "profile-2")
+            .dataSharingDestinationSignature() != signature)
+        assertEquals(null, config.copy(enabled = false).dataSharingDestinationSignature())
+    }
+
     private fun assertHeadings(content: String, vararg headings: String) {
         var previousIndex = -1
         headings.forEach { heading ->

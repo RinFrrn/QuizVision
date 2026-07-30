@@ -34,6 +34,9 @@ class AiConfigStore(private val context: Context) {
             mnemonicPrompt = mnemonicPrompt(),
             questionExtensionPrompt = questionExtensionPrompt(),
             similarAnalysisPrompt = similarAnalysisPrompt(),
+            contextualSuggestionsPrompt = contextualSuggestionsPrompt(),
+            contextualQaPrompt = contextualQaPrompt(),
+            cramAnalysisPrompt = cramAnalysisPrompt(),
             profileId = profile.id,
             profileName = profile.name
         )
@@ -141,15 +144,54 @@ class AiConfigStore(private val context: Context) {
             .apply()
     }
 
+    /**
+     * Backwards-compatible prompt editor entry point used by older settings
+     * screens and tests that predate the quick-review prompt.
+     */
+    fun savePrompts(
+        analysisPrompt: String,
+        techniquePrompt: String,
+        mnemonicPrompt: String
+    ) {
+        savePrompts(
+            quickReviewPrompt = quickReviewPrompt(),
+            analysisPrompt = analysisPrompt,
+            techniquePrompt = techniquePrompt,
+            mnemonicPrompt = mnemonicPrompt,
+            cramAnalysisPrompt = cramAnalysisPrompt()
+        )
+    }
+
     fun savePrompts(
         quickReviewPrompt: String,
         analysisPrompt: String,
         techniquePrompt: String,
         mnemonicPrompt: String,
-        questionExtensionPrompt: String = AiPromptBuilder.DEFAULT_QUESTION_EXTENSION_PROMPT,
-        similarAnalysisPrompt: String = AiPromptBuilder.DEFAULT_SIMILAR_ANALYSIS_PROMPT,
-        contextualSuggestionsPrompt: String = AiPromptBuilder.DEFAULT_CONTEXTUAL_SUGGESTIONS_PROMPT,
-        contextualQaPrompt: String = AiPromptBuilder.DEFAULT_CONTEXTUAL_QA_PROMPT
+        cramAnalysisPrompt: String
+    ) {
+        savePrompts(
+            quickReviewPrompt = quickReviewPrompt,
+            analysisPrompt = analysisPrompt,
+            techniquePrompt = techniquePrompt,
+            mnemonicPrompt = mnemonicPrompt,
+            questionExtensionPrompt = questionExtensionPrompt(),
+            similarAnalysisPrompt = similarAnalysisPrompt(),
+            contextualSuggestionsPrompt = contextualSuggestionsPrompt(),
+            contextualQaPrompt = contextualQaPrompt(),
+            cramAnalysisPrompt = cramAnalysisPrompt
+        )
+    }
+
+    fun savePrompts(
+        quickReviewPrompt: String,
+        analysisPrompt: String,
+        techniquePrompt: String,
+        mnemonicPrompt: String,
+        questionExtensionPrompt: String,
+        similarAnalysisPrompt: String,
+        contextualSuggestionsPrompt: String,
+        contextualQaPrompt: String,
+        cramAnalysisPrompt: String
     ) {
         prefs.edit()
             .putString(KEY_QUICK_REVIEW_PROMPT, quickReviewPrompt.trim())
@@ -160,6 +202,7 @@ class AiConfigStore(private val context: Context) {
             .putString(KEY_SIMILAR_ANALYSIS_PROMPT, similarAnalysisPrompt.trim())
             .putString(KEY_CONTEXTUAL_SUGGESTIONS_PROMPT, contextualSuggestionsPrompt.trim())
             .putString(KEY_CONTEXTUAL_QA_PROMPT, contextualQaPrompt.trim())
+            .putString(KEY_CRAM_ANALYSIS_PROMPT, cramAnalysisPrompt.trim())
             .apply()
     }
 
@@ -203,6 +246,11 @@ class AiConfigStore(private val context: Context) {
     fun contextualQaPrompt(): String = prefs.getString(
         KEY_CONTEXTUAL_QA_PROMPT,
         AiPromptBuilder.DEFAULT_CONTEXTUAL_QA_PROMPT
+    ).orEmpty()
+
+    fun cramAnalysisPrompt(): String = prefs.getString(
+        KEY_CRAM_ANALYSIS_PROMPT,
+        AiPromptBuilder.DEFAULT_CRAM_ANALYSIS_PROMPT
     ).orEmpty()
 
     private fun ensureProfilesMigrated() {
@@ -353,6 +401,7 @@ class AiConfigStore(private val context: Context) {
         private const val KEY_SIMILAR_ANALYSIS_PROMPT = "similar_analysis_prompt"
         private const val KEY_CONTEXTUAL_SUGGESTIONS_PROMPT = "contextual_suggestions_prompt"
         private const val KEY_CONTEXTUAL_QA_PROMPT = "contextual_qa_prompt"
+        private const val KEY_CRAM_ANALYSIS_PROMPT = "cram_analysis_prompt"
         private const val KEY_LEGACY_BASE_URL = "base_url"
         private const val KEY_LEGACY_API_KEY = "api_key_encrypted"
         private const val KEY_LEGACY_MODEL = "model"

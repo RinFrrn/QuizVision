@@ -808,9 +808,13 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
         return repository.getPracticeSession(libraryId, mode.value)
     }
 
-    fun savePracticeSession(session: PracticeSession) {
+    fun savePracticeSession(
+        session: PracticeSession,
+        onSaved: (() -> Unit)? = null
+    ) {
         viewModelScope.launch {
             repository.upsertPracticeSession(session)
+            onSaved?.invoke()
         }
     }
 

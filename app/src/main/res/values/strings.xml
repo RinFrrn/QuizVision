@@ -32,6 +32,7 @@
     <string name="import_settings_answer_headers">Answer headers</string>
     <string name="import_settings_option_prefixes">Option prefixes</string>
     <string name="import_settings_analysis_headers">Analysis headers</string>
+    <string name="import_settings_reference_headers">Reference headers</string>
     <string name="import_settings_single_choice_types">Single choice types</string>
     <string name="import_settings_multiple_choice_types">Multiple choice types</string>
     <string name="import_settings_judgement_types">Judgement types</string>
@@ -437,4 +438,5 @@
         vestibulum. Fusce dictum libero quis erat maximus, vitae volutpat diam dignissim.
     </string>
     <string name="title_activity_camera_xdetector" translatable="false">CameraXDetectorActivity</string>
+    <string name="ai_settings_cram_analysis_prompt">题库冲刺分析提示词</string>
 </resources>

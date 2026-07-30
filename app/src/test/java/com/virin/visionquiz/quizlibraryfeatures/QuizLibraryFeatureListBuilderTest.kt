@@ -20,6 +20,8 @@ class QuizLibraryFeatureListBuilderTest {
             .map { it.title }
         val reviewItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
             .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.REVIEW }
+        val cramItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
+            .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.CRAM_DASHBOARD }
         val quizListItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
             .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST }
         val itemOrder = items.mapNotNull { item ->
@@ -32,10 +34,12 @@ class QuizLibraryFeatureListBuilderTest {
 
         assertEquals(listOf("自主练习", "题库概览", "巩固复盘", "题库工具"), sectionTitles)
         assertEquals("今日学习", reviewItem.feature.title)
+        assertEquals("3天冲刺", cramItem.feature.title)
         assertEquals("浏览题目", quizListItem.feature.title)
         assertEquals(
             listOf(
                 "REVIEW",
+                "CRAM_DASHBOARD",
                 "ORDERED_PRACTICE",
                 "RANDOM_PRACTICE",
                 "EXAM",
@@ -58,6 +62,8 @@ class QuizLibraryFeatureListBuilderTest {
         val items = buildGroupedFeatureItems(buildLibraryStudyFeatures())
         val reviewItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
             .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.REVIEW }
+        val cramItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
+            .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.CRAM_DASHBOARD }
         val orderedItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
             .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.ORDERED_PRACTICE }
         val randomItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
@@ -76,6 +82,7 @@ class QuizLibraryFeatureListBuilderTest {
 
         assertTrue(isFullSpanFeatureItem(items.first()))
         assertTrue(isFullSpanFeatureItem(reviewItem))
+        assertTrue(isFullSpanFeatureItem(cramItem))
         assertTrue(isFullSpanFeatureItem(statsItem))
         assertTrue(isFullSpanFeatureItem(quizListItem))
         assertFalse(isFullSpanFeatureItem(orderedItem))
@@ -87,6 +94,7 @@ class QuizLibraryFeatureListBuilderTest {
         assertFalse(favoriteItem.compact)
 
         assertEquals(6, quizLibraryFeatureSpanSize(reviewItem, 6))
+        assertEquals(6, quizLibraryFeatureSpanSize(cramItem, 6))
         assertEquals(2, quizLibraryFeatureSpanSize(orderedItem, 6))
         assertEquals(2, quizLibraryFeatureSpanSize(randomItem, 6))
         assertEquals(2, quizLibraryFeatureSpanSize(examItem, 6))

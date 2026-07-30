@@ -5,6 +5,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.liveData
 import androidx.lifecycle.map
 import androidx.room.withTransaction
+import com.virin.visionquiz.cram.CramAnalysisService
 import com.virin.visionquiz.dao.*
 import com.virin.visionquiz.quizstudy.ReviewStats
 import com.virin.visionquiz.quizstudy.SpacedRepetitionScheduler
@@ -23,6 +24,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
     private val answerRecordDao: QuizAnswerRecordDao
     private val practiceSessionDao: PracticeSessionDao
     private val aiExplanationCacheDao: AiExplanationCacheDao
+    private val libraryInsightCacheDao: LibraryInsightCacheDao
     private val reviewCardDao: ReviewCardDao
 
     init {
@@ -34,6 +36,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
         answerRecordDao = database.answerRecordDao()
         practiceSessionDao = database.practiceSessionDao()
         aiExplanationCacheDao = database.aiExplanationCacheDao()
+        libraryInsightCacheDao = database.libraryInsightCacheDao()
         reviewCardDao = database.reviewCardDao()
     }
 
@@ -59,12 +62,14 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
 
     override suspend fun deleteQuizLibrary(quizLibrary: QuizLibrary) {
         SimilarQuizStore.cancelAnalysis(appContext, quizLibrary.id)
+        CramAnalysisService.cancelForLibraryDeletion(appContext, quizLibrary.id)
         database.withTransaction {
             favoriteDao.deleteFavoritesByLibraryId(quizLibrary.id)
             answerRecordDao.deleteAnswerRecordsByLibraryId(quizLibrary.id)
             examSessionDao.deleteExamSessionsByLibraryId(quizLibrary.id)
             practiceSessionDao.deletePracticeSessionsByLibraryId(quizLibrary.id)
             aiExplanationCacheDao.deleteByLibraryId(quizLibrary.id)
+            libraryInsightCacheDao.deleteByLibraryId(quizLibrary.id)
             reviewCardDao.deleteCardsByLibraryId(quizLibrary.id)
             quizDao.deleteQuizzesByCategoryId(quizLibrary.id)
             quizLibDao.deleteCategoryById(quizLibrary.id)

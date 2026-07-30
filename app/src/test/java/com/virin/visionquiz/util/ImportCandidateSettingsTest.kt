@@ -11,6 +11,12 @@ class ImportCandidateSettingsTest {
     }
 
     @Test
+    fun defaultReferenceHeadersRecognizeQuestionBasis() {
+        assertTrue("依据" in ImportCandidateConfig().referenceHeaders)
+        assertTrue("答案依据" in ImportCandidateConfig().referenceHeaders)
+    }
+
+    @Test
     fun duplicateCandidateIsFoundAcrossDifferentGroups() {
         val owner = findImportCandidateOwner(
             candidate = " 题 目 ",

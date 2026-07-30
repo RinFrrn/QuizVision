@@ -32,6 +32,7 @@ data class AiConfig(
     val similarAnalysisPrompt: String = AiPromptBuilder.DEFAULT_SIMILAR_ANALYSIS_PROMPT,
     val contextualSuggestionsPrompt: String = AiPromptBuilder.DEFAULT_CONTEXTUAL_SUGGESTIONS_PROMPT,
     val contextualQaPrompt: String = AiPromptBuilder.DEFAULT_CONTEXTUAL_QA_PROMPT,
+    val cramAnalysisPrompt: String = AiPromptBuilder.DEFAULT_CRAM_ANALYSIS_PROMPT,
     val profileId: String = "",
     val profileName: String = ""
 ) {
@@ -50,6 +51,15 @@ data class AiConfig(
 
     fun isComplete(): Boolean {
         return enabled && baseUrl.isNotBlank() && apiKey.isNotBlank() && model.isNotBlank()
+    }
+
+    /**
+     * Identifies the exact third-party destination covered by a data-sharing
+     * consent. The API key itself is never stored in the signature.
+     */
+    fun dataSharingDestinationSignature(): String? {
+        if (!isComplete() || profileId.isBlank()) return null
+        return "$profileId:${connectionFingerprint(baseUrl, model, apiKey)}"
     }
 }
 
@@ -78,10 +88,7 @@ data class AiProfile(
     val testResult: AiTestResult = AiTestResult()
 ) {
     fun connectionFingerprint(): String {
-        val apiKeyHash = sha256(apiKey.trim())
-        return sha256(
-            listOf(baseUrl.trim(), model.trim(), apiKeyHash).joinToString("\u001f")
-        )
+        return connectionFingerprint(baseUrl, model, apiKey)
     }
 
     fun isTestResultStale(): Boolean {
@@ -98,6 +105,17 @@ private fun sha256(value: String): String {
     return MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it) }
+}
+
+private fun connectionFingerprint(
+    baseUrl: String,
+    model: String,
+    apiKey: String
+): String {
+    val apiKeyHash = sha256(apiKey.trim())
+    return sha256(
+        listOf(baseUrl.trim(), model.trim(), apiKeyHash).joinToString("\u001f")
+    )
 }
 
 data class AiPrompt(
@@ -184,6 +202,19 @@ object AiPromptBuilder {
         "用户正在学习一道题目，现针对以下学习建议进行深入探讨。请结合原题的知识点，" +
             "对用户的建议问题给出详细、准确的解答。解答应帮助用户加深理解，" +
             "可以引用相关概念、规则、实例进行说明。控制在 150–300 字。"
+
+    const val DEFAULT_CRAM_ANALYSIS_PROMPT =
+        "你是一名擅长职业考试、法规类考试和大规模题库分析的冲刺教练。" +
+            "目标是在有限时间内帮助基础薄弱的用户优先达到及格线，而不是平均讲解全部题目。" +
+            "分析时必须区分可靠的知识规律与只能在完全不会时使用的答案统计，" +
+            "不得把答案字母分布、绝对词或最长选项等偶然现象说成必然规律。" +
+            "将同一知识点的判断、单选和多选变形合并为母规则，优先提炼责任主体、时限、" +
+            "数字、比例、金额、倍数、适用条件、处理后果、完整并列清单和易混概念。" +
+            "特别识别主体偷换、数字偷换、条件增删、应当与可以、中止与终止、以上与以下、" +
+            "流程顺序颠倒和多选漏项等陷阱。数字密集内容应压缩成可核对的数字链和短口诀，" +
+            "但不得为了押韵歪曲事实。每条重要结论应保留题号索引；题库无法直接确认的内容必须明确标注，" +
+            "不得编造法规条款、出处或正确说法。输出使用简体中文 Markdown，先给结论，短句表达，" +
+            "用粗体突出关键限定条件，避免大段复述题目原文。"
 
     fun build(
         quiz: Quiz,

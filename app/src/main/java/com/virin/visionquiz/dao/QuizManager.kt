@@ -220,11 +220,14 @@ object QuizManager {
         ANALYSIS
     }
 
-    private data class ImportHeaderMapping(
+    internal data class ImportHeaderMapping(
         val promptIndex: Int,
+        val sourceIdIndex: Int? = null,
         val typeIndex: Int? = null,
         val answerIndex: Int? = null,
         val analysisIndex: Int? = null,
+        val referenceIndex: Int? = null,
+        val combinedOptionsIndex: Int? = null,
         val optionIndexes: List<Int> = emptyList()
     )
 
@@ -237,12 +240,15 @@ object QuizManager {
         val sourceName: String = template.displayName
     )
 
-    private data class ImportedQuizDraft(
+    internal data class ImportedQuizDraft(
         val prompt: String,
         val options: List<String>,
         val answer: Set<Int>,
         val isMultipleChoice: Boolean,
-        val questionType: QuizUiType
+        val questionType: QuizUiType,
+        val explanation: String? = null,
+        val reference: String? = null,
+        val sourceRow: Int? = null
     )
 
     private data class ImportWarning(
@@ -259,7 +265,7 @@ object QuizManager {
         val sourceName: String = template.displayName
     )
 
-    private data class ImportRowParseResult(
+    internal data class ImportRowParseResult(
         val draft: ImportedQuizDraft? = null,
         val reason: String? = null
     )
@@ -470,13 +476,16 @@ object QuizManager {
                 val questionsList = parsedExcel.drafts.mapIndexedNotNull { index, draft ->
                     try {
                         Quiz(
-                            0,
-                            draft.prompt,
-                            draft.options,
-                            draft.answer,
-                            draft.isMultipleChoice,
-                            draft.questionType.label,
-                            currCategory.id
+                            id = 0,
+                            prompt = draft.prompt,
+                            options = draft.options,
+                            answer = draft.answer,
+                            isMultipleChoice = draft.isMultipleChoice,
+                            questionType = draft.questionType.label,
+                            libraryId = currCategory.id,
+                            explanation = draft.explanation,
+                            reference = draft.reference,
+                            sourceRow = draft.sourceRow
                         )
                     } catch (e: IllegalArgumentException) {
                         persistedWarnings += ImportWarning(
@@ -977,7 +986,15 @@ object QuizManager {
             return ImportRowParseResult(reason = "未识别到答案")
         }
 
-        return parseImportedQuiz("", prompt, optionCells, answerCell, settings)
+        return parseImportedQuiz(
+            type = "",
+            prompt = prompt,
+            optionCells = optionCells,
+            answerCell = answerCell,
+            settings = settings,
+            explanation = analysisLines.joinToString("\n").trim().takeIf { it.isNotBlank() },
+            sourceRow = block.startLine
+        )
     }
 
     private fun splitInlineOptionLine(line: String): List<String> {
@@ -1176,12 +1193,14 @@ object QuizManager {
             if (rowValues.all { it.isBlank() }) continue
 
             val prompt = rowValues.getOrNull(headerMapping.promptIndex)?.trim().orEmpty()
-            val type = headerMapping.typeIndex?.let { rowValues.getOrNull(it)?.trim() }.orEmpty()
-            val optionCells = headerMapping.optionIndexes.map { rowValues.getOrNull(it).orEmpty().trim() }
-            val answerCell = headerMapping.answerIndex?.let { rowValues.getOrNull(it)?.trim() }.orEmpty()
             if (prompt.isBlank()) continue
 
-            val parsed = parseImportedQuiz(type, prompt, optionCells, answerCell, settings)
+            val parsed = parseMappedRow(
+                rowValues = rowValues,
+                headerMapping = headerMapping,
+                sourceRow = rowIndex + 1,
+                settings = settings
+            )
             parsed.draft?.let(imported::add)
             parsed.reason?.let {
                 warnings += ImportWarning(rowIndex + 1, it, prompt)
@@ -1193,6 +1212,38 @@ object QuizManager {
             warnings = warnings,
             headerRowNumber = sheetMatch.headerRowIndex + 1,
             sourceName = sheetMatch.sourceName
+        )
+    }
+
+    internal fun parseMappedRow(
+        rowValues: List<String>,
+        headerMapping: ImportHeaderMapping,
+        sourceRow: Int,
+        settings: ImportCandidateConfig
+    ): ImportRowParseResult {
+        val prompt = rowValues.getOrNull(headerMapping.promptIndex)?.trim().orEmpty()
+        val type = headerMapping.typeIndex?.let { rowValues.getOrNull(it)?.trim() }.orEmpty()
+        val optionCells = readMappedOptionCells(rowValues, headerMapping)
+        val answerCell = headerMapping.answerIndex?.let { rowValues.getOrNull(it)?.trim() }.orEmpty()
+        val explanation = headerMapping.analysisIndex
+            ?.let { rowValues.getOrNull(it)?.trim() }
+            ?.takeIf { it.isNotBlank() }
+        val reference = headerMapping.referenceIndex
+            ?.let { rowValues.getOrNull(it)?.trim() }
+            ?.takeIf { it.isNotBlank() }
+        val importedSourceId = headerMapping.sourceIdIndex
+            ?.let { rowValues.getOrNull(it)?.trim() }
+            ?.toIntOrNull()
+            ?.takeIf { it > 0 }
+        return parseImportedQuiz(
+            type = type,
+            prompt = prompt,
+            optionCells = optionCells,
+            answerCell = answerCell,
+            settings = settings,
+            explanation = explanation,
+            reference = reference,
+            sourceRow = importedSourceId ?: sourceRow
         )
     }
 
@@ -1214,7 +1265,14 @@ object QuizManager {
             val answerCell = rowValues.getOrNull(1)?.trim().orEmpty()
             val options = rowValues.drop(2).map { it.trim() }.filter { it.isNotBlank() }
             if (prompt.isBlank()) continue
-            val parsed = parseImportedQuiz("", prompt, options, answerCell, settings)
+            val parsed = parseImportedQuiz(
+                type = "",
+                prompt = prompt,
+                optionCells = options,
+                answerCell = answerCell,
+                settings = settings,
+                sourceRow = rowIndex + 1
+            )
             parsed.draft?.let(imported::add)
             parsed.reason?.let {
                 warnings += ImportWarning(rowIndex + 1, it, prompt)
@@ -1229,7 +1287,30 @@ object QuizManager {
         )
     }
 
-    private data class ScoredHeaderMapping(
+    private fun readMappedOptionCells(
+        rowValues: List<String>,
+        headerMapping: ImportHeaderMapping
+    ): List<String> {
+        val separatedOptions = headerMapping.optionIndexes.map { columnIndex ->
+            rowValues.getOrNull(columnIndex).orEmpty().trim()
+        }
+        if (headerMapping.optionIndexes.size >= 2 || headerMapping.combinedOptionsIndex == null) {
+            return separatedOptions
+        }
+        val combinedOptions = rowValues
+            .getOrNull(headerMapping.combinedOptionsIndex)
+            .orEmpty()
+        return splitCombinedOptionCell(combinedOptions)
+    }
+
+    internal fun splitCombinedOptionCell(rawOptions: String): List<String> {
+        return rawOptions
+            .split('&', '＆')
+            .map(String::trim)
+            .filter(String::isNotBlank)
+    }
+
+    internal data class ScoredHeaderMapping(
         val mapping: ImportHeaderMapping,
         val score: Int
     )
@@ -1239,14 +1320,17 @@ object QuizManager {
         val optionOrder: Int
     )
 
-    private fun resolveHeaderMapping(
+    internal fun resolveHeaderMapping(
         headers: List<String>,
         settings: ImportCandidateConfig
     ): ScoredHeaderMapping? {
         var promptIndex: Int? = null
+        var sourceIdIndex: Int? = null
         var typeIndex: Int? = null
         var answerIndex: Int? = null
         var analysisIndex: Int? = null
+        var referenceIndex: Int? = null
+        val combinedOptionsIndex = findCombinedOptionsHeaderIndex(headers, settings.optionPrefixes)
         val optionMatches = mutableListOf<OptionHeaderMatch>()
 
         headers.forEachIndexed { index, header ->
@@ -1255,6 +1339,9 @@ object QuizManager {
 
             if (promptIndex == null && matchesAnyHeader(normalizedHeader, settings.promptHeaders)) {
                 promptIndex = index
+            }
+            if (sourceIdIndex == null && matchesAnyHeader(normalizedHeader, SOURCE_ID_HEADERS)) {
+                sourceIdIndex = index
             }
             if (typeIndex == null && matchesAnyHeader(normalizedHeader, settings.typeHeaders)) {
                 typeIndex = index
@@ -1265,8 +1352,12 @@ object QuizManager {
             if (analysisIndex == null && matchesAnyHeader(normalizedHeader, settings.analysisHeaders)) {
                 analysisIndex = index
             }
-            resolveOptionHeaderOrder(normalizedHeader, settings.optionPrefixes)?.let { optionOrder ->
-                optionMatches += OptionHeaderMatch(index, optionOrder)
+            if (referenceIndex == null && matchesAnyHeader(normalizedHeader, settings.referenceHeaders)) {
+                referenceIndex = index
+            }
+            val optionOrder = resolveOptionHeaderOrder(normalizedHeader, settings.optionPrefixes)
+            optionOrder?.let { order ->
+                optionMatches += OptionHeaderMatch(index, order)
             }
         }
 
@@ -1278,23 +1369,29 @@ object QuizManager {
             .sortedBy { it.optionOrder }
             .map { it.columnIndex }
         val hasAnswer = answerIndex != null
-        val hasEnoughOptions = optionIndexes.size >= 2
+        val hasEnoughOptions = optionIndexes.size >= 2 || combinedOptionsIndex != null
         if (!hasAnswer && !hasEnoughOptions) {
             return null
         }
 
         val score = 3 +
+            (if (sourceIdIndex != null) 1 else 0) +
             (if (hasAnswer) 3 else 0) +
             (if (typeIndex != null) 2 else 0) +
             min(optionIndexes.size, 4) +
-            (if (analysisIndex != null) 1 else 0)
+            (if (combinedOptionsIndex != null) 2 else 0) +
+            (if (analysisIndex != null) 1 else 0) +
+            (if (referenceIndex != null) 1 else 0)
 
         return ScoredHeaderMapping(
             mapping = ImportHeaderMapping(
                 promptIndex = prompt,
+                sourceIdIndex = sourceIdIndex,
                 typeIndex = typeIndex,
                 answerIndex = answerIndex,
                 analysisIndex = analysisIndex,
+                referenceIndex = referenceIndex,
+                combinedOptionsIndex = combinedOptionsIndex,
                 optionIndexes = optionIndexes
             ),
             score = score
@@ -1308,10 +1405,35 @@ object QuizManager {
         }
     }
 
+    private val SOURCE_ID_HEADERS = listOf(
+        "序号", "题号", "编号", "试题编号", "题目编号"
+    )
+
     private fun matchesHeader(normalizedHeader: String, normalizedAlias: String): Boolean {
         if (normalizedHeader == normalizedAlias) return true
         if (stripBracketSuffix(normalizedHeader) == normalizedAlias) return true
         return normalizedAlias.length >= 3 && normalizedHeader.startsWith(normalizedAlias)
+    }
+
+    private fun matchesExactHeader(normalizedHeader: String, aliases: List<String>): Boolean {
+        val headerWithoutSuffix = stripBracketSuffix(normalizedHeader)
+        return aliases.any { alias ->
+            val normalizedAlias = normalizeHeaderText(alias)
+            normalizedAlias.isNotBlank() &&
+                (normalizedHeader == normalizedAlias || headerWithoutSuffix == normalizedAlias)
+        }
+    }
+
+    internal fun findCombinedOptionsHeaderIndex(
+        headers: List<String>,
+        optionPrefixes: List<String>
+    ): Int? {
+        val index = headers.indexOfFirst { header ->
+            val normalizedHeader = normalizeHeaderText(header)
+            matchesExactHeader(normalizedHeader, optionPrefixes) &&
+                resolveOptionHeaderOrder(normalizedHeader, optionPrefixes) == null
+        }
+        return index.takeIf { it >= 0 }
     }
 
     private fun stripBracketSuffix(text: String): String {
@@ -1345,10 +1467,13 @@ object QuizManager {
         prompt: String,
         optionCells: List<String>,
         answerCell: String,
-        settings: ImportCandidateConfig
+        settings: ImportCandidateConfig,
+        explanation: String? = null,
+        reference: String? = null,
+        sourceRow: Int? = null
     ): ImportRowParseResult {
         val normalizedType = normalizeHeaderText(type)
-        return when {
+        val parsed = when {
             normalizedType.isBlank() -> inferImportedQuiz(prompt, optionCells, answerCell)
             matchesCandidateValue(normalizedType, settings.singleChoiceTypes) -> {
                 parseChoiceQuiz(prompt, optionCells, answerCell, QuizUiType.SINGLE_CHOICE, "单选")
@@ -1364,6 +1489,14 @@ object QuizManager {
             normalizedType == "排序题" || normalizedType == "排序" -> ImportRowParseResult(reason = "暂不支持排序题")
             else -> ImportRowParseResult(reason = "未知题型：$normalizedType")
         }
+        val draft = parsed.draft ?: return parsed
+        return parsed.copy(
+            draft = draft.copy(
+                explanation = explanation?.trim()?.takeIf { it.isNotBlank() },
+                reference = reference?.trim()?.takeIf { it.isNotBlank() },
+                sourceRow = sourceRow?.takeIf { it > 0 }
+            )
+        )
     }
 
     private fun inferImportedQuiz(

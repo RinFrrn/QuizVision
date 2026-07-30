@@ -44,6 +44,30 @@ internal fun prepareQuizRunnerSession(
         )
     }
 
+    if (mode.isCramPracticeMode()) {
+        restoredOrder?.let { orderIds ->
+            val restoredQuizzes = orderIds.mapNotNull { byId[it] }
+            return PreparedQuizRunnerSession(
+                quizzes = restoredQuizzes,
+                supportedQuizSource = restoredQuizzes
+            )
+        }
+
+        val requestedQuizzes = selectedIds.mapNotNull { byId[it] }
+        val requestedOrder = requestedQuizzes.map { it.id }
+        val storedOrder = practiceSession?.quizOrder?.toIntList().orEmpty()
+        val canRestore = requestedOrder.isNotEmpty() && storedOrder == requestedOrder
+        return PreparedQuizRunnerSession(
+            quizzes = requestedQuizzes,
+            supportedQuizSource = requestedQuizzes,
+            practiceRestore = buildPracticeRestore(
+                session = practiceSession.takeIf { canRestore },
+                existingTimerStartedAt = existingTimerStartedAt,
+                nowMillis = nowMillis
+            )
+        )
+    }
+
     if (mode.isPracticeSessionMode()) {
         restoredOrder?.let { orderIds ->
             return PreparedQuizRunnerSession(
@@ -123,6 +147,11 @@ private fun buildFreshPracticeOrder(
 
 private fun QuizStudyMode.isPracticeSessionMode(): Boolean {
     return this == QuizStudyMode.ORDERED_PRACTICE || this == QuizStudyMode.RANDOM_PRACTICE
+}
+
+private fun QuizStudyMode.isCramPracticeMode(): Boolean {
+    return this == QuizStudyMode.CRAM_PRACTICE ||
+        this == QuizStudyMode.CRAM_SELF_TEST
 }
 
 internal fun Collection<Int>.encodeIntSetText(): String {

@@ -15,6 +15,11 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 
+class AiHttpException(
+    val statusCode: Int,
+    message: String
+) : IOException(message)
+
 class OpenAiCompatibleClient(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
@@ -25,8 +30,18 @@ class OpenAiCompatibleClient(
     private val gson: Gson = Gson()
 ) {
     suspend fun complete(config: AiConfig, prompt: AiPrompt): String {
+        return complete(config, prompt, DEFAULT_MAX_TOKENS)
+    }
+
+    suspend fun complete(config: AiConfig, prompt: AiPrompt, maxTokens: Int): String {
         val endpoint = AiEndpointValidator.buildEndpoint(config.baseUrl).getOrThrow()
-        val request = completionRequest(endpoint, config, prompt, stream = false)
+        val request = completionRequest(
+            endpoint = endpoint,
+            config = config,
+            prompt = prompt,
+            stream = false,
+            maxTokens = maxTokens
+        )
 
         return execute(request, ::parseCompletionResponse)
     }
@@ -36,8 +51,23 @@ class OpenAiCompatibleClient(
         prompt: AiPrompt,
         onDelta: (String) -> Unit
     ): String {
+        return completeStreaming(config, prompt, DEFAULT_MAX_TOKENS, onDelta)
+    }
+
+    suspend fun completeStreaming(
+        config: AiConfig,
+        prompt: AiPrompt,
+        maxTokens: Int,
+        onDelta: (String) -> Unit
+    ): String {
         val endpoint = AiEndpointValidator.buildEndpoint(config.baseUrl).getOrThrow()
-        val request = completionRequest(endpoint, config, prompt, stream = true)
+        val request = completionRequest(
+            endpoint = endpoint,
+            config = config,
+            prompt = prompt,
+            stream = true,
+            maxTokens = maxTokens
+        )
         return execute(request) { response ->
             parseStreamingResponse(response, onDelta)
         }
@@ -184,7 +214,10 @@ class OpenAiCompatibleClient(
                 ?.get("message")
                 ?.asString
         }.getOrNull()
-        throw IOException(apiMessage?.take(240) ?: "API 请求失败：HTTP ${response.code}")
+        throw AiHttpException(
+            statusCode = response.code,
+            message = apiMessage?.take(240) ?: "API 请求失败：HTTP ${response.code}"
+        )
     }
 
     private suspend fun <T> execute(
@@ -221,13 +254,14 @@ class OpenAiCompatibleClient(
         endpoint: String,
         config: AiConfig,
         prompt: AiPrompt,
-        stream: Boolean
+        stream: Boolean,
+        maxTokens: Int
     ): Request {
         val body = JsonObject().apply {
             addProperty("model", config.model.trim())
             addProperty("temperature", 0.3)
             addProperty("stream", stream)
-            addProperty("max_tokens", 1800)
+            addProperty("max_tokens", maxTokens.coerceIn(MIN_MAX_TOKENS, MAX_MAX_TOKENS))
             add("messages", JsonArray().apply {
                 add(message("system", prompt.system))
                 add(message("user", prompt.user))
@@ -245,6 +279,9 @@ class OpenAiCompatibleClient(
     }
 
     companion object {
+        private const val DEFAULT_MAX_TOKENS = 1800
+        private const val MIN_MAX_TOKENS = 256
+        private const val MAX_MAX_TOKENS = 8192
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }

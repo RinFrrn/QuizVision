@@ -188,6 +188,43 @@ interface AiExplanationCacheDao {
 }
 
 @Dao
+interface LibraryInsightCacheDao {
+    @Query(
+        """
+        SELECT * FROM LibraryInsightCache
+        WHERE library_id = :libraryId AND type = :type AND sub_key = :subKey
+        LIMIT 1
+        """
+    )
+    suspend fun getCache(
+        libraryId: Int,
+        type: String,
+        subKey: String
+    ): LibraryInsightCache?
+
+    @Query(
+        """
+        SELECT * FROM LibraryInsightCache
+        WHERE library_id = :libraryId AND type = :type
+        ORDER BY sub_key ASC
+        """
+    )
+    suspend fun getCaches(libraryId: Int, type: String): List<LibraryInsightCache>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCache(cache: LibraryInsightCache)
+
+    @Query("DELETE FROM LibraryInsightCache WHERE library_id = :libraryId")
+    suspend fun deleteByLibraryId(libraryId: Int)
+
+    @Query("DELETE FROM LibraryInsightCache WHERE library_id = :libraryId AND type = :type")
+    suspend fun deleteByLibraryAndType(libraryId: Int, type: String)
+
+    @Query("DELETE FROM LibraryInsightCache")
+    suspend fun clearAll()
+}
+
+@Dao
 interface ReviewCardDao {
     @Query(
         """

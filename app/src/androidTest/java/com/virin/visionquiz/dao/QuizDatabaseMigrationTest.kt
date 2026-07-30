@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -72,6 +73,65 @@ class QuizDatabaseMigrationTest {
         migrated.close()
     }
 
+    @Test
+    fun migrate7To8PreservesQuizzesAndCreatesInsightCache() {
+        val oldDatabase = openDatabase(version = 7)
+        oldDatabase.writableDatabase.execSQL(
+            """
+            CREATE TABLE Quiz (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                prompt TEXT NOT NULL,
+                options TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                is_multiple_choice INTEGER NOT NULL,
+                question_type TEXT,
+                library_id INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        oldDatabase.writableDatabase.execSQL(
+            """
+            INSERT INTO Quiz (
+                id, prompt, options, answer, is_multiple_choice, question_type, library_id
+            ) VALUES (
+                7, '迁移前题目', '正确,错误', '0', 0, '判断', 3
+            )
+            """.trimIndent()
+        )
+        oldDatabase.close()
+
+        val migrated = openDatabase(version = 8)
+        migrated.writableDatabase.query(
+            """
+            SELECT prompt, library_id, explanation, `reference`, source_row
+            FROM Quiz
+            WHERE id = 7
+            """.trimIndent()
+        ).use { cursor ->
+            cursor.moveToFirst()
+            assertEquals("迁移前题目", cursor.getString(0))
+            assertEquals(3, cursor.getInt(1))
+            assertTrue(cursor.isNull(2))
+            assertTrue(cursor.isNull(3))
+            assertTrue(cursor.isNull(4))
+        }
+        migrated.writableDatabase.query(
+            "SELECT COUNT(*) FROM sqlite_master " +
+                "WHERE type = 'table' AND name = 'LibraryInsightCache'"
+        ).use { cursor ->
+            cursor.moveToFirst()
+            assertEquals(1, cursor.getInt(0))
+        }
+        migrated.writableDatabase.query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = " +
+                "'index_LibraryInsightCache_library_id_type_sub_key'"
+        ).use { cursor ->
+            cursor.moveToFirst()
+            assertEquals(1, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
     private fun openDatabase(version: Int): SupportSQLiteOpenHelper {
         val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -88,6 +148,9 @@ class QuizDatabaseMigrationTest {
                 }
                 if (oldVersion == 6 && newVersion == 7) {
                     QuizDatabase.MIGRATION_6_7.migrate(db)
+                }
+                if (oldVersion == 7 && newVersion == 8) {
+                    QuizDatabase.MIGRATION_7_8.migrate(db)
                 }
             }
         }

@@ -17,9 +17,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         QuizAnswerRecord::class,
         PracticeSession::class,
         AiExplanationCache::class,
+        LibraryInsightCache::class,
         ReviewCard::class
     ],
-    version = 7
+    version = 8
 )
 @TypeConverters(Converters::class)
 abstract class QuizDatabase : RoomDatabase() {
@@ -30,6 +31,7 @@ abstract class QuizDatabase : RoomDatabase() {
     abstract fun answerRecordDao(): QuizAnswerRecordDao
     abstract fun practiceSessionDao(): PracticeSessionDao
     abstract fun aiExplanationCacheDao(): AiExplanationCacheDao
+    abstract fun libraryInsightCacheDao(): LibraryInsightCacheDao
     abstract fun reviewCardDao(): ReviewCardDao
 
     companion object {
@@ -165,6 +167,32 @@ abstract class QuizDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_ReviewCard_due_at ON ReviewCard(due_at)")
             }
         }
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE Quiz ADD COLUMN explanation TEXT")
+                db.execSQL("ALTER TABLE Quiz ADD COLUMN reference TEXT")
+                db.execSQL("ALTER TABLE Quiz ADD COLUMN source_row INTEGER")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS LibraryInsightCache (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        library_id INTEGER NOT NULL,
+                        type TEXT NOT NULL,
+                        sub_key TEXT NOT NULL,
+                        fingerprint TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                        "index_LibraryInsightCache_library_id_type_sub_key " +
+                        "ON LibraryInsightCache(library_id, type, sub_key)"
+                )
+            }
+        }
 
         @Volatile
         private var instance: QuizDatabase? = null
@@ -183,7 +211,8 @@ abstract class QuizDatabase : RoomDatabase() {
                     MIGRATION_3_4,
                     MIGRATION_4_5,
                     MIGRATION_5_6,
-                    MIGRATION_6_7
+                    MIGRATION_6_7,
+                    MIGRATION_7_8
                 )
                 .build()
         }

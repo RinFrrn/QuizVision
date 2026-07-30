@@ -111,3 +111,6 @@
 -keep class org.etsi.uri.** { *; }
 -keep class org.w3.x2000.** { *; }
 -keepnames class **.TypeSystemHolder
+-keepclassmembers class com.virin.visionquiz.cram.** {
+    <fields>;
+}

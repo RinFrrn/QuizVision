@@ -48,6 +48,12 @@
         tools:layout="@layout/fragment_quiz_library_detail" />
 
     <fragment
+        android:id="@+id/CramDashboardFragment"
+        android:name="com.virin.visionquiz.cram.CramDashboardFragment"
+        android:label="3天冲刺"
+        tools:layout="@layout/fragment_cram_dashboard" />
+
+    <fragment
         android:id="@+id/QuizListFragment"
         android:name="com.virin.visionquiz.quizlist.QuizListFragment"
         android:label="浏览题目"

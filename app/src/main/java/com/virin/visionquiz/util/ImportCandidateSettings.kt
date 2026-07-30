@@ -27,6 +27,7 @@ data class ImportCandidateConfig(
     val answerHeaders: List<String> = ImportCandidateSettings.DEFAULT_ANSWER_HEADERS,
     val optionPrefixes: List<String> = ImportCandidateSettings.DEFAULT_OPTION_PREFIXES,
     val analysisHeaders: List<String> = ImportCandidateSettings.DEFAULT_ANALYSIS_HEADERS,
+    val referenceHeaders: List<String> = ImportCandidateSettings.DEFAULT_REFERENCE_HEADERS,
     val singleChoiceTypes: List<String> = ImportCandidateSettings.DEFAULT_SINGLE_CHOICE_TYPES,
     val multipleChoiceTypes: List<String> = ImportCandidateSettings.DEFAULT_MULTIPLE_CHOICE_TYPES,
     val judgementTypes: List<String> = ImportCandidateSettings.DEFAULT_JUDGEMENT_TYPES,
@@ -37,13 +38,14 @@ data class ImportCandidateConfig(
 object ImportCandidateSettings {
     private const val PREFS_NAME = "quiz_import_candidate_settings"
     private const val KEY_DEFAULTS_VERSION = "defaults_version"
-    private const val CURRENT_DEFAULTS_VERSION = 1
+    private const val CURRENT_DEFAULTS_VERSION = 2
 
     private const val KEY_PROMPT_HEADERS = "prompt_headers"
     private const val KEY_TYPE_HEADERS = "type_headers"
     private const val KEY_ANSWER_HEADERS = "answer_headers"
     private const val KEY_OPTION_PREFIXES = "option_prefixes"
     private const val KEY_ANALYSIS_HEADERS = "analysis_headers"
+    private const val KEY_REFERENCE_HEADERS = "reference_headers"
     private const val KEY_SINGLE_CHOICE_TYPES = "single_choice_types"
     private const val KEY_MULTIPLE_CHOICE_TYPES = "multiple_choice_types"
     private const val KEY_JUDGEMENT_TYPES = "judgement_types"
@@ -65,6 +67,9 @@ object ImportCandidateSettings {
     )
     val DEFAULT_ANALYSIS_HEADERS = listOf(
         "解析", "答案解析", "题目解析", "试题解析", "解析说明", "说明", "备注"
+    )
+    val DEFAULT_REFERENCE_HEADERS = listOf(
+        "依据", "答案依据", "参考依据", "法规依据", "政策依据", "文件依据", "出处", "来源"
     )
     val DEFAULT_SINGLE_CHOICE_TYPES = listOf(
         "单选", "单选题", "单项选择", "单项选择题", "选择题"
@@ -101,6 +106,10 @@ object ImportCandidateSettings {
             answerHeaders = readList(prefs.getString(KEY_ANSWER_HEADERS, null), DEFAULT_ANSWER_HEADERS),
             optionPrefixes = readList(prefs.getString(KEY_OPTION_PREFIXES, null), DEFAULT_OPTION_PREFIXES),
             analysisHeaders = readList(prefs.getString(KEY_ANALYSIS_HEADERS, null), DEFAULT_ANALYSIS_HEADERS),
+            referenceHeaders = readList(
+                prefs.getString(KEY_REFERENCE_HEADERS, null),
+                DEFAULT_REFERENCE_HEADERS
+            ),
             singleChoiceTypes = readList(prefs.getString(KEY_SINGLE_CHOICE_TYPES, null), DEFAULT_SINGLE_CHOICE_TYPES),
             multipleChoiceTypes = readList(prefs.getString(KEY_MULTIPLE_CHOICE_TYPES, null), DEFAULT_MULTIPLE_CHOICE_TYPES),
             judgementTypes = readList(prefs.getString(KEY_JUDGEMENT_TYPES, null), DEFAULT_JUDGEMENT_TYPES),
@@ -117,6 +126,7 @@ object ImportCandidateSettings {
             .putString(KEY_ANSWER_HEADERS, encodeList(settings.answerHeaders))
             .putString(KEY_OPTION_PREFIXES, encodeList(settings.optionPrefixes))
             .putString(KEY_ANALYSIS_HEADERS, encodeList(settings.analysisHeaders))
+            .putString(KEY_REFERENCE_HEADERS, encodeList(settings.referenceHeaders))
             .putString(KEY_SINGLE_CHOICE_TYPES, encodeList(settings.singleChoiceTypes))
             .putString(KEY_MULTIPLE_CHOICE_TYPES, encodeList(settings.multipleChoiceTypes))
             .putString(KEY_JUDGEMENT_TYPES, encodeList(settings.judgementTypes))

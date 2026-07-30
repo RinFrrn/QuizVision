@@ -729,6 +729,10 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
         val bundle = bundleOf(LIBRARY_ID to libraryId)
         when (feature.action) {
             FeatureAction.REVIEW -> openReviewSession()
+            FeatureAction.CRAM_DASHBOARD -> findNavController().navigate(
+                R.id.CramDashboardFragment,
+                bundle
+            )
             FeatureAction.ORDERED_PRACTICE -> findNavController().navigate(
                 R.id.QuizRunnerFragment,
                 bundleOf(
@@ -800,6 +804,7 @@ class QuizLibraryFeaturesFragment : BaseQuizFragment() {
 
     enum class FeatureAction {
         REVIEW,
+        CRAM_DASHBOARD,
         ORDERED_PRACTICE,
         RANDOM_PRACTICE,
         EXAM,
@@ -841,6 +846,12 @@ internal fun buildLibraryStudyFeatures(): List<QuizLibraryFeaturesFragment.Study
             "待复习 0 题 · 待学习 0 题",
             R.drawable.icon_history_edu_24px,
             QuizLibraryFeaturesFragment.FeatureAction.REVIEW
+        ),
+        QuizLibraryFeaturesFragment.StudyFeature(
+            "3天冲刺",
+            "分析高频考点，生成每天的提分路线",
+            R.drawable.icon_atom_24px,
+            QuizLibraryFeaturesFragment.FeatureAction.CRAM_DASHBOARD
         ),
         QuizLibraryFeaturesFragment.StudyFeature(
             "顺序背题",
@@ -922,6 +933,9 @@ internal fun buildGroupedFeatureItems(
 
     return buildList {
         QuizLibraryFeaturesFragment.FeatureAction.REVIEW.featureItem(fullSpan = true)?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.CRAM_DASHBOARD
+            .featureItem(fullSpan = true)
+            ?.let(::add)
 
         add(QuizLibraryFeatureListItem.SectionHeader("自主练习"))
         QuizLibraryFeaturesFragment.FeatureAction.ORDERED_PRACTICE.featureItem(compact = true)?.let(::add)

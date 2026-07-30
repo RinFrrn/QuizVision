@@ -1353,7 +1353,14 @@ class QuizRunnerFragment : BaseQuizFragment() {
 
     private fun isPracticeSessionMode(): Boolean {
         return mode == QuizStudyMode.ORDERED_PRACTICE ||
-            mode == QuizStudyMode.RANDOM_PRACTICE
+            mode == QuizStudyMode.RANDOM_PRACTICE ||
+            mode == QuizStudyMode.CRAM_PRACTICE ||
+            mode == QuizStudyMode.CRAM_SELF_TEST
+    }
+
+    private fun isCramSessionMode(): Boolean {
+        return mode == QuizStudyMode.CRAM_PRACTICE ||
+            mode == QuizStudyMode.CRAM_SELF_TEST
     }
 
     private fun shouldAutoSubmitPractice(type: QuizUiType): Boolean {
@@ -1443,7 +1450,13 @@ class QuizRunnerFragment : BaseQuizFragment() {
         val stats = buildAnswerCardStats()
         MaterialAlertDialogBuilder(requireContext())
             .setTitle("交卷并结束本轮背题？")
-            .setMessage("交卷后会展示本轮统计，并重置当前${mode.label}进度；题目的作答历史会保留。")
+            .setMessage(
+                if (isCramSessionMode()) {
+                    "交卷后会展示本轮统计；选择“完成并返回”会保留本次冲刺进度。"
+                } else {
+                    "交卷后会展示本轮统计，并重置当前${mode.label}进度；题目的作答历史会保留。"
+                }
+            )
             .setNegativeButton(R.string.cancel, null)
             .setPositiveButton("交卷") { _, _ ->
                 showPracticeResultDialog(stats)
@@ -1453,16 +1466,32 @@ class QuizRunnerFragment : BaseQuizFragment() {
 
     private fun showPracticeResultDialog(stats: AnswerCardStats) {
         val dialogView = inflateResultDialogView(stats)
-        MaterialAlertDialogBuilder(requireContext())
+        val builder = MaterialAlertDialogBuilder(requireContext())
             .setTitle("本轮背题结果")
             .setView(dialogView)
             .setCancelable(false)
-            .setPositiveButton("开始新一轮") { _, _ ->
+        if (isCramSessionMode()) {
+            builder
+                .setNegativeButton("再来一轮") { _, _ ->
+                    viewModel.resetPracticeSession(mode) {
+                        rebuildPracticeSessionAfterReset("已开始新一轮背题")
+                    }
+                }
+                .setPositiveButton("完成并返回") { _, _ ->
+                    flushPracticePersist {
+                        if (_binding != null && isAdded) {
+                            findNavController().popBackStack()
+                        }
+                    }
+                }
+        } else {
+            builder.setPositiveButton("开始新一轮") { _, _ ->
                 viewModel.resetPracticeSession(mode) {
                     rebuildPracticeSessionAfterReset("已开始新一轮背题")
                 }
             }
-            .show()
+        }
+        builder.show()
     }
 
     private fun showExamResultDialog() {
@@ -1860,9 +1889,12 @@ class QuizRunnerFragment : BaseQuizFragment() {
         timerHandler.postDelayed(practicePersistRunnable, PRACTICE_PERSIST_DEBOUNCE_MS)
     }
 
-    private fun flushPracticePersist() {
+    private fun flushPracticePersist(onSaved: (() -> Unit)? = null) {
         timerHandler.removeCallbacks(practicePersistRunnable)
-        if (!isPracticeSessionMode() || quizzes.isEmpty()) return
+        if (!isPracticeSessionMode() || quizzes.isEmpty()) {
+            onSaved?.invoke()
+            return
+        }
         val now = System.currentTimeMillis()
         val startedAt = when {
             timerStartedAt > 0L -> now - currentTimerElapsedMillis(now)
@@ -1884,7 +1916,8 @@ class QuizRunnerFragment : BaseQuizFragment() {
                 answerVisible = answerVisible,
                 startedAt = startedAt,
                 updatedAt = now
-            )
+            ),
+            onSaved = onSaved
         )
     }
 

@@ -85,6 +85,7 @@ class ImportCandidateSettingsFragment : BaseQuizFragment() {
         groups += CandidateGroup(getString(R.string.import_settings_answer_headers), config.answerHeaders.toMutableList())
         groups += CandidateGroup(getString(R.string.import_settings_option_prefixes), config.optionPrefixes.toMutableList())
         groups += CandidateGroup(getString(R.string.import_settings_analysis_headers), config.analysisHeaders.toMutableList())
+        groups += CandidateGroup(getString(R.string.import_settings_reference_headers), config.referenceHeaders.toMutableList())
         groups += CandidateGroup(getString(R.string.import_settings_single_choice_types), config.singleChoiceTypes.toMutableList())
         groups += CandidateGroup(getString(R.string.import_settings_multiple_choice_types), config.multipleChoiceTypes.toMutableList())
         groups += CandidateGroup(getString(R.string.import_settings_judgement_types), config.judgementTypes.toMutableList())
@@ -301,11 +302,12 @@ class ImportCandidateSettingsFragment : BaseQuizFragment() {
                 answerHeaders = groups[2].items,
                 optionPrefixes = groups[3].items,
                 analysisHeaders = groups[4].items,
-                singleChoiceTypes = groups[5].items,
-                multipleChoiceTypes = groups[6].items,
-                judgementTypes = groups[7].items,
-                fillBlankTypes = groups[8].items,
-                subjectiveTypes = groups[9].items
+                referenceHeaders = groups[5].items,
+                singleChoiceTypes = groups[6].items,
+                multipleChoiceTypes = groups[7].items,
+                judgementTypes = groups[8].items,
+                fillBlankTypes = groups[9].items,
+                subjectiveTypes = groups[10].items
             )
         )
     }

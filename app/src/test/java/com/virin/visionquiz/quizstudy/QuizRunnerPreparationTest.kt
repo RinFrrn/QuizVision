@@ -101,6 +101,64 @@ class QuizRunnerPreparationTest {
         assertNull(restore.timerStartedAt)
     }
 
+    @Test
+    fun cramPreparationUsesExplicitSelectionInsteadOfUnrelatedStoredSession() {
+        val prepared = prepareQuizRunnerSession(
+            source = listOf(quiz(id = 1), quiz(id = 2), quiz(id = 3), quiz(id = 4)),
+            selectedIds = listOf(4, 2),
+            restoredOrderIds = emptyList(),
+            mode = QuizStudyMode.CRAM_PRACTICE,
+            practiceSession = PracticeSession(
+                id = 12,
+                libraryId = 1,
+                mode = QuizStudyMode.CRAM_PRACTICE.value,
+                quizOrder = "1,3",
+                currentIndex = 1,
+                currentSelection = "0",
+                practiceAnswers = "1:0",
+                practiceResults = "1:1",
+                recordedQuizIds = "1",
+                answerVisible = true
+            ),
+            nowMillis = 9_000L
+        )
+
+        val restore = requireNotNull(prepared.practiceRestore)
+        assertEquals(listOf(4, 2), prepared.quizzes.map { it.id })
+        assertEquals(listOf(4, 2), prepared.supportedQuizSource.map { it.id })
+        assertEquals(0, restore.sessionId)
+        assertEquals(0, restore.currentIndex)
+        assertEquals(emptySet<Int>(), restore.recordedPracticeQuizIds)
+    }
+
+    @Test
+    fun cramPreparationRestoresOnlyWhenSelectedOrderStillMatches() {
+        val prepared = prepareQuizRunnerSession(
+            source = listOf(quiz(id = 1), quiz(id = 2), quiz(id = 3)),
+            selectedIds = listOf(3, 1),
+            restoredOrderIds = emptyList(),
+            mode = QuizStudyMode.CRAM_SELF_TEST,
+            practiceSession = PracticeSession(
+                id = 21,
+                libraryId = 1,
+                mode = QuizStudyMode.CRAM_SELF_TEST.value,
+                quizOrder = "3,1",
+                currentIndex = 1,
+                currentSelection = "0",
+                practiceAnswers = "3:0",
+                practiceResults = "3:1",
+                recordedQuizIds = "3",
+                answerVisible = true
+            )
+        )
+
+        val restore = requireNotNull(prepared.practiceRestore)
+        assertEquals(listOf(3, 1), prepared.quizzes.map { it.id })
+        assertEquals(21, restore.sessionId)
+        assertEquals(1, restore.currentIndex)
+        assertEquals(setOf(3), restore.recordedPracticeQuizIds)
+    }
+
     private fun quiz(id: Int): Quiz {
         return Quiz(
             id = id,

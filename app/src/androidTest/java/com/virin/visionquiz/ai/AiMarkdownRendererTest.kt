@@ -53,6 +53,25 @@ class AiMarkdownRendererTest {
     }
 
     @Test
+    fun roomyModePreservesHeadingBodySeparation() {
+        val markdown = """
+            ## 标题
+
+            正文
+        """.trimIndent()
+        val compactView = TextView(context)
+        val roomyView = TextView(context)
+
+        AiMarkdownRenderer(context).render(compactView, markdown)
+        AiMarkdownRenderer(
+            context = context,
+            preserveHeadingBodySpacing = true
+        ).render(roomyView, markdown)
+
+        assertTrue(roomyView.text.length > compactView.text.length)
+    }
+
+    @Test
     fun fallsBackToRawContentWhenRenderingFails() {
         val textView = TextView(context)
         val raw = "### 原始内容"
