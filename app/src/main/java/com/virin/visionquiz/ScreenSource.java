@@ -67,8 +67,7 @@ import java.util.concurrent.atomic.AtomicInteger;
     private EncodeBuilder screenShareKit;
 
     private final GraphicOverlay graphicOverlay;
-    private final ScreenFrameChangeDetector frameChangeDetector =
-            new ScreenFrameChangeDetector();
+    private final ScreenFrameChangeDetector frameChangeDetector;
     private final boolean screenChangeDetectionEnabled;
 
     /**
@@ -101,6 +100,9 @@ import java.util.concurrent.atomic.AtomicInteger;
     public ScreenSource(Activity activity, CaptureFailureListener captureFailureListener) {
         this.activity = activity;
         this.captureFailureListener = captureFailureListener;
+        frameChangeDetector = new ScreenFrameChangeDetector(
+                PreferenceUtils.getScreenPageChangeThreshold(activity)
+        );
         overlayMaskPaddingPx =
                 Math.round(OVERLAY_MASK_PADDING_DP * activity.getResources().getDisplayMetrics().density);
         screenChangeDetectionEnabled =

@@ -16,6 +16,13 @@
     <item>2000 毫秒</item>
   </string-array>
 
+  <string-array name="pref_entries_screen_page_change_threshold">
+    <item>最灵敏 · 1%</item>
+    <item>均衡 · 2%</item>
+    <item>较低灵敏度 · 3%</item>
+    <item>省电 · 5%</item>
+  </string-array>
+
   <string-array name="pref_entries_screen_capture_frame_rate">
     <item>15 FPS</item>
     <item>30 FPS</item>

@@ -242,7 +242,7 @@ internal object OcrOptionLocator {
             PREFIX_WITH_CONTENT_REGEX.matchEntire(trimmedText)
                 ?: COMPACT_CJK_PREFIX_REGEX.matchEntire(trimmedText)
         if (prefixedMatch != null) {
-            val label = prefixedMatch.groupValues[1].uppercase().single()
+            val label = normalizeOptionLabel(prefixedMatch.groupValues[1])
             val content = prefixedMatch.groupValues[2]
             if (
                 label != expectedLabel ||
@@ -268,7 +268,7 @@ internal object OcrOptionLocator {
         }
 
         val standaloneMatch = STANDALONE_LABEL_REGEX.matchEntire(trimmedText) ?: return null
-        val label = standaloneMatch.groupValues[1].uppercase().single()
+        val label = normalizeOptionLabel(standaloneMatch.groupValues[1])
         if (label != expectedLabel) {
             return null
         }
@@ -303,6 +303,15 @@ internal object OcrOptionLocator {
                 normalizeOptionText(combinedText).length - normalizedOption.length
             )
         )
+    }
+
+    private fun normalizeOptionLabel(label: String): Char {
+        val source = label.single()
+        val halfWidth = when (source.code) {
+            in 65313..65320, in 65345..65352 -> (source.code - 65248).toChar()
+            else -> source
+        }
+        return halfWidth.uppercaseChar()
     }
 
     private fun verticalOverlapRatio(first: Bounds, second: Bounds): Float {
@@ -378,13 +387,15 @@ internal object OcrOptionLocator {
             .thenBy { it.candidate.bounds.area }
             .thenBy { it.candidate.order }
             .thenBy { it.candidate.bounds.left }
-    private val OPTION_PREFIX_REGEX = Regex("^[A-Ha-h](?:[、.．)）]\\s*|\\s+)")
+    private const val OPTION_LABEL = "[A-Ha-hＡ-Ｈａ-ｈ]"
+    private val OPTION_PREFIX_REGEX =
+        Regex("^$OPTION_LABEL(?:[、.．:：)）]\\s*|\\s+)")
     private val PREFIX_WITH_CONTENT_REGEX =
-        Regex("^\\s*([A-Ha-h])(?:[、.．)）:：]\\s*|\\s+)(.+?)\\s*$")
+        Regex("^\\s*($OPTION_LABEL)(?:[、.．)）:：]\\s*|\\s+)(.+?)\\s*$")
     private val COMPACT_CJK_PREFIX_REGEX =
-        Regex("^\\s*([A-Ha-h])([\\u3400-\\u9FFF].*?)\\s*$")
+        Regex("^\\s*($OPTION_LABEL)([\\u3400-\\u9FFF].*?)\\s*$")
     private val STANDALONE_LABEL_REGEX =
-        Regex("^\\s*([A-Ha-h])(?:[、.．)）:：])?\\s*$")
+        Regex("^\\s*($OPTION_LABEL)(?:[、.．)）:：])?\\s*$")
     private val EMBEDDED_OPTION_PREFIX_REGEX =
-        Regex("(?:^|\\s)[A-Ha-h](?:[、.．)）:：]\\s*)")
+        Regex("(?:^|\\s)$OPTION_LABEL(?:[、.．)）:：]\\s*)")
 }

@@ -5,7 +5,7 @@ public final class ScreenFrameChangeDetector {
 
     static final int SAMPLE_SIZE = 64;
     static final int PIXEL_DIFFERENCE_THRESHOLD = 24;
-    static final double PAGE_CHANGE_THRESHOLD = 0.03;
+    static final double DEFAULT_PAGE_CHANGE_THRESHOLD = 0.02;
     static final double STABILITY_THRESHOLD = 0.015;
     static final long STABILITY_DELAY_MS = 120L;
 
@@ -20,6 +20,15 @@ public final class ScreenFrameChangeDetector {
     private FrameSignature candidate;
     private long candidateSinceMs;
     private boolean establishBaselineAfterScan;
+    private final double pageChangeThreshold;
+
+    public ScreenFrameChangeDetector() {
+        this(DEFAULT_PAGE_CHANGE_THRESHOLD);
+    }
+
+    public ScreenFrameChangeDetector(double pageChangeThreshold) {
+        this.pageChangeThreshold = pageChangeThreshold;
+    }
 
     public synchronized Decision evaluate(
             byte[] rgba,
@@ -51,7 +60,7 @@ public final class ScreenFrameChangeDetector {
             candidate = null;
             return Decision.SCAN;
         }
-        if (baseline.differenceRatio(current) < PAGE_CHANGE_THRESHOLD) {
+        if (baseline.differenceRatio(current) < pageChangeThreshold) {
             candidate = null;
             return Decision.UNCHANGED;
         }

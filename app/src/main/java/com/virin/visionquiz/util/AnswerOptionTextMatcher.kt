@@ -14,7 +14,8 @@ internal object AnswerOptionTextMatcher {
     private const val SHORT_OPTION_EXACT_MATCH_MAX_LENGTH = 4
     private const val MIN_FUZZY_OPTION_LENGTH = 5
     private val WHITESPACE_REGEX = Regex("\\s+")
-    private val OPTION_PREFIX_REGEX = Regex("^[A-Ha-h](?:[、.．)）]\\s*|\\s+)")
+    private val OPTION_PREFIX_REGEX =
+        Regex("^[A-Ha-hＡ-Ｈａ-ｈ](?:[、.．:：)）]\\s*|\\s+)")
 
     fun candidateScore(
         candidateText: String,

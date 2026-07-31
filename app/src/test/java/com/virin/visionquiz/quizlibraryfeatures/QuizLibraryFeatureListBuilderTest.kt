@@ -44,11 +44,11 @@ class QuizLibraryFeatureListBuilderTest {
                 "RANDOM_PRACTICE",
                 "EXAM",
                 "STATS",
+                "QUIZ_LIST",
                 "FAVORITES",
                 "WRONG",
                 "HISTORY",
                 "EXAM_HISTORY",
-                "QUIZ_LIST",
                 "SIMILAR_ANALYSIS",
                 "BATCH_AI_EXPLAIN",
                 "EXPORT"
@@ -58,7 +58,7 @@ class QuizLibraryFeatureListBuilderTest {
     }
 
     @Test
-    fun spanRulesMakeStudyActionsThreeAcrossAndOthersTwoAcross() {
+    fun spanRulesMakeStudyActionsThreeAcrossAndReviewActionsFullWidth() {
         val items = buildGroupedFeatureItems(buildLibraryStudyFeatures())
         val reviewItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
             .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.REVIEW }
@@ -74,6 +74,12 @@ class QuizLibraryFeatureListBuilderTest {
             .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST }
         val favoriteItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
             .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.FAVORITES }
+        val wrongItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
+            .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.WRONG }
+        val historyItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
+            .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.HISTORY }
+        val examHistoryItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
+            .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.EXAM_HISTORY }
         val exportItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
             .first { it.feature.action == QuizLibraryFeaturesFragment.FeatureAction.EXPORT }
         val similarAnalysisItem = items.filterIsInstance<QuizLibraryFeatureListItem.FeatureItem>()
@@ -85,6 +91,10 @@ class QuizLibraryFeatureListBuilderTest {
         assertTrue(isFullSpanFeatureItem(cramItem))
         assertTrue(isFullSpanFeatureItem(statsItem))
         assertTrue(isFullSpanFeatureItem(quizListItem))
+        assertTrue(isFullSpanFeatureItem(favoriteItem))
+        assertTrue(isFullSpanFeatureItem(wrongItem))
+        assertTrue(isFullSpanFeatureItem(historyItem))
+        assertTrue(isFullSpanFeatureItem(examHistoryItem))
         assertFalse(isFullSpanFeatureItem(orderedItem))
         assertTrue(isFullSpanFeatureItem(exportItem))
         assertTrue(isFullSpanFeatureItem(similarAnalysisItem))
@@ -100,7 +110,10 @@ class QuizLibraryFeatureListBuilderTest {
         assertEquals(2, quizLibraryFeatureSpanSize(examItem, 6))
         assertEquals(6, quizLibraryFeatureSpanSize(statsItem, 6))
         assertEquals(6, quizLibraryFeatureSpanSize(quizListItem, 6))
-        assertEquals(3, quizLibraryFeatureSpanSize(favoriteItem, 6))
+        assertEquals(6, quizLibraryFeatureSpanSize(favoriteItem, 6))
+        assertEquals(6, quizLibraryFeatureSpanSize(wrongItem, 6))
+        assertEquals(6, quizLibraryFeatureSpanSize(historyItem, 6))
+        assertEquals(6, quizLibraryFeatureSpanSize(examHistoryItem, 6))
         assertEquals(6, quizLibraryFeatureSpanSize(exportItem, 6))
         assertEquals(6, quizLibraryFeatureSpanSize(similarAnalysisItem, 6))
 

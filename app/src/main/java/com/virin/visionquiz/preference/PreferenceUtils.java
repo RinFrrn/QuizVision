@@ -54,6 +54,9 @@ public class PreferenceUtils {
   private static final double MIN_SEARCH_MATCH_SCORE = 0.60;
   private static final double MAX_SEARCH_MATCH_SCORE = 1.00;
   private static final double DEFAULT_CAMERA_SCREEN_SEARCH_MATCH_SCORE = 0.90;
+  private static final double MIN_SCREEN_PAGE_CHANGE_THRESHOLD = 0.01;
+  private static final double MAX_SCREEN_PAGE_CHANGE_THRESHOLD = 0.05;
+  private static final double DEFAULT_SCREEN_PAGE_CHANGE_THRESHOLD = 0.02;
   private static final android.util.Size DEFAULT_CAMERAX_TARGET_RESOLUTION =
       new android.util.Size(1280, 720);
 
@@ -311,6 +314,24 @@ public class PreferenceUtils {
     return sharedPreferences.getBoolean(prefKey, true);
   }
 
+  public static boolean shouldMergeOcrTextAcrossBlocks(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_merge_ocr_text_across_blocks);
+    return sharedPreferences.getBoolean(prefKey, true);
+  }
+
+  public static boolean shouldCleanOcrQuestionText(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_clean_ocr_question_text);
+    return sharedPreferences.getBoolean(prefKey, true);
+  }
+
+  public static boolean shouldUseShortOcrOptionSupport(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_short_ocr_option_support);
+    return sharedPreferences.getBoolean(prefKey, true);
+  }
+
   public static boolean showLanguageTag(Context context) {
     SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
     String prefKey = context.getString(R.string.pref_key_show_language_tag);
@@ -344,6 +365,26 @@ public class PreferenceUtils {
         context,
         R.string.pref_key_screen_search_interval_ms,
         DEFAULT_SCREEN_SEARCH_INTERVAL_MS);
+  }
+
+  public static double getScreenPageChangeThreshold(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_screen_page_change_threshold);
+    try {
+      double threshold =
+          Double.parseDouble(
+              sharedPreferences.getString(
+                  prefKey,
+                  String.valueOf(DEFAULT_SCREEN_PAGE_CHANGE_THRESHOLD)));
+      if (Double.isFinite(threshold)) {
+        return Math.max(
+            MIN_SCREEN_PAGE_CHANGE_THRESHOLD,
+            Math.min(MAX_SCREEN_PAGE_CHANGE_THRESHOLD, threshold));
+      }
+    } catch (Exception e) {
+      // Fall through to the default below.
+    }
+    return DEFAULT_SCREEN_PAGE_CHANGE_THRESHOLD;
   }
 
   public static int getAccessibilitySearchIntervalMs(Context context) {

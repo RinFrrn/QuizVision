@@ -60,12 +60,37 @@
             android:summary="@string/pref_summary_show_text_confidence"
             android:title="@string/pref_title_show_text_confidence" />
 
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/pref_category_text_recognition">
+
         <SwitchPreference
             android:defaultValue="true"
             android:key="@string/pref_key_group_recognized_text_in_blocks"
             android:persistent="true"
             android:summary="@string/pref_summary_group_recognized_text_in_blocks"
             android:title="@string/pref_title_group_recognized_text_in_blocks" />
+
+        <SwitchPreference
+            android:defaultValue="true"
+            android:key="@string/pref_key_merge_ocr_text_across_blocks"
+            android:persistent="true"
+            android:summary="@string/pref_summary_merge_ocr_text_across_blocks"
+            android:title="@string/pref_title_merge_ocr_text_across_blocks" />
+
+        <SwitchPreference
+            android:defaultValue="true"
+            android:key="@string/pref_key_clean_ocr_question_text"
+            android:persistent="true"
+            android:summary="@string/pref_summary_clean_ocr_question_text"
+            android:title="@string/pref_title_clean_ocr_question_text" />
+
+        <SwitchPreference
+            android:defaultValue="true"
+            android:key="@string/pref_key_short_ocr_option_support"
+            android:persistent="true"
+            android:summary="@string/pref_summary_short_ocr_option_support"
+            android:title="@string/pref_title_short_ocr_option_support" />
 
     </PreferenceCategory>
 
@@ -85,6 +110,15 @@
             android:persistent="true"
             android:summary="@string/pref_summary_screen_search_detect_changes"
             android:title="@string/pref_title_screen_search_detect_changes" />
+
+        <ListPreference
+            android:defaultValue="0.02"
+            android:entries="@array/pref_entries_screen_page_change_threshold"
+            android:entryValues="@array/pref_entry_values_screen_page_change_threshold"
+            android:key="@string/pref_key_screen_page_change_threshold"
+            android:persistent="true"
+            android:summary="@string/pref_summary_screen_page_change_threshold"
+            android:title="@string/pref_title_screen_page_change_threshold" />
 
         <SwitchPreference
             android:defaultValue="false"

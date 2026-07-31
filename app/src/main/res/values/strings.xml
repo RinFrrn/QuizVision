@@ -103,6 +103,7 @@
     <string name="pref_key_camera_search_performance_panel" translatable="false">cspp</string>
     <string name="pref_key_screen_search_interval_ms" translatable="false">ssim</string>
     <string name="pref_key_screen_search_detect_changes" translatable="false">ssdc</string>
+    <string name="pref_key_screen_page_change_threshold" translatable="false">spct</string>
     <string name="pref_key_screen_search_show_answer_frames" translatable="false">sssaf</string>
     <string name="pref_key_screen_capture_frame_rate" translatable="false">scfr</string>
     <string name="pref_key_accessibility_search_interval_ms" translatable="false">asim</string>
@@ -130,6 +131,8 @@
     <string name="pref_title_screen_search_interval" translatable="true">Screen search interval</string>
     <string name="pref_title_screen_search_detect_changes" translatable="true">Recognize only when the screen changes</string>
     <string name="pref_summary_screen_search_detect_changes" translatable="true">Ignore small animations and repeat OCR only after a stable, significant screen change.</string>
+    <string name="pref_title_screen_page_change_threshold" translatable="true">Page-change sensitivity</string>
+    <string name="pref_summary_screen_page_change_threshold" translatable="true">Used only when change detection is enabled. The default is 2%; lower values catch subtler page turns but run OCR more often and use more battery.</string>
     <string name="pref_title_screen_search_show_answer_frames" translatable="true">Highlight correct answers</string>
     <string name="pref_summary_screen_search_show_answer_frames" translatable="true">Locate and outline correct options during screen OCR. This does not affect accessibility answering.</string>
     <string name="pref_title_screen_capture_frame_rate" translatable="true">Screen capture frame rate</string>
@@ -229,6 +232,15 @@
     <string name="pref_title_group_recognized_text_in_blocks" translatable="true">Group recognized text in paragraphs</string>
     <string name="pref_summary_group_recognized_text_in_blocks" translatable="true">Match OCR text by paragraph blocks first. Turn this off to match individual lines more directly.</string>
     <string name="pref_key_group_recognized_text_in_blocks" translatable="true">grtib</string>
+    <string name="pref_title_merge_ocr_text_across_blocks" translatable="true">Merge question text across OCR blocks</string>
+    <string name="pref_summary_merge_ocr_text_across_blocks" translatable="true">Recognize questions split into separate blocks by large line spacing. This may occasionally merge adjacent unrelated text and uses slightly more processing.</string>
+    <string name="pref_key_merge_ocr_text_across_blocks" translatable="false">moab</string>
+    <string name="pref_title_clean_ocr_question_text" translatable="true">Clean OCR question labels</string>
+    <string name="pref_summary_clean_ocr_question_text" translatable="true">Remove leading question-type and number labels plus trailing score markers before matching. This improves recall but may alter unusually formatted question text.</string>
+    <string name="pref_key_clean_ocr_question_text" translatable="false">coqt</string>
+    <string name="pref_title_short_ocr_option_support" translatable="true">Use short options to disambiguate</string>
+    <string name="pref_summary_short_ocr_option_support" translatable="true">Use short options such as “1 day” to rank similar questions only when at least two distinctly labeled options match exactly. This adds a little processing.</string>
+    <string name="pref_key_short_ocr_option_support" translatable="false">soos</string>
     <string name="pref_title_show_language_tag" translatable="true">Show language identified</string>
     <string name="pref_key_show_language_tag" translatable="true">slt</string>
     <string name="pref_title_show_text_confidence" translatable="true">Show match and OCR debug info</string>

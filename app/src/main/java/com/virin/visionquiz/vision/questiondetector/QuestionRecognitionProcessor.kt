@@ -29,6 +29,7 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.collections.ArrayList
 import kotlin.coroutines.coroutineContext
+import kotlin.math.abs
 
 class QuizRecognitionProcessor(
     private val context: Context,
@@ -44,6 +45,12 @@ class QuizRecognitionProcessor(
     )
     private val shouldGroupRecognizedTextInBlocks: Boolean =
         PreferenceUtils.shouldGroupRecognizedTextInBlocks(context)
+    private val shouldMergeOcrTextAcrossBlocks: Boolean =
+        PreferenceUtils.shouldMergeOcrTextAcrossBlocks(context)
+    private val shouldCleanOcrQuestionText: Boolean =
+        PreferenceUtils.shouldCleanOcrQuestionText(context)
+    private val shouldUseShortOcrOptionSupport: Boolean =
+        PreferenceUtils.shouldUseShortOcrOptionSupport(context)
     private val showConfidence: Boolean = PreferenceUtils.shouldShowTextConfidence(context)
     private val useBriefAnswerDisplay: Boolean = PreferenceUtils.shouldUseBriefAnswerDisplay(context)
     private val overlayTextSizeSp: Float = PreferenceUtils.getQuizOverlayTextSizeSp(context)
@@ -117,11 +124,12 @@ class QuizRecognitionProcessor(
         startOrder: Int,
         endOrder: Int = startOrder
     ): RecognizedTextItem? {
+        val matchText = cleanOcrQuestionTextIfEnabled(text)
         val rect = Rect(boundingBox)
-        if (!isValidRecognizedTextItem(text, rect)) {
+        if (!isValidRecognizedTextItem(matchText, rect)) {
             return null
         }
-        return RecognizedTextItem(text, rect, startOrder, endOrder)
+        return RecognizedTextItem(matchText, rect, startOrder, endOrder)
     }
 
     private fun isValidRecognizedTextItem(text: String, rect: Rect): Boolean {
@@ -142,11 +150,20 @@ class QuizRecognitionProcessor(
         boundingBox: Rect,
         order: Int
     ): RecognizedLineItem? {
+        val validationText = cleanOcrQuestionTextIfEnabled(text)
         val rect = Rect(boundingBox)
-        if (!isValidRecognizedTextItem(text, rect)) {
+        if (!isValidRecognizedTextItem(validationText, rect)) {
             return null
         }
         return RecognizedLineItem(text, rect, order)
+    }
+
+    private fun cleanOcrQuestionTextIfEnabled(text: String): String {
+        return if (shouldCleanOcrQuestionText) {
+            OcrQuestionTextCleaner.clean(text)
+        } else {
+            text
+        }
     }
 
     private fun getMatchedQuizGraphicItem(
@@ -201,9 +218,13 @@ class QuizRecognitionProcessor(
                 )
             )
         }
-        val nearbyOptionTexts = collectNearbyOptionTexts(source, lineCandidates)
         val rankedMatches = matches
             .map { match ->
+                val nearbyOptionTexts = collectNearbyOptionTexts(
+                    source = source,
+                    quiz = match.first,
+                    lineCandidates = lineCandidates
+                )
                 val optionSupport = if (nearbyOptionTexts.isEmpty()) {
                     0.0
                 } else {
@@ -274,17 +295,38 @@ class QuizRecognitionProcessor(
 
     private fun collectNearbyOptionTexts(
         source: RecognizedTextItem,
+        quiz: Quiz,
         lineCandidates: List<OcrOptionLocator.TextCandidate>
     ): List<String> {
-        val maxOrder = source.endOrder + OPTION_CONTEXT_LINE_COUNT * ORDER_SCALE
-        return lineCandidates
+        val questionEndOrder = resolveQuestionEndOrder(
+            source = source,
+            prompt = quiz.prompt,
+            lineCandidates = lineCandidates
+        )
+        val maxOrder = questionEndOrder + OPTION_CONTEXT_LINE_COUNT * ORDER_SCALE
+        val nearbyLineCandidates = lineCandidates
             .asSequence()
             .filter { it.order % ORDER_SCALE == LINE_CANDIDATE_ORDER_OFFSET }
-            .filter { it.order > source.endOrder }
+            .filter { it.order > questionEndOrder }
             .filter { it.order <= maxOrder }
             .filter { it.bounds.top >= source.rect.top }
-            .map { it.text }
-            .filter { AnswerOptionTextMatcher.normalizeOptionText(it).length >= MIN_OPTION_SUPPORT_LENGTH }
+            .sortedBy { it.order }
+            .takeWhile {
+                !OcrQuestionCandidateBuilder.isQuestionStartLine(it.text)
+            }
+            .take(MAX_OPTION_SUPPORT_TEXTS * MAX_OPTION_LINE_PARTS)
+            .toList()
+        return OcrOptionLineMerger.merge(nearbyLineCandidates)
+            .asSequence()
+            .map(OcrOptionLocator.TextCandidate::text)
+            .filter {
+                val normalizedLength = AnswerOptionTextMatcher.normalizeOptionText(it).length
+                normalizedLength >= if (shouldUseShortOcrOptionSupport) {
+                    MIN_SHORT_OPTION_SUPPORT_LENGTH
+                } else {
+                    OcrOptionSupportScorer.MIN_LONG_OPTION_LENGTH
+                }
+            }
             .take(MAX_OPTION_SUPPORT_TEXTS)
             .toList()
     }
@@ -293,29 +335,12 @@ class QuizRecognitionProcessor(
         quiz: Quiz,
         nearbyOptionTexts: List<String>
     ): Double {
-        var matchedOptionCount = 0
-        quiz.options.forEach { option ->
-            val normalizedOption = AnswerOptionTextMatcher.normalizeOptionText(option)
-            if (normalizedOption.length < MIN_OPTION_SUPPORT_LENGTH) {
-                return@forEach
-            }
-            val hasMatch = nearbyOptionTexts.any { candidate ->
-                AnswerOptionTextMatcher.candidateScore(
-                    candidate,
-                    normalizedOption,
-                    minMatchScore
-                ) != null
-            }
-            if (hasMatch) {
-                matchedOptionCount++
-            }
-        }
-        return when {
-            matchedOptionCount >= 3 -> 0.10
-            matchedOptionCount == 2 -> 0.07
-            matchedOptionCount == 1 -> 0.03
-            else -> 0.0
-        }
+        return OcrOptionSupportScorer.score(
+            options = quiz.options,
+            nearbyTexts = nearbyOptionTexts,
+            minMatchScore = minMatchScore,
+            allowShortOptions = shouldUseShortOcrOptionSupport
+        )
     }
 
     private fun getQuizIndex(quizSnapshot: List<Quiz>): QuizManager.QuizMatchIndex {
@@ -368,7 +393,12 @@ class QuizRecognitionProcessor(
 
         val bestMatches = matchedQuizs.groupBy { matchIdentity(it.item) }
             .mapNotNull { (_, items) ->
-                items.maxByOrNull { it.item.distance }
+                items.minWithOrNull(
+                    compareByDescending<MatchedTextItem> { it.item.distance }
+                        .thenBy { sourceLengthDifference(it) }
+                        .thenBy { resolveSourceLineCount(it.source) }
+                        .thenBy { it.source.rect.width().toLong() * it.source.rect.height() }
+                )
             }
         val matchesByReadingOrder = bestMatches.sortedWith(
             compareBy<MatchedTextItem> { it.source.startOrder }
@@ -416,6 +446,12 @@ class QuizRecognitionProcessor(
             .sortedByDescending { it.distance }
     }
 
+    private fun sourceLengthDifference(match: MatchedTextItem): Int {
+        val sourceLength = QuizManager.normalizeQuestionText(match.source.text).length
+        val promptLength = QuizManager.normalizeQuestionText(match.item.question.prompt).length
+        return abs(sourceLength - promptLength)
+    }
+
     private fun buildAnswerLocationDebugLines(
         match: MatchedTextItem,
         result: OcrOptionLocator.Result
@@ -435,19 +471,31 @@ class QuizRecognitionProcessor(
         match: MatchedTextItem,
         lineCandidates: List<OcrOptionLocator.TextCandidate>
     ): Int {
-        if (match.source.endOrder >= match.source.startOrder) {
-            return match.source.endOrder
+        return resolveQuestionEndOrder(
+            source = match.source,
+            prompt = match.item.question.prompt,
+            lineCandidates = lineCandidates
+        )
+    }
+
+    private fun resolveQuestionEndOrder(
+        source: RecognizedTextItem,
+        prompt: String,
+        lineCandidates: List<OcrOptionLocator.TextCandidate>
+    ): Int {
+        if (source.endOrder >= source.startOrder) {
+            return source.endOrder
         }
-        val normalizedPrompt = QuizManager.normalizeQuestionText(match.item.question.prompt)
+        val normalizedPrompt = QuizManager.normalizeQuestionText(prompt)
         if (normalizedPrompt.isBlank()) {
-            return match.source.endOrder
+            return source.endOrder
         }
         val accumulatedText = StringBuilder()
         val questionLines = lineCandidates
             .asSequence()
-            .filter { it.order >= match.source.startOrder }
+            .filter { it.order >= source.startOrder }
             .filter { it.order % ORDER_SCALE == LINE_CANDIDATE_ORDER_OFFSET }
-            .filter { match.source.rect.contains(it.bounds.toAndroidRect()) }
+            .filter { source.rect.contains(it.bounds.toAndroidRect()) }
             .sortedBy { it.order }
             .toList()
         for (candidate in questionLines) {
@@ -466,7 +514,12 @@ class QuizRecognitionProcessor(
                 return candidate.order + ORDER_SCALE - LINE_CANDIDATE_ORDER_OFFSET - 1
             }
         }
-        return match.source.endOrder
+        return questionLines
+            .takeWhile { !OcrQuestionCandidateBuilder.isOptionLine(it.text) }
+            .lastOrNull()
+            ?.order
+            ?.plus(ORDER_SCALE - LINE_CANDIDATE_ORDER_OFFSET - 1)
+            ?: source.endOrder
     }
 
     private fun Rect.toLocatorBounds(): OcrOptionLocator.Bounds {
@@ -503,24 +556,44 @@ class QuizRecognitionProcessor(
         lineCandidates: MutableList<OcrOptionLocator.TextCandidate>
     ): List<RecognizedTextItem> {
         val recognizedTextItems = mutableListOf<RecognizedTextItem>()
-        var lineOrder = 0
-        results.textBlocks.forEach { textBlock ->
-            val blockStartOrder = lineOrder * ORDER_SCALE
+        val crossBlockLines = mutableListOf<OcrQuestionCandidateBuilder.Line>()
+        val lineReadingOrders = buildLineReadingOrders(results)
+        results.textBlocks.forEachIndexed { blockIndex, textBlock ->
+            val blockStartOrder = textBlock.lines.indices
+                .minOfOrNull { lineIndex ->
+                    lineReadingOrders.getValue(OcrReadingOrder.Key(blockIndex, lineIndex))
+                }
+                ?.times(ORDER_SCALE)
+                ?: return@forEachIndexed
             val blockLines = mutableListOf<RecognizedLineItem>()
-            textBlock.lines.forEach { line ->
+            textBlock.lines.forEachIndexed { lineIndex, line ->
+                val lineOrder = lineReadingOrders.getValue(
+                    OcrReadingOrder.Key(blockIndex, lineIndex)
+                )
                 val lineBaseOrder = lineOrder * ORDER_SCALE
                 line.boundingBox?.let { boundingBox ->
-                    createLineCandidate(
+                    val lineCandidate = createLineCandidate(
                         line.text,
                         boundingBox,
                         lineBaseOrder + LINE_CANDIDATE_ORDER_OFFSET
                     )
-                        ?.let(lineCandidates::add)
-                    createRecognizedLineItem(
+                    lineCandidate?.let { candidate ->
+                        lineCandidates.add(candidate)
+                        crossBlockLines.add(
+                            OcrQuestionCandidateBuilder.Line(
+                                text = candidate.text,
+                                bounds = candidate.bounds,
+                                order = lineBaseOrder,
+                                blockIndex = blockIndex
+                            )
+                        )
+                    }
+                    val recognizedLine = createRecognizedLineItem(
                         line.text,
                         boundingBox,
                         lineBaseOrder
-                    )?.let(blockLines::add)
+                    )
+                    recognizedLine?.let(blockLines::add)
                     if (!shouldGroupRecognizedTextInBlocks) {
                         createRecognizedTextItem(
                             line.text,
@@ -540,9 +613,11 @@ class QuizRecognitionProcessor(
                         )?.let(lineCandidates::add)
                     }
                 }
-                lineOrder++
             }
-            addLineWindowRecognizedTextItems(recognizedTextItems, blockLines)
+            addLineWindowRecognizedTextItems(
+                recognizedTextItems,
+                blockLines.sortedBy(RecognizedLineItem::order)
+            )
             if (shouldGroupRecognizedTextInBlocks) {
                 textBlock.boundingBox?.let { boundingBox ->
                     createRecognizedTextItem(
@@ -554,7 +629,35 @@ class QuizRecognitionProcessor(
                 }
             }
         }
+        if (shouldMergeOcrTextAcrossBlocks) {
+            OcrQuestionCandidateBuilder.build(crossBlockLines).forEach { candidate ->
+                createRecognizedTextItem(
+                    text = candidate.text,
+                    boundingBox = candidate.bounds.toAndroidRect(),
+                    startOrder = candidate.startOrder,
+                    endOrder = candidate.endOrder + ORDER_SCALE - 1
+                )?.let(recognizedTextItems::add)
+            }
+        }
         return recognizedTextItems
+    }
+
+    private fun buildLineReadingOrders(results: Text): Map<OcrReadingOrder.Key, Int> {
+        var sourceOrder = 0
+        val items = buildList {
+            results.textBlocks.forEachIndexed { blockIndex, textBlock ->
+                textBlock.lines.forEachIndexed { lineIndex, line ->
+                    add(
+                        OcrReadingOrder.Item(
+                            key = OcrReadingOrder.Key(blockIndex, lineIndex),
+                            bounds = line.boundingBox?.toLocatorBounds(),
+                            sourceOrder = sourceOrder++
+                        )
+                    )
+                }
+            }
+        }
+        return OcrReadingOrder.assign(items)
     }
 
     private fun addLineWindowRecognizedTextItems(
@@ -734,7 +837,8 @@ class QuizRecognitionProcessor(
         private const val OPTION_RERANK_CANDIDATE_COUNT = 5
         private const val OPTION_CONTEXT_LINE_COUNT = 8
         private const val MAX_OPTION_SUPPORT_TEXTS = 12
-        private const val MIN_OPTION_SUPPORT_LENGTH = 5
+        private const val MAX_OPTION_LINE_PARTS = 2
+        private const val MIN_SHORT_OPTION_SUPPORT_LENGTH = 1
         private const val STRONG_QUESTION_MATCH_SCORE = 0.90
         private const val MIN_AMBIGUOUS_MATCH_MARGIN = 0.02
         private const val REQUIRED_STABLE_MATCH_FRAMES = 2

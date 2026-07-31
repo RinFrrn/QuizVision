@@ -944,15 +944,25 @@ internal fun buildGroupedFeatureItems(
 
         add(QuizLibraryFeatureListItem.SectionHeader("题库概览"))
         add(QuizLibraryFeatureListItem.Stats)
+        QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST
+            .featureItem(fullSpan = true)
+            ?.let(::add)
 
         add(QuizLibraryFeatureListItem.SectionHeader("巩固复盘"))
-        QuizLibraryFeaturesFragment.FeatureAction.FAVORITES.featureItem()?.let(::add)
-        QuizLibraryFeaturesFragment.FeatureAction.WRONG.featureItem()?.let(::add)
-        QuizLibraryFeaturesFragment.FeatureAction.HISTORY.featureItem()?.let(::add)
-        QuizLibraryFeaturesFragment.FeatureAction.EXAM_HISTORY.featureItem()?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.FAVORITES
+            .featureItem(fullSpan = true)
+            ?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.WRONG
+            .featureItem(fullSpan = true)
+            ?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.HISTORY
+            .featureItem(fullSpan = true)
+            ?.let(::add)
+        QuizLibraryFeaturesFragment.FeatureAction.EXAM_HISTORY
+            .featureItem(fullSpan = true)
+            ?.let(::add)
 
         add(QuizLibraryFeatureListItem.SectionHeader("题库工具"))
-        QuizLibraryFeaturesFragment.FeatureAction.QUIZ_LIST.featureItem(fullSpan = true)?.let(::add)
         QuizLibraryFeaturesFragment.FeatureAction.SIMILAR_ANALYSIS.featureItem(fullSpan = true)?.let(::add)
         QuizLibraryFeaturesFragment.FeatureAction.BATCH_AI_EXPLAIN.featureItem(fullSpan = true)?.let(::add)
         QuizLibraryFeaturesFragment.FeatureAction.EXPORT.featureItem(fullSpan = true)?.let(::add)

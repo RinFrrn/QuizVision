@@ -30,13 +30,62 @@ public class ScreenFrameChangeDetectorTest {
     }
 
     @Test
-    public void changesBelowThreePercentAreIgnored() {
+    public void defaultThresholdStartsAtTwoPercent() {
         ScreenFrameChangeDetector detector = detectorWithBaseline();
-        byte[] smallChange = frameWithChangedSamples(122);
 
         assertEquals(
                 ScreenFrameChangeDetector.Decision.UNCHANGED,
-                detector.evaluate(smallChange, WIDTH, HEIGHT, WIDTH, 0, 300L, false)
+                detector.evaluate(
+                        frameWithChangedSamples(81),
+                        WIDTH,
+                        HEIGHT,
+                        WIDTH,
+                        0,
+                        300L,
+                        false
+                )
+        );
+        assertEquals(
+                ScreenFrameChangeDetector.Decision.WAITING_FOR_STABILITY,
+                detector.evaluate(
+                        frameWithChangedSamples(82),
+                        WIDTH,
+                        HEIGHT,
+                        WIDTH,
+                        0,
+                        400L,
+                        false
+                )
+        );
+    }
+
+    @Test
+    public void configuredThreePercentThresholdKeepsStricterBoundary() {
+        ScreenFrameChangeDetector detector = detectorWithBaseline(0.03);
+
+        assertEquals(
+                ScreenFrameChangeDetector.Decision.UNCHANGED,
+                detector.evaluate(
+                        frameWithChangedSamples(122),
+                        WIDTH,
+                        HEIGHT,
+                        WIDTH,
+                        0,
+                        300L,
+                        false
+                )
+        );
+        assertEquals(
+                ScreenFrameChangeDetector.Decision.WAITING_FOR_STABILITY,
+                detector.evaluate(
+                        frameWithChangedSamples(123),
+                        WIDTH,
+                        HEIGHT,
+                        WIDTH,
+                        0,
+                        400L,
+                        false
+                )
         );
     }
 
@@ -95,7 +144,16 @@ public class ScreenFrameChangeDetectorTest {
     }
 
     private static ScreenFrameChangeDetector detectorWithBaseline() {
-        ScreenFrameChangeDetector detector = new ScreenFrameChangeDetector();
+        return detectorWithBaseline(new ScreenFrameChangeDetector());
+    }
+
+    private static ScreenFrameChangeDetector detectorWithBaseline(double pageChangeThreshold) {
+        return detectorWithBaseline(new ScreenFrameChangeDetector(pageChangeThreshold));
+    }
+
+    private static ScreenFrameChangeDetector detectorWithBaseline(
+            ScreenFrameChangeDetector detector
+    ) {
         byte[] baseline = frameWithChangedSamples(0);
         detector.evaluate(baseline, WIDTH, HEIGHT, WIDTH, 0, 0L, false);
         detector.onScanFinished();

@@ -144,6 +144,33 @@ class OcrOptionLocatorTest {
     }
 
     @Test
+    fun fullWidthStandaloneOptionLabelCombinesWithAdjacentText() {
+        val label = candidate("Ｂ．", 2, 140, left = 20, width = 30)
+        val text = candidate("已", 3, 140, left = 70)
+        val result = locate(
+            options = listOf("甲", "乙"),
+            answers = setOf(1),
+            candidates = listOf(
+                candidate("Ａ．甲", 1, 100),
+                label,
+                text
+            )
+        )
+
+        assertEquals(
+            listOf(
+                OcrOptionLocator.Bounds(
+                    label.bounds.left,
+                    label.bounds.top,
+                    text.bounds.right,
+                    text.bounds.bottom
+                )
+            ),
+            result.answerBounds
+        )
+    }
+
+    @Test
     fun wrappedLongOptionCombinesFollowingLine() {
         val firstLine = candidate("B. 这是一个需要换行", 2, 140)
         val secondLine = candidate("才能完整显示", 3, 184, left = 36)

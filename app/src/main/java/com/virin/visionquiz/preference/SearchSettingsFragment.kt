@@ -60,6 +60,7 @@ class SearchSettingsFragment : Fragment() {
                     setPadding(16.dp(context), 16.dp(context), 16.dp(context), 24.dp(context))
                     addCameraSection(context)
                     addGeneralDisplaySection(context)
+                    addOcrRecognitionSection(context)
                     addScreenSearchSection(context)
                     addAccessibilitySection(context)
                     addMatchThresholdSection(context)
@@ -139,16 +140,43 @@ class SearchSettingsFragment : Fragment() {
                 titleResId = R.string.pref_title_show_text_confidence,
                 summary = getString(R.string.pref_summary_show_text_confidence),
                 defaultValue = false
-            ),
+            )
+        )
+        addSection(context, getString(R.string.pref_category_general_display), rows)
+    }
+
+    private fun LinearLayout.addOcrRecognitionSection(context: Context) {
+        val rows = listOf(
             createSwitchRow(
                 context = context,
                 keyResId = R.string.pref_key_group_recognized_text_in_blocks,
                 titleResId = R.string.pref_title_group_recognized_text_in_blocks,
                 summary = getString(R.string.pref_summary_group_recognized_text_in_blocks),
                 defaultValue = true
+            ),
+            createSwitchRow(
+                context = context,
+                keyResId = R.string.pref_key_merge_ocr_text_across_blocks,
+                titleResId = R.string.pref_title_merge_ocr_text_across_blocks,
+                summary = getString(R.string.pref_summary_merge_ocr_text_across_blocks),
+                defaultValue = true
+            ),
+            createSwitchRow(
+                context = context,
+                keyResId = R.string.pref_key_clean_ocr_question_text,
+                titleResId = R.string.pref_title_clean_ocr_question_text,
+                summary = getString(R.string.pref_summary_clean_ocr_question_text),
+                defaultValue = true
+            ),
+            createSwitchRow(
+                context = context,
+                keyResId = R.string.pref_key_short_ocr_option_support,
+                titleResId = R.string.pref_title_short_ocr_option_support,
+                summary = getString(R.string.pref_summary_short_ocr_option_support),
+                defaultValue = true
             )
         )
-        addSection(context, getString(R.string.pref_category_general_display), rows)
+        addSection(context, getString(R.string.pref_category_text_recognition), rows)
     }
 
     private fun LinearLayout.addScreenSearchSection(context: Context) {
@@ -167,6 +195,15 @@ class SearchSettingsFragment : Fragment() {
                 titleResId = R.string.pref_title_screen_search_detect_changes,
                 summary = getString(R.string.pref_summary_screen_search_detect_changes),
                 defaultValue = true
+            ),
+            createArrayListRow(
+                context = context,
+                keyResId = R.string.pref_key_screen_page_change_threshold,
+                titleResId = R.string.pref_title_screen_page_change_threshold,
+                summary = getString(R.string.pref_summary_screen_page_change_threshold),
+                defaultValue = DEFAULT_SCREEN_PAGE_CHANGE_THRESHOLD,
+                entriesResId = R.array.pref_entries_screen_page_change_threshold,
+                valuesResId = R.array.pref_entry_values_screen_page_change_threshold
             ),
             createSwitchRow(
                 context = context,
@@ -691,5 +728,6 @@ class SearchSettingsFragment : Fragment() {
         const val ACCESSIBILITY_THRESHOLD_DEFAULT_SCORE = 1.00
         const val THRESHOLD_SCORE_STEP = 0.02
         const val DEFAULT_ACCESSIBILITY_ANSWER_DOT_COLOR = "#000000"
+        const val DEFAULT_SCREEN_PAGE_CHANGE_THRESHOLD = "0.02"
     }
 }

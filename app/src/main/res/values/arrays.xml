@@ -31,6 +31,20 @@
     <item>2000</item>
   </string-array>
 
+  <string-array name="pref_entries_screen_page_change_threshold">
+    <item>Most sensitive · 1%</item>
+    <item>Balanced · 2%</item>
+    <item>Less sensitive · 3%</item>
+    <item>Battery saver · 5%</item>
+  </string-array>
+
+  <string-array name="pref_entry_values_screen_page_change_threshold">
+    <item>0.01</item>
+    <item>0.02</item>
+    <item>0.03</item>
+    <item>0.05</item>
+  </string-array>
+
   <string-array name="pref_entries_screen_capture_frame_rate">
     <item>15 FPS</item>
     <item>30 FPS</item>
