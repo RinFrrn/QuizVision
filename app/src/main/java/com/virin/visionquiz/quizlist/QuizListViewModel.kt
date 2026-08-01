@@ -196,6 +196,12 @@ class QuizListViewModel(application: Application, libraryId: Int) : AndroidViewM
         }
     }
 
+    fun updateQuiz(quiz: Quiz) {
+        viewModelScope.launch {
+            repository.updateQuiz(quiz)
+        }
+    }
+
     fun deleteQuizLibrary(quizLibrary: QuizLibrary) {
         viewModelScope.launch {
             repository.deleteQuizLibrary(quizLibrary)

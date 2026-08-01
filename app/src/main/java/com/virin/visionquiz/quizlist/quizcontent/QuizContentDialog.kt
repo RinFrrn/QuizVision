@@ -33,6 +33,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
@@ -44,6 +46,7 @@ import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -160,9 +163,17 @@ fun showQuizContentDialog(
     context: Context,
     quiz: Quiz,
     allQuizzes: List<Quiz> = listOf(quiz),
-    extras: QuizContentExtras = QuizContentExtras()
+    extras: QuizContentExtras = QuizContentExtras(),
+    onQuizUpdated: ((Quiz) -> Unit)? = null
 ): QuizContentDialogHandle? =
-    showQuizContentDialog(context, listOf(quiz), 0, allQuizzes, extras)
+    showQuizContentDialog(
+        context = context,
+        quizzes = listOf(quiz),
+        initialIndex = 0,
+        allQuizzes = allQuizzes,
+        extras = extras,
+        onQuizUpdated = onQuizUpdated
+    )
 
 fun showQuizContentDialog(
     context: Context,
@@ -170,7 +181,8 @@ fun showQuizContentDialog(
     initialIndex: Int,
     allQuizzes: List<Quiz> = quizzes,
     extras: QuizContentExtras = QuizContentExtras(),
-    onDismissed: (() -> Unit)? = null
+    onDismissed: (() -> Unit)? = null,
+    onQuizUpdated: ((Quiz) -> Unit)? = null
 ): QuizContentDialogHandle? {
     if (quizzes.isEmpty()) return null
 
@@ -204,6 +216,7 @@ fun showQuizContentDialog(
                     allQuizzes = allQuizzes,
                     initialIndex = initialIndex,
                     extras = extras,
+                    onQuizUpdated = onQuizUpdated,
                     onDismiss = handle::dismiss
                 )
             }
@@ -283,6 +296,7 @@ private fun QuizContentBottomSheet(
     allQuizzes: List<Quiz>,
     initialIndex: Int,
     extras: QuizContentExtras,
+    onQuizUpdated: ((Quiz) -> Unit)?,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -331,6 +345,7 @@ private fun QuizContentBottomSheet(
                 allQuizzes = allQuizzes,
                 initialIndex = initialIndex,
                 extras = extras,
+                onQuizUpdated = onQuizUpdated,
                 onDismiss = ::closeSheet
             )
         }
@@ -442,6 +457,7 @@ private fun QuizContentCard(
     allQuizzes: List<Quiz>,
     initialIndex: Int,
     extras: QuizContentExtras,
+    onQuizUpdated: ((Quiz) -> Unit)?,
     onDismiss: () -> Unit
 ) {
     val originalIndex = remember(initialIndex, quizzes) {
@@ -451,7 +467,10 @@ private fun QuizContentCard(
         mutableIntStateOf(originalIndex)
     }
     var selectedSimilarQuiz by remember { mutableStateOf<Quiz?>(null) }
-    val quiz = selectedSimilarQuiz ?: quizzes[currentIndex]
+    var editedQuizzesById by remember { mutableStateOf<Map<Int, Quiz>>(emptyMap()) }
+    var quizBeingEdited by remember { mutableStateOf<Quiz?>(null) }
+    val selectedQuiz = selectedSimilarQuiz ?: quizzes[currentIndex]
+    val quiz = editedQuizzesById[selectedQuiz.id] ?: selectedQuiz
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -778,6 +797,11 @@ private fun QuizContentCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (onQuizUpdated != null) {
+                        TextButton(onClick = { quizBeingEdited = quiz }) {
+                            Text("编辑答案")
+                        }
+                    }
                     OutlinedButton(
                         enabled = selectedSimilarQuiz == null && currentIndex > 0,
                         onClick = {
@@ -810,7 +834,155 @@ private fun QuizContentCard(
                     .padding(horizontal = 16.dp)
             )
         }
+
+        quizBeingEdited?.let { editingQuiz ->
+            QuizAnswerEditorDialog(
+                quiz = editingQuiz,
+                onDismiss = { quizBeingEdited = null },
+                onSave = { updatedQuiz ->
+                    editedQuizzesById = editedQuizzesById + (updatedQuiz.id to updatedQuiz)
+                    quizBeingEdited = null
+                    onQuizUpdated?.invoke(updatedQuiz)
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("答案已更新")
+                    }
+                }
+            )
+        }
     }
+}
+
+@Composable
+private fun QuizAnswerEditorDialog(
+    quiz: Quiz,
+    onDismiss: () -> Unit,
+    onSave: (Quiz) -> Unit
+) {
+    val uiType = quiz.inferredUiType()
+    val editsTextAnswer = uiType == QuizUiType.FILL_BLANK || uiType == QuizUiType.SUBJECTIVE
+    val multipleChoice = uiType == QuizUiType.MULTIPLE_CHOICE
+    var selectedAnswers by remember(quiz.id, quiz.answer) {
+        mutableStateOf<Set<Int>>(
+            quiz.answer.filterTo(mutableSetOf()) { index ->
+                quiz.options.getOrNull(index)?.isNotBlank() == true
+            }
+        )
+    }
+    var answerTexts by remember(quiz.id, quiz.options) {
+        mutableStateOf(quiz.options.map(String::trim))
+    }
+    val canSave = if (editsTextAnswer) {
+        answerTexts.isNotEmpty() && answerTexts.all(String::isNotBlank)
+    } else {
+        selectedAnswers.isNotEmpty()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (uiType == QuizUiType.SUBJECTIVE) "编辑参考答案" else "编辑答案") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 480.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = when {
+                        editsTextAnswer && uiType == QuizUiType.FILL_BLANK -> "请按空格顺序修改答案"
+                        editsTextAnswer -> "修改题库中的参考答案"
+                        multipleChoice -> "可选择多个正确选项"
+                        else -> "请选择唯一的正确选项"
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                if (editsTextAnswer) {
+                    answerTexts.forEachIndexed { index, value ->
+                        OutlinedTextField(
+                            value = value,
+                            onValueChange = { newValue ->
+                                answerTexts = answerTexts.toMutableList().also {
+                                    it[index] = newValue
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = {
+                                Text(
+                                    if (uiType == QuizUiType.FILL_BLANK) {
+                                        "第 ${index + 1} 空"
+                                    } else {
+                                        "参考答案"
+                                    }
+                                )
+                            },
+                            minLines = if (uiType == QuizUiType.SUBJECTIVE) 3 else 1
+                        )
+                    }
+                } else {
+                    quiz.options.forEachIndexed { index, option ->
+                        if (option.isBlank()) return@forEachIndexed
+                        val selected = index in selectedAnswers
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedAnswers = if (multipleChoice) {
+                                        if (selected) selectedAnswers - index else selectedAnswers + index
+                                    } else {
+                                        setOf(index)
+                                    }
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (multipleChoice) {
+                                Checkbox(
+                                    checked = selected,
+                                    onCheckedChange = null
+                                )
+                            } else {
+                                RadioButton(
+                                    selected = selected,
+                                    onClick = null
+                                )
+                            }
+                            Text(
+                                text = "${convertNumToChar(index)}. $option",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 8.dp),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = canSave,
+                onClick = {
+                    val updatedQuiz = if (editsTextAnswer) {
+                        quiz.withEditedTextAnswers(answerTexts)
+                    } else {
+                        quiz.withEditedChoiceAnswer(selectedAnswers)
+                    }
+                    onSave(updatedQuiz)
+                }
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 @Composable
