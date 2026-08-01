@@ -46,9 +46,9 @@ public class SettingsActivity extends AppCompatActivity {
                 CameraXLivePreviewPreferenceFragment.class),
         CAMERAXSOURCE_DEMO(
                 R.string.pref_screen_title_cameraxsource_demo, CameraXSourceDemoPreferenceFragment.class),
-        QUIZ_CAMERA(R.string.pref_screen_title_quiz_camera, QuizCameraPreferenceFragment.class),
-        QUIZ_CAMERAX(R.string.pref_screen_title_quiz_camerax, QuizCameraXPreferenceFragment.class),
-        AI_SETTINGS(R.string.ai_settings_title, QuizCameraPreferenceFragment.class);
+        QUIZ_CAMERA(R.string.pref_screen_title_quiz_camera),
+        QUIZ_CAMERAX(R.string.pref_screen_title_quiz_camerax),
+        AI_SETTINGS(R.string.ai_settings_title);
 
         private final int titleResId;
         private final Class<? extends PreferenceFragment> prefFragmentClass;
@@ -56,6 +56,10 @@ public class SettingsActivity extends AppCompatActivity {
         LaunchSource(int titleResId, Class<? extends PreferenceFragment> prefFragmentClass) {
             this.titleResId = titleResId;
             this.prefFragmentClass = prefFragmentClass;
+        }
+
+        LaunchSource(int titleResId) {
+            this(titleResId, null);
         }
     }
 
@@ -74,7 +78,8 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         if (savedInstanceState == null) {
-            if (launchSource == LaunchSource.QUIZ_CAMERAX) {
+            if (launchSource == LaunchSource.QUIZ_CAMERA
+                    || launchSource == LaunchSource.QUIZ_CAMERAX) {
                 getSupportFragmentManager()
                         .beginTransaction()
                         .replace(R.id.settings_container, new SearchSettingsFragment())
@@ -86,6 +91,10 @@ public class SettingsActivity extends AppCompatActivity {
                         .commit();
             } else {
                 try {
+                    if (launchSource.prefFragmentClass == null) {
+                        throw new IllegalStateException(
+                                "No preference fragment configured for " + launchSource);
+                    }
                     getFragmentManager()
                             .beginTransaction()
                             .replace(
