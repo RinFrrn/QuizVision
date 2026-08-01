@@ -17,6 +17,7 @@ import com.virin.visionquiz.vision.graphic.GraphicOverlay
 import com.virin.visionquiz.dao.answerOptionsString
 import com.virin.visionquiz.util.abbreviateAnswerText
 import com.virin.visionquiz.util.QuizGraphicItem
+import com.virin.visionquiz.util.selectAllAnswerHint
 import kotlin.math.max
 import kotlin.math.min
 
@@ -101,7 +102,13 @@ class QuizGraphic constructor(
             }
             val promptLine = prompt.replace(WHITESPACE_REGEX, " ").trim()
 
-            val content = buildAnswerContent(promptLine, answerChars, correctOpts, item.distance)
+            val content = buildAnswerContent(
+                promptLine,
+                answerChars,
+                item.question.selectAllAnswerHint(),
+                correctOpts,
+                item.distance
+            )
 
             // FIXME: 答案中存在换行导致显示不全
 //                    .map { answer ->
@@ -175,6 +182,7 @@ class QuizGraphic constructor(
     private fun buildAnswerContent(
         prompt: String,
         answerChars: String,
+        answerHint: String?,
         answerText: String,
         confidence: Double?
     ): CharSequence {
@@ -183,7 +191,8 @@ class QuizGraphic constructor(
         } else {
             prompt
         }
-        val answerPrefix = "答案($answerChars): "
+        val answerDescriptor = listOfNotNull(answerChars, answerHint).joinToString(" · ")
+        val answerPrefix = "答案($answerDescriptor): "
         val content = "$promptText\n$answerPrefix$answerText"
         val answerStart = content.length - answerText.length
         return SpannableString(content).apply {

@@ -250,11 +250,7 @@ internal object OcrOptionLocator {
             ) {
                 return null
             }
-            val score = if (normalizedOption.length <= MAX_BLIND_PREFIX_ANCHOR_OPTION_LENGTH) {
-                MATCH_EXPECTED_PREFIX
-            } else {
-                candidateScore(trimmedText, normalizedOption, minMatchScore) ?: return null
-            }
+            val score = candidateScore(content, normalizedOption, minMatchScore) ?: return null
             return CandidateMatch(
                 candidate = candidate,
                 selectedBounds = candidate.bounds,
@@ -288,11 +284,7 @@ internal object OcrOptionLocator {
                     .thenBy { it.bounds.area }
             ) ?: return null
         val combinedText = "$trimmedText ${adjacent.text}"
-        val score = if (normalizedOption.length <= MAX_BLIND_PREFIX_ANCHOR_OPTION_LENGTH) {
-            MATCH_EXPECTED_PREFIX
-        } else {
-            candidateScore(combinedText, normalizedOption, minMatchScore) ?: return null
-        }
+        val score = candidateScore(combinedText, normalizedOption, minMatchScore) ?: return null
         return CandidateMatch(
             candidate = candidate,
             selectedBounds = candidate.bounds.union(adjacent.bounds),
@@ -376,10 +368,8 @@ internal object OcrOptionLocator {
     private const val MAX_WRAPPED_LEFT_DELTA_HEIGHT_MULTIPLIER = 2.5f
     private const val MAX_WRAPPED_RIGHT_DELTA_HEIGHT_MULTIPLIER = 2.5f
     private const val MIN_VERTICAL_OVERLAP_RATIO = 0.5f
-    private const val MAX_BLIND_PREFIX_ANCHOR_OPTION_LENGTH = 4
     private const val MAX_RECT_HEIGHT_RATIO = 0.18f
     private const val MAX_VERTICAL_SPAN_RATIO = 0.5f
-    private val MATCH_EXPECTED_PREFIX = AnswerOptionTextMatcher.MATCH_PREFIX_ANCHOR
     private val CANDIDATE_MATCH_COMPARATOR =
         compareBy<CandidateMatch> { it.score }
             .thenBy { it.optionPrefixRank }

@@ -36,7 +36,6 @@ class QuizListViewModel(application: Application, libraryId: Int) : AndroidViewM
     val selectedTypeFilter: MutableLiveData<QuizUiType?> = MutableLiveData(null)
     private var filterJob: Job? = null
     private var cachedSearchSource: List<Quiz>? = null
-    private var cachedSearchType: QuizUiType? = null
     private var cachedSearchIndex: QuizManager.QuizMatchIndex? = null
 
     val library: MutableLiveData<QuizLibrary?> = MutableLiveData()
@@ -56,7 +55,7 @@ class QuizListViewModel(application: Application, libraryId: Int) : AndroidViewM
         addSource(selectedTypeFilter) { update() }
     }
 
-    val filteredQuizList: LiveData<List<Quiz>?> = MediatorLiveData<List<Quiz>?>().apply {
+    private val searchResultQuizList: LiveData<List<Quiz>?> = MediatorLiveData<List<Quiz>?>().apply {
         fun update() {
             filterJob?.cancel()
             val query = searchQuery.value.orEmpty()
@@ -66,7 +65,6 @@ class QuizListViewModel(application: Application, libraryId: Int) : AndroidViewM
             }
 
             val quizzes = quizList.value ?: emptyList()
-            val selectedType = selectedTypeFilter.value
             val mode = searchMode.value ?: QuizSearchMode.KEYWORD
             val scope = keywordScope.value ?: KeywordSearchScope()
             filterJob = viewModelScope.launch {
@@ -74,7 +72,7 @@ class QuizListViewModel(application: Application, libraryId: Int) : AndroidViewM
                 val filtered = withContext(Dispatchers.Default) {
                     when (mode) {
                         QuizSearchMode.FUZZY -> {
-                            val searchIndex = getSearchIndex(quizzes, selectedType)
+                            val searchIndex = getSearchIndex(quizzes)
                             QuizManager.matchQuiz(
                                 query,
                                 searchIndex,
@@ -84,8 +82,7 @@ class QuizListViewModel(application: Application, libraryId: Int) : AndroidViewM
                         }
 
                         QuizSearchMode.KEYWORD -> {
-                            applyTypeFilter(quizzes, selectedType)
-                                .filter { quiz -> QuizKeywordSearch.matches(quiz, query, scope) }
+                            quizzes.filter { quiz -> QuizKeywordSearch.matches(quiz, query, scope) }
                         }
                     }
                 }
@@ -97,8 +94,25 @@ class QuizListViewModel(application: Application, libraryId: Int) : AndroidViewM
         addSource(searchQuery) { update() }
         addSource(searchMode) { update() }
         addSource(keywordScope) { update() }
+    }
+
+    val filteredQuizList: LiveData<List<Quiz>?> = MediatorLiveData<List<Quiz>?>().apply {
+        fun update() {
+            value = searchResultQuizList.value?.let { results ->
+                applyTypeFilter(results, selectedTypeFilter.value)
+            }
+        }
+
+        addSource(searchResultQuizList) { update() }
         addSource(selectedTypeFilter) { update() }
     }
+
+    val filteredQuizTypeStats: LiveData<QuizTypeStats?> =
+        MediatorLiveData<QuizTypeStats?>().apply {
+            addSource(searchResultQuizList) { results ->
+                value = results?.let(::buildQuizTypeStats)
+            }
+        }
 
     init {
         viewModelScope.launch {
@@ -155,24 +169,19 @@ class QuizListViewModel(application: Application, libraryId: Int) : AndroidViewM
         return quizzes.filter { it.inferredUiType() == selectedType }
     }
 
-    private fun getSearchIndex(
-        quizzes: List<Quiz>,
-        selectedType: QuizUiType?
-    ): QuizManager.QuizMatchIndex {
+    private fun getSearchIndex(quizzes: List<Quiz>): QuizManager.QuizMatchIndex {
         val index = cachedSearchIndex
-        if (cachedSearchSource === quizzes && cachedSearchType == selectedType && index != null) {
+        if (cachedSearchSource === quizzes && index != null) {
             return index
         }
 
         return synchronized(this) {
             val lockedIndex = cachedSearchIndex
-            if (cachedSearchSource === quizzes && cachedSearchType == selectedType && lockedIndex != null) {
+            if (cachedSearchSource === quizzes && lockedIndex != null) {
                 lockedIndex
             } else {
-                val baseList = applyTypeFilter(quizzes, selectedType)
-                QuizManager.buildMatchIndex(baseList).also {
+                QuizManager.buildMatchIndex(quizzes).also {
                     cachedSearchSource = quizzes
-                    cachedSearchType = selectedType
                     cachedSearchIndex = it
                 }
             }
@@ -193,35 +202,6 @@ class QuizListViewModel(application: Application, libraryId: Int) : AndroidViewM
         }
     }
 
-    private fun buildQuizTypeStats(quizzes: List<Quiz>): QuizTypeStats {
-        if (quizzes.isEmpty()) return QuizTypeStats()
-
-        var singleChoice = 0
-        var multipleChoice = 0
-        var judgement = 0
-        var fillBlank = 0
-        var subjective = 0
-
-        quizzes.forEach { quiz ->
-            when (quiz.inferredUiType()) {
-                QuizUiType.SINGLE_CHOICE -> singleChoice++
-                QuizUiType.MULTIPLE_CHOICE -> multipleChoice++
-                QuizUiType.JUDGEMENT -> judgement++
-                QuizUiType.FILL_BLANK -> fillBlank++
-                QuizUiType.SUBJECTIVE -> subjective++
-            }
-        }
-
-        return QuizTypeStats(
-            total = quizzes.size,
-            singleChoice = singleChoice,
-            multipleChoice = multipleChoice,
-            judgement = judgement,
-            fillBlank = fillBlank,
-            subjective = subjective
-        )
-    }
-
     companion object {
         fun factory(application: Application, libraryId: Int): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
@@ -236,4 +216,37 @@ class QuizListViewModel(application: Application, libraryId: Int) : AndroidViewM
             }
         }
     }
+}
+
+internal fun buildQuizTypeStats(quizzes: List<Quiz>): QuizTypeStats {
+    if (quizzes.isEmpty()) return QuizTypeStats()
+
+    var singleChoice = 0
+    var multipleChoice = 0
+    var judgement = 0
+    var fillBlank = 0
+    var subjective = 0
+
+    quizzes.forEach { quiz ->
+        when (quiz.inferredUiType()) {
+            QuizUiType.SINGLE_CHOICE -> singleChoice++
+            QuizUiType.MULTIPLE_CHOICE -> multipleChoice++
+            QuizUiType.JUDGEMENT -> judgement++
+            QuizUiType.FILL_BLANK -> fillBlank++
+            QuizUiType.SUBJECTIVE -> subjective++
+        }
+    }
+
+    return QuizTypeStats(
+        total = quizzes.size,
+        singleChoice = singleChoice,
+        multipleChoice = multipleChoice,
+        judgement = judgement,
+        fillBlank = fillBlank,
+        subjective = subjective
+    )
+}
+
+internal fun formatFilteredCount(filtered: Int?, total: Int): String {
+    return filtered?.let { "$it($total)" } ?: total.toString()
 }

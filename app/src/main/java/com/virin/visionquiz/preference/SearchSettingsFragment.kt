@@ -212,6 +212,13 @@ class SearchSettingsFragment : Fragment() {
                 summary = getString(R.string.pref_summary_screen_search_show_answer_frames),
                 defaultValue = false
             ),
+            createSwitchRow(
+                context = context,
+                keyResId = R.string.pref_key_screen_search_best_of_two,
+                titleResId = R.string.pref_title_screen_search_best_of_two,
+                summary = getString(R.string.pref_summary_screen_search_best_of_two),
+                defaultValue = false
+            ),
             createArrayListRow(
                 context = context,
                 keyResId = R.string.pref_key_screen_capture_frame_rate,

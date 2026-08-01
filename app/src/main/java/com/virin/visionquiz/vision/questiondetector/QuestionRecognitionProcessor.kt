@@ -400,13 +400,23 @@ class QuizRecognitionProcessor(
                         .thenBy { it.source.rect.width().toLong() * it.source.rect.height() }
                 )
             }
-        val matchesByReadingOrder = bestMatches.sortedWith(
+        val spatiallyUniqueMatches = OcrDisplayMatchSelector.select(
+            bestMatches.map { match ->
+                OcrDisplayMatchSelector.Candidate(
+                    value = match,
+                    identity = matchIdentity(match.item),
+                    bounds = match.source.rect.toLocatorBounds(),
+                    score = match.item.distance
+                )
+            }
+        ).map(OcrDisplayMatchSelector.Candidate<MatchedTextItem>::value)
+        val matchesByReadingOrder = spatiallyUniqueMatches.sortedWith(
             compareBy<MatchedTextItem> { it.source.startOrder }
                 .thenBy { it.source.rect.top }
                 .thenBy { it.source.rect.left }
         )
 
-        return matchesByReadingOrder.mapIndexed { index, match ->
+        val localizedMatches = matchesByReadingOrder.mapIndexed { index, match ->
             val locatedOptions = if (locateScreenAnswerRects) {
                 val nextQuestionStartOrder = matchesByReadingOrder
                     .getOrNull(index + 1)
@@ -443,7 +453,7 @@ class QuizRecognitionProcessor(
                 )
             )
         }
-            .sortedByDescending { it.distance }
+        return OcrDisplayMatchSelector.selectQuizGraphicItems(localizedMatches)
     }
 
     private fun sourceLengthDifference(match: MatchedTextItem): Int {

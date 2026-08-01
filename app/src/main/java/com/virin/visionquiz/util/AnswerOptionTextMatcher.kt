@@ -8,8 +8,6 @@ internal object AnswerOptionTextMatcher {
     const val MATCH_CONTAINS_OPTION = 1
     const val MATCH_OPTION_CONTAINS_CANDIDATE = 2
     const val MATCH_FUZZY = 3
-    const val MATCH_PREFIX_ANCHOR = 4
-
     private const val MIN_CONTAINS_OPTION_LENGTH = 2
     private const val SHORT_OPTION_EXACT_MATCH_MAX_LENGTH = 4
     private const val MIN_FUZZY_OPTION_LENGTH = 5

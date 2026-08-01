@@ -124,6 +124,8 @@
     <string name="pref_summary_screen_page_change_threshold">仅在开启“仅在屏幕变化时重新识别”时生效。默认 2%；阈值越低越容易感知细微翻页，但会更频繁运行 OCR、增加耗电。</string>
     <string name="pref_title_screen_search_show_answer_frames">框出正确答案</string>
     <string name="pref_summary_screen_search_show_answer_frames">屏幕 OCR 时定位并框出正确选项，不影响无障碍答题。</string>
+    <string name="pref_title_screen_search_best_of_two">双次识别择优</string>
+    <string name="pref_summary_screen_search_best_of_two">每次屏幕搜题强制连续 OCR 两次，按题目位置合并更优结果；可提高稳定性，但会增加延迟和耗电。</string>
     <string name="pref_title_screen_capture_frame_rate">屏幕采集帧率</string>
     <string name="pref_title_accessibility_search_interval">无障碍答题间隔</string>
     <string name="pref_category_accessibility_search">无障碍答题</string>

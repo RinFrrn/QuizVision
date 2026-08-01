@@ -82,8 +82,6 @@ class QuizListFragment : BaseQuizFragment() {
             Toast.makeText(requireContext(), "Library ID not found.", Toast.LENGTH_SHORT).show()
         }
         binding.viewModel = viewModel
-        configureQuizTopBar(binding.toolbar, viewModel.library.value?.name ?: "浏览题目")
-        binding.toolbar.menu.clear()
 
         fun updateSearchHighlight() {
             val mode = viewModel.currentSearchMode.value ?: QuizSearchMode.KEYWORD
@@ -104,12 +102,11 @@ class QuizListFragment : BaseQuizFragment() {
         }
 
         viewModel.quizTypeStats.observe(viewLifecycleOwner) { stats ->
-            binding.totalCountTv.text = stats.total.toString()
-            binding.singleChoiceCountTv.text = stats.singleChoice.toString()
-            binding.multipleChoiceCountTv.text = stats.multipleChoice.toString()
-            binding.judgementCountTv.text = stats.judgement.toString()
-            binding.fillBlankCountTv.text = stats.fillBlank.toString()
-            binding.subjectiveCountTv.text = stats.subjective.toString()
+            updateQuizTypeStats(stats, viewModel.filteredQuizTypeStats.value)
+        }
+
+        viewModel.filteredQuizTypeStats.observe(viewLifecycleOwner) { filteredStats ->
+            updateQuizTypeStats(viewModel.quizTypeStats.value ?: QuizTypeStats(), filteredStats)
         }
 
         viewModel.displayQuizList.observe(viewLifecycleOwner) { list ->
@@ -160,10 +157,6 @@ class QuizListFragment : BaseQuizFragment() {
             )
         }
 
-        viewModel.library.observe(viewLifecycleOwner) { lib ->
-            binding.toolbar.title = lib?.name ?: "未知题库"
-        }
-
         viewModel.filteredQuizList.observe(viewLifecycleOwner) { filteredList ->
             binding.filterEmptyLl.visibility =
                 if (filteredList?.isEmpty() == true) View.VISIBLE else View.GONE
@@ -211,11 +204,23 @@ class QuizListFragment : BaseQuizFragment() {
         binding.subjectiveCard.setOnClickListener { viewModel.toggleTypeFilter(QuizUiType.SUBJECTIVE) }
 
 
+        val topControlsBasePaddingTop = binding.topControlsLl.paddingTop
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             // 获取状态栏和导航栏的WindowInsets
             val systemBarsInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             // 获取输入法窗口的WindowInsets
             val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+
+            val topInset = systemBarsInsets.top
+            val targetTopPadding = topControlsBasePaddingTop + topInset
+            if (binding.topControlsLl.paddingTop != targetTopPadding) {
+                binding.topControlsLl.setPadding(
+                    binding.topControlsLl.paddingLeft,
+                    targetTopPadding,
+                    binding.topControlsLl.paddingRight,
+                    binding.topControlsLl.paddingBottom
+                )
+            }
 
 //            Log.e(TAG, "systemBarsInsets $systemBarsInsets")
 //            Log.e(TAG, "imeInsets $imeInsets")
@@ -307,6 +312,20 @@ class QuizListFragment : BaseQuizFragment() {
             valueView = binding.subjectiveCountTv,
             palette = typeCardPalette(QuizUiType.SUBJECTIVE)
         )
+    }
+
+    private fun updateQuizTypeStats(total: QuizTypeStats, filtered: QuizTypeStats?) {
+        binding.totalCountTv.text = formatFilteredCount(filtered?.total, total.total)
+        binding.singleChoiceCountTv.text =
+            formatFilteredCount(filtered?.singleChoice, total.singleChoice)
+        binding.multipleChoiceCountTv.text =
+            formatFilteredCount(filtered?.multipleChoice, total.multipleChoice)
+        binding.judgementCountTv.text =
+            formatFilteredCount(filtered?.judgement, total.judgement)
+        binding.fillBlankCountTv.text =
+            formatFilteredCount(filtered?.fillBlank, total.fillBlank)
+        binding.subjectiveCountTv.text =
+            formatFilteredCount(filtered?.subjective, total.subjective)
     }
 
     private fun updateStatsCard(

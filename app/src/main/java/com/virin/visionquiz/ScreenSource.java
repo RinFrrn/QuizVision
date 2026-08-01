@@ -50,6 +50,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Manages the camera and allows UI updates on top of it (e.g. overlaying extra Graphics or
@@ -87,6 +88,7 @@ import java.util.concurrent.atomic.AtomicInteger;
     private final AtomicBoolean isProcessingFrame = new AtomicBoolean(false);
     private final AtomicBoolean processorCallDispatched = new AtomicBoolean(false);
     private final AtomicInteger activeScanGeneration = new AtomicInteger();
+    private final AtomicReference<Runnable> continuationFallback = new AtomicReference<>();
     private final CaptureFailureListener captureFailureListener;
 
     public interface CaptureFailureListener {
@@ -285,9 +287,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 
     public void finishCurrentScan(Runnable publishResults) {
         int generation = activeScanGeneration.getAndSet(0);
+        Runnable fallback = continuationFallback.getAndSet(null);
         try {
-            if (generation != 0 && publishResults != null) {
-                publishResults.run();
+            if (generation != 0) {
+                Runnable completion = publishResults != null ? publishResults : fallback;
+                if (completion != null) {
+                    completion.run();
+                }
             }
         } finally {
             if (generation != 0) {
@@ -301,13 +307,34 @@ import java.util.concurrent.atomic.AtomicInteger;
         }
     }
 
+    /** Keeps the current overlay-hidden scan session open and schedules one clean continuation. */
+    public boolean continueCurrentScan(Runnable fallbackResults) {
+        if (activeScanGeneration.get() == 0) {
+            return false;
+        }
+        continuationFallback.set(fallbackResults);
+        processorCallDispatched.set(false);
+        isProcessingFrame.set(false);
+        if (started) {
+            processingRunnable.requestRetryOnce();
+        } else {
+            finishCurrentScan();
+        }
+        return true;
+    }
+
     private void cancelCurrentScan() {
+        Runnable fallback;
         synchronized (processorLock) {
             activeScanGeneration.set(0);
             ScreenDetectorSession.cancelScreenScan();
+            fallback = continuationFallback.getAndSet(null);
             if (!processorCallDispatched.get()) {
                 isProcessingFrame.set(false);
             }
+        }
+        if (fallback != null) {
+            fallback.run();
         }
     }
 
@@ -368,7 +395,7 @@ import java.util.concurrent.atomic.AtomicInteger;
                             return;
                         }
 
-                        shouldRetryOnce = paused && retryOnceRequested;
+                        shouldRetryOnce = retryOnceRequested;
                         if ((paused && !shouldRetryOnce) || interactionPaused) {
                             pendingFrameData = null;
                             return;
@@ -408,18 +435,26 @@ import java.util.concurrent.atomic.AtomicInteger;
                                 return;
                             }
                         }
-                        List<Rect> fallbackAnnotationBounds =
-                                ScreenDetectorSession.getAnnotationBoundsSnapshot();
-                        int scanGeneration = ScreenDetectorSession.beginScreenScan();
-                        activeScanGeneration.set(scanGeneration);
-                        processorCallDispatched.set(false);
-                        boolean resultsHidden =
-                                ScreenDetectorSession.awaitScreenResultsHidden(
-                                        scanGeneration,
-                                        SCREEN_RESULTS_HIDE_TIMEOUT_MS
-                                );
-                        if (resultsHidden) {
-                            fallbackAnnotationBounds.clear();
+                        int continuingGeneration = activeScanGeneration.get();
+                        boolean isContinuation = shouldRetryOnce && continuingGeneration != 0;
+                        List<Rect> fallbackAnnotationBounds = isContinuation
+                                ? new ArrayList<>()
+                                : ScreenDetectorSession.getAnnotationBoundsSnapshot();
+                        int scanGeneration;
+                        if (isContinuation) {
+                            scanGeneration = continuingGeneration;
+                        } else {
+                            scanGeneration = ScreenDetectorSession.beginScreenScan();
+                            activeScanGeneration.set(scanGeneration);
+                            processorCallDispatched.set(false);
+                            boolean resultsHidden =
+                                    ScreenDetectorSession.awaitScreenResultsHidden(
+                                            scanGeneration,
+                                            SCREEN_RESULTS_HIDE_TIMEOUT_MS
+                                    );
+                            if (resultsHidden) {
+                                fallbackAnnotationBounds.clear();
+                            }
                         }
                         synchronized (lock) {
                             pendingFrameData = null;
@@ -541,10 +576,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
         void requestRetryOnce() {
             synchronized (lock) {
-                if (paused) {
-                    retryOnceRequested = true;
-                    lock.notifyAll();
-                }
+                retryOnceRequested = true;
+                lock.notifyAll();
             }
         }
 

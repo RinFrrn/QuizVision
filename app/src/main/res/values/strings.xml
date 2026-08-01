@@ -105,6 +105,7 @@
     <string name="pref_key_screen_search_detect_changes" translatable="false">ssdc</string>
     <string name="pref_key_screen_page_change_threshold" translatable="false">spct</string>
     <string name="pref_key_screen_search_show_answer_frames" translatable="false">sssaf</string>
+    <string name="pref_key_screen_search_best_of_two" translatable="false">ssbot</string>
     <string name="pref_key_screen_capture_frame_rate" translatable="false">scfr</string>
     <string name="pref_key_accessibility_search_interval_ms" translatable="false">asim</string>
     <string name="pref_key_camera_search_min_match_score" translatable="false">csmm</string>
@@ -135,6 +136,8 @@
     <string name="pref_summary_screen_page_change_threshold" translatable="true">Used only when change detection is enabled. The default is 2%; lower values catch subtler page turns but run OCR more often and use more battery.</string>
     <string name="pref_title_screen_search_show_answer_frames" translatable="true">Highlight correct answers</string>
     <string name="pref_summary_screen_search_show_answer_frames" translatable="true">Locate and outline correct options during screen OCR. This does not affect accessibility answering.</string>
+    <string name="pref_title_screen_search_best_of_two" translatable="true">Run OCR twice and keep the better result</string>
+    <string name="pref_summary_screen_search_best_of_two" translatable="true">Force a second OCR pass for every screen search and merge the strongest result at each question position. This improves stability but increases latency and power use.</string>
     <string name="pref_title_screen_capture_frame_rate" translatable="true">Screen capture frame rate</string>
     <string name="pref_title_accessibility_search_interval" translatable="true">Accessibility answering interval</string>
     <string name="pref_category_accessibility_search" translatable="true">Accessibility answering</string>

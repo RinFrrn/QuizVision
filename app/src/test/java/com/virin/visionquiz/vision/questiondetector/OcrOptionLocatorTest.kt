@@ -102,24 +102,47 @@ class OcrOptionLocatorTest {
     }
 
     @Test
-    fun shortOptionUsesExpectedPrefixWhenOcrTextIsWrong() {
-        val expectedAnswer = candidate("B. 已", 2, 140)
+    fun shortOptionDoesNotTrustExpectedPrefixWhenTextIsWrong() {
         val result = locate(
             options = listOf("甲", "乙"),
             answers = setOf(1),
             candidates = listOf(
                 candidate("A. 甲", 1, 100),
-                expectedAnswer
+                candidate("B. 已", 2, 140)
             )
         )
 
-        assertEquals(listOf(expectedAnswer.bounds), result.answerBounds)
+        assertTrue(result.answerBounds.isEmpty())
+    }
+
+    @Test
+    fun reorderedShortAnswersMatchTextInsteadOfStoredOptionLetters() {
+        val firstAnswer = candidate("A. 收受礼品", 1, 100)
+        val insertedDistractor = candidate("B. 提供政策咨询", 2, 160)
+        val secondAnswer = candidate("C. 接受吃请", 3, 220)
+        val thirdAnswer = candidate("D. 收受有价证券", 4, 280)
+
+        val result = locate(
+            options = listOf("收受礼品", "接受吃请", "收受有价证券"),
+            answers = setOf(0, 1, 2),
+            candidates = listOf(
+                firstAnswer,
+                insertedDistractor,
+                secondAnswer,
+                thirdAnswer
+            )
+        )
+
+        assertEquals(
+            listOf(firstAnswer.bounds, secondAnswer.bounds, thirdAnswer.bounds),
+            result.answerBounds
+        )
     }
 
     @Test
     fun standaloneOptionLabelCombinesWithAdjacentText() {
         val label = candidate("B.", 2, 140, left = 20, width = 30)
-        val text = candidate("已", 3, 140, left = 70)
+        val text = candidate("乙", 3, 140, left = 70)
         val result = locate(
             options = listOf("甲", "乙"),
             answers = setOf(1),
@@ -146,7 +169,7 @@ class OcrOptionLocatorTest {
     @Test
     fun fullWidthStandaloneOptionLabelCombinesWithAdjacentText() {
         val label = candidate("Ｂ．", 2, 140, left = 20, width = 30)
-        val text = candidate("已", 3, 140, left = 70)
+        val text = candidate("乙", 3, 140, left = 70)
         val result = locate(
             options = listOf("甲", "乙"),
             answers = setOf(1),

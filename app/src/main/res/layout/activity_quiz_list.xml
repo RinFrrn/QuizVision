@@ -20,13 +20,6 @@
         android:background="?attr/colorSurface"
         android:orientation="vertical">
 
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            app:navigationIcon="@drawable/round_arrow_back_24"
-            tools:title="浏览题目" />
-
         <LinearLayout
             android:id="@+id/top_controls_ll"
             android:layout_width="match_parent"
@@ -77,13 +70,18 @@
 
                         <TextView
                             android:id="@+id/total_count_tv"
-                            android:layout_width="wrap_content"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="3dp"
+                            android:maxLines="1"
                             android:text="0"
                             android:textColor="?attr/colorOnSurface"
                             android:textSize="20sp"
                             android:textStyle="bold"
+                            app:autoSizeMaxTextSize="20sp"
+                            app:autoSizeMinTextSize="12sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform"
                             tools:text="128" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
@@ -115,13 +113,18 @@
 
                         <TextView
                             android:id="@+id/single_choice_count_tv"
-                            android:layout_width="wrap_content"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="3dp"
+                            android:maxLines="1"
                             android:text="0"
                             android:textColor="?attr/colorOnSurface"
                             android:textSize="20sp"
                             android:textStyle="bold"
+                            app:autoSizeMaxTextSize="20sp"
+                            app:autoSizeMinTextSize="12sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform"
                             tools:text="56" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
@@ -153,13 +156,18 @@
 
                         <TextView
                             android:id="@+id/multiple_choice_count_tv"
-                            android:layout_width="wrap_content"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="3dp"
+                            android:maxLines="1"
                             android:text="0"
                             android:textColor="?attr/colorOnSurface"
                             android:textSize="20sp"
                             android:textStyle="bold"
+                            app:autoSizeMaxTextSize="20sp"
+                            app:autoSizeMinTextSize="12sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform"
                             tools:text="24" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
@@ -191,13 +199,18 @@
 
                         <TextView
                             android:id="@+id/judgement_count_tv"
-                            android:layout_width="wrap_content"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="3dp"
+                            android:maxLines="1"
                             android:text="0"
                             android:textColor="?attr/colorOnSurface"
                             android:textSize="20sp"
                             android:textStyle="bold"
+                            app:autoSizeMaxTextSize="20sp"
+                            app:autoSizeMinTextSize="12sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform"
                             tools:text="18" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
@@ -229,13 +242,18 @@
 
                         <TextView
                             android:id="@+id/fill_blank_count_tv"
-                            android:layout_width="wrap_content"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="3dp"
+                            android:maxLines="1"
                             android:text="0"
                             android:textColor="?attr/colorOnSurface"
                             android:textSize="20sp"
                             android:textStyle="bold"
+                            app:autoSizeMaxTextSize="20sp"
+                            app:autoSizeMinTextSize="12sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform"
                             tools:text="12" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
@@ -266,13 +284,18 @@
 
                         <TextView
                             android:id="@+id/subjective_count_tv"
-                            android:layout_width="wrap_content"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="3dp"
+                            android:maxLines="1"
                             android:text="0"
                             android:textColor="?attr/colorOnSurface"
                             android:textSize="20sp"
                             android:textStyle="bold"
+                            app:autoSizeMaxTextSize="20sp"
+                            app:autoSizeMinTextSize="12sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform"
                             tools:text="6" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>

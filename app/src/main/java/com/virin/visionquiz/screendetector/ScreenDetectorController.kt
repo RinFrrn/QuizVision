@@ -32,6 +32,8 @@ import com.virin.visionquiz.ScreenSource
 import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.preference.PreferenceUtils
 import com.virin.visionquiz.util.PermissionManager
+import com.virin.visionquiz.util.QuizGraphicItem
+import com.virin.visionquiz.vision.questiondetector.OcrDisplayMatchSelector
 import com.virin.visionquiz.vision.questiondetector.OriginalRecognitionProcessor
 import com.virin.visionquiz.vision.questiondetector.QuizRecognitionProcessor
 import java.io.IOException
@@ -203,14 +205,32 @@ object ScreenDetectorController : ScreenDetectorSession.Controller {
                 is StartRequest.Quiz -> {
                     Log.i(TAG, "Using on-device Quiz recognition Processor for Quiz")
                     val source = createScreenSource(activity)
+                    val bestOfTwoCoordinator = BestOfTwoScanCoordinator<List<QuizGraphicItem>>(
+                        enabled = PreferenceUtils.shouldUseScreenSearchBestOfTwo(activity),
+                        merge = { first, second ->
+                            OcrDisplayMatchSelector.selectQuizGraphicItems(first + second)
+                        }
+                    )
                     cameraSource = source
                     source.setMachineLearningFrameProcessor(
                         QuizRecognitionProcessor(
                             activity,
                             request.quizzes,
                             onMatchesDetected = { matches ->
-                                source.finishCurrentScan {
-                                    ScreenDetectorSession.publishMatches(matches)
+                                val resolution = bestOfTwoCoordinator.resolve(matches)
+                                if (resolution.requestSecondScan) {
+                                    val continued = source.continueCurrentScan {
+                                        val fallback = bestOfTwoCoordinator.takePendingResult()
+                                            ?: resolution.value
+                                        ScreenDetectorSession.publishMatches(fallback)
+                                    }
+                                    if (!continued) {
+                                        bestOfTwoCoordinator.takePendingResult()
+                                    }
+                                } else {
+                                    source.finishCurrentScan {
+                                        ScreenDetectorSession.publishMatches(resolution.value)
+                                    }
                                 }
                             },
                             minMatchScore = PreferenceUtils.getScreenSearchMinMatchScore(activity),

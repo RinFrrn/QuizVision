@@ -12,6 +12,7 @@ import android.util.TypedValue
 import com.virin.visionquiz.preference.PreferenceUtils
 import com.virin.visionquiz.util.QuizGraphicItem
 import com.virin.visionquiz.util.abbreviateAnswerText
+import com.virin.visionquiz.util.selectAllAnswerHint
 import com.virin.visionquiz.vision.graphic.GraphicOverlay
 import kotlin.math.max
 import kotlin.math.min
@@ -329,7 +330,9 @@ class ScreenMatchGraphic(
                 ?: return@mapNotNull null
             "${'A' + optionIndex}. ${abbreviateAnswerText(option, useBriefAnswerDisplay)}"
         }
-        val answerText = if (answers.isEmpty()) "--" else answers.joinToString(" / ")
+        val optionText = if (answers.isEmpty()) "--" else answers.joinToString(" / ")
+        val answerText = listOfNotNull(match.question.selectAllAnswerHint(), optionText)
+            .joinToString(" · ")
         return if (showConfidence) {
             String.format("%.2f  %s", match.distance, answerText)
         } else {

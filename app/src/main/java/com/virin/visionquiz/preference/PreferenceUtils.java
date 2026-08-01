@@ -424,6 +424,12 @@ public class PreferenceUtils {
     return sharedPreferences.getBoolean(prefKey, false);
   }
 
+  public static boolean shouldUseScreenSearchBestOfTwo(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_screen_search_best_of_two);
+    return sharedPreferences.getBoolean(prefKey, false);
+  }
+
   public static double getCameraSearchMinMatchScore(Context context) {
     return getSearchMinMatchScore(
         context,
