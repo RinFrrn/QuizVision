@@ -1151,8 +1151,9 @@ class QuizLibFeaturesAdapter(
                 val accuracyPercent = answerStats.accuracyPercent?.coerceIn(0, 100)
                 val accuracyText = accuracyPercent?.let { "$it%" } ?: "--"
                 holder.accuracyValue.text = accuracyText
-                holder.masteryProgressValue.text = accuracyText
-                holder.masteryProgress.setProgressCompat(accuracyPercent ?: 0, false)
+                val masteryPercent = answerStats.masteryPercent.coerceIn(0, 100)
+                holder.masteryProgressValue.text = "$masteryPercent%"
+                holder.masteryProgress.setProgressCompat(masteryPercent, false)
             }
         }
     }

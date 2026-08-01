@@ -1,10 +1,18 @@
 package com.virin.visionquiz.quizlibrarylist
 
 import android.animation.ValueAnimator
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -33,6 +41,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -52,11 +61,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -66,6 +78,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,6 +88,7 @@ import com.virin.visionquiz.R
 import com.virin.visionquiz.dao.QuizLibrary
 import java.text.NumberFormat
 import java.util.Locale
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 private val StrongEaseOut = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)
 private const val PressDurationMillis = 120
@@ -126,6 +141,25 @@ fun QuizLibraryListScreen(
         buildQuizLibraryOverview(librariesWithReviewCount)
     }
     var pickerPurpose by remember { mutableStateOf<LibraryPickerPurpose?>(null) }
+    val listState = rememberLazyListState()
+    var isActionDockCollapsed by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            Triple(
+                listState.isScrollInProgress,
+                !listState.canScrollBackward,
+                listState.lastScrolledForward
+            )
+        }
+            .distinctUntilChanged()
+            .collect { (isScrolling, isAtTop, isScrollingForward) ->
+                when {
+                    isAtTop -> isActionDockCollapsed = false
+                    isScrolling -> isActionDockCollapsed = isScrollingForward
+                }
+            }
+    }
 
     val pickerLibraries = when (pickerPurpose) {
         LibraryPickerPurpose.REVIEW -> librariesWithReviewCount
@@ -137,6 +171,7 @@ fun QuizLibraryListScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 16.dp,
@@ -213,6 +248,7 @@ fun QuizLibraryListScreen(
 
         if (!isSelectionMode) {
             HomeActionDock(
+                collapsed = isActionDockCollapsed,
                 searchEnabled = librariesWithReviewCount.isNotEmpty(),
                 onSearchAction = { pickerPurpose = it },
                 onImportClick = onImportClick,
@@ -241,33 +277,54 @@ fun QuizLibraryListScreen(
 
 @Composable
 private fun HomeActionDock(
+    collapsed: Boolean,
     searchEnabled: Boolean,
     onSearchAction: (LibraryPickerPurpose) -> Unit,
     onImportClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
+        val collapsedWidth = if (maxWidth < 212.dp) maxWidth else 212.dp
+        val dockWidth by animateDpAsState(
+            targetValue = if (collapsed) collapsedWidth else maxWidth,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMedium
+            ),
+            label = "homeActionDockWidth"
+        )
+        val dockPadding by animateDpAsState(
+            targetValue = if (collapsed) 4.dp else 6.dp,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMedium
+            ),
+            label = "homeActionDockPadding"
+        )
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .width(dockWidth),
             shape = RoundedCornerShape(28.dp),
-            color = colors.surfaceContainerHigh,
+            color = colors.surfaceContainerHigh.copy(alpha = 0.88f),
             contentColor = colors.onSurface,
             tonalElevation = 4.dp,
             shadowElevation = 10.dp
         ) {
             Row(
-                modifier = Modifier.padding(6.dp),
+                modifier = Modifier.padding(dockPadding),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 HomeDockAction(
                     title = "相机搜题",
                     icon = Icons.Default.CameraAlt,
+                    collapsed = collapsed,
                     enabled = searchEnabled,
                     onClick = { onSearchAction(LibraryPickerPurpose.CAMERA) },
                     modifier = Modifier.weight(1f)
@@ -275,6 +332,7 @@ private fun HomeActionDock(
                 HomeDockAction(
                     title = "屏幕搜题",
                     icon = Icons.Default.PictureInPicture,
+                    collapsed = collapsed,
                     enabled = searchEnabled,
                     onClick = { onSearchAction(LibraryPickerPurpose.SCREEN) },
                     modifier = Modifier.weight(1f)
@@ -282,6 +340,7 @@ private fun HomeActionDock(
                 HomeDockAction(
                     title = "无障碍答题",
                     iconRes = R.drawable.icon_accessible_forward_24px,
+                    collapsed = collapsed,
                     enabled = searchEnabled,
                     onClick = { onSearchAction(LibraryPickerPurpose.ACCESSIBILITY) },
                     modifier = Modifier.weight(1f)
@@ -289,6 +348,7 @@ private fun HomeActionDock(
                 HomeDockAction(
                     title = "导入",
                     iconRes = R.drawable.twotone_add_24,
+                    collapsed = collapsed,
                     featured = true,
                     onClick = onImportClick,
                     modifier = Modifier.weight(1f)
@@ -302,6 +362,7 @@ private fun HomeActionDock(
 private fun HomeDockAction(
     title: String,
     onClick: () -> Unit,
+    collapsed: Boolean,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     featured: Boolean = false,
@@ -309,13 +370,38 @@ private fun HomeDockAction(
     iconRes: Int? = null
 ) {
     val colors = MaterialTheme.colorScheme
-    val containerColor = if (featured) colors.primaryContainer else Color.Transparent
+    val containerColor = if (featured) {
+        colors.primaryContainer.copy(alpha = 0.88f)
+    } else {
+        Color.Transparent
+    }
     val contentColor = if (featured) colors.onPrimaryContainer else colors.onSurfaceVariant
+    val actionHeight by animateDpAsState(
+        targetValue = if (collapsed) 48.dp else 64.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "homeDockActionHeight"
+    )
+    val contentOffset by animateDpAsState(
+        targetValue = if (collapsed) 0.dp else 2.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "homeDockActionContentOffset"
+    )
+    val actionModifier = if (collapsed) {
+        modifier.semantics { contentDescription = title }
+    } else {
+        modifier
+    }
 
     PressableSurface(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(64.dp),
+        modifier = actionModifier.height(actionHeight),
         shape = RoundedCornerShape(22.dp),
         color = containerColor,
         contentColor = contentColor,
@@ -324,7 +410,7 @@ private fun HomeDockAction(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .offset(y = 2.dp),
+                .offset(y = contentOffset),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -341,13 +427,31 @@ private fun HomeDockAction(
                     modifier = Modifier.size(22.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1
-            )
+            AnimatedVisibility(
+                visible = !collapsed,
+                enter = fadeIn(
+                    animationSpec = tween(120, easing = StrongEaseOut)
+                ) + expandVertically(
+                    animationSpec = tween(180, easing = StrongEaseOut),
+                    expandFrom = Alignment.Top
+                ),
+                exit = fadeOut(
+                    animationSpec = tween(90)
+                ) + shrinkVertically(
+                    animationSpec = tween(150, easing = StrongEaseOut),
+                    shrinkTowards = Alignment.Top
+                )
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
+                    )
+                }
+            }
         }
     }
 }
@@ -657,36 +761,26 @@ fun QuizLibraryCard(
                                 colors.onSurfaceVariant
                             }
                         )
-                        Spacer(modifier = Modifier.width(7.dp))
-                        Text(
-                            text = "·",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.outline
-                        )
-                        Spacer(modifier = Modifier.width(7.dp))
-                        Text(
-                            text = if (reviewCount > 0) {
-                                "$reviewCount 待复习"
-                            } else {
-                                "暂无待复习"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (reviewCount > 0) {
-                                if (isSelected) colors.onPrimaryContainer else colors.primary
-                            } else {
-                                if (isSelected) {
-                                    colors.onPrimaryContainer.copy(alpha = 0.72f)
+                        if (reviewCount > 0) {
+                            Spacer(modifier = Modifier.width(7.dp))
+                            Text(
+                                text = "·",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.outline
+                            )
+                            Spacer(modifier = Modifier.width(7.dp))
+                            Text(
+                                text = "$reviewCount 待复习",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isSelected) {
+                                    colors.onPrimaryContainer
                                 } else {
-                                    colors.onSurfaceVariant
-                                }
-                            },
-                            fontWeight = if (reviewCount > 0) {
-                                FontWeight.SemiBold
-                            } else {
-                                FontWeight.Normal
-                            },
-                            maxLines = 1
-                        )
+                                    colors.primary
+                                },
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
                 if (!isSelectionMode) {

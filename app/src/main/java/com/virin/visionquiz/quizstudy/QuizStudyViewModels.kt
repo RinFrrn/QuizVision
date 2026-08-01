@@ -26,6 +26,7 @@ import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.dao.isSupportedStudyType
 import com.virin.visionquiz.quizlibrarylist.QuizRepository
 import com.virin.visionquiz.quizlibrarylist.QuizRepositoryImpl
+import com.virin.visionquiz.quizlibrarylist.calculateMasteryPercent
 import java.security.MessageDigest
 import java.util.Calendar
 import java.util.concurrent.ConcurrentHashMap
@@ -47,7 +48,8 @@ data class LibraryAnswerStats(
     val totalAnswered: Int = 0,
     val todayWrong: Int = 0,
     val totalWrong: Int = 0,
-    val accuracyPercent: Int? = null
+    val accuracyPercent: Int? = null,
+    val masteryPercent: Int = 0
 )
 
 data class ReviewStats(
@@ -106,7 +108,8 @@ internal fun startOfDayMillis(now: Long = System.currentTimeMillis()): Long {
 
 internal fun buildAnswerStats(
     records: List<QuizAnswerRecord>,
-    todayStart: Long = startOfDayMillis()
+    todayStart: Long = startOfDayMillis(),
+    totalQuestionCount: Int = 0
 ): LibraryAnswerStats {
     val todayRecords = records.filter { it.answeredAt >= todayStart }
     val totalAnswered = records.size
@@ -120,7 +123,8 @@ internal fun buildAnswerStats(
             null
         } else {
             ((totalCorrect * 100.0) / totalAnswered).roundToInt()
-        }
+        },
+        masteryPercent = calculateMasteryPercent(records, totalQuestionCount)
     )
 }
 
@@ -242,6 +246,7 @@ class QuizLibraryFeaturesViewModel(application: Application, private val library
     private val repository: QuizRepository = QuizRepositoryImpl(application)
     private val newReviewCardLimit = QuizStudySettings.readNewReviewCardsPerSession(application)
     private var latestQuizList: List<Quiz> = emptyList()
+    private var latestAnswerRecords: List<QuizAnswerRecord> = emptyList()
     private var latestReviewQuizIds: List<Int> = emptyList()
     private var latestReviewStats: ReviewStats = ReviewStats()
 
@@ -258,8 +263,19 @@ class QuizLibraryFeaturesViewModel(application: Application, private val library
         }
     }
     val answerStats: LiveData<LibraryAnswerStats> = MediatorLiveData<LibraryAnswerStats>().apply {
+        fun update() {
+            value = buildAnswerStats(
+                records = latestAnswerRecords,
+                totalQuestionCount = latestQuizList.size
+            )
+        }
+        addSource(quizList) { quizzes ->
+            latestQuizList = quizzes.orEmpty()
+            update()
+        }
         addSource(answerRecords) { records ->
-            value = buildAnswerStats(records.orEmpty())
+            latestAnswerRecords = records.orEmpty()
+            update()
         }
     }
     val reviewEntryState: LiveData<ReviewEntryState> = MediatorLiveData<ReviewEntryState>().apply {

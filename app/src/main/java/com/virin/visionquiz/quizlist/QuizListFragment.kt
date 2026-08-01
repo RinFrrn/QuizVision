@@ -202,6 +202,7 @@ class QuizListFragment : BaseQuizFragment() {
         binding.judgementCard.setOnClickListener { viewModel.toggleTypeFilter(QuizUiType.JUDGEMENT) }
         binding.fillBlankCard.setOnClickListener { viewModel.toggleTypeFilter(QuizUiType.FILL_BLANK) }
         binding.subjectiveCard.setOnClickListener { viewModel.toggleTypeFilter(QuizUiType.SUBJECTIVE) }
+        binding.backButton.setOnClickListener { findNavController().navigateUp() }
 
 
         val topControlsBasePaddingTop = binding.topControlsLl.paddingTop

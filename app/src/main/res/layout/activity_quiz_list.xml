@@ -20,11 +20,10 @@
         android:background="?attr/colorSurface"
         android:orientation="vertical">
 
-        <LinearLayout
+        <FrameLayout
             android:id="@+id/top_controls_ll"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:layout_height="wrap_content">
 
             <HorizontalScrollView
                 android:id="@+id/stats_scroll_view"
@@ -32,7 +31,7 @@
                 android:layout_height="wrap_content"
                 android:clipToPadding="false"
                 android:overScrollMode="never"
-                android:paddingStart="12dp"
+                android:paddingStart="72dp"
                 android:paddingTop="8dp"
                 android:paddingEnd="12dp"
                 android:paddingBottom="8dp"
@@ -301,7 +300,30 @@
                 </com.google.android.material.card.MaterialCardView>
                 </LinearLayout>
             </HorizontalScrollView>
-        </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/back_button"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="start|center_vertical"
+                android:layout_marginStart="12dp"
+                android:backgroundTint="?attr/colorSurfaceVariant"
+                android:contentDescription="返回"
+                android:elevation="4dp"
+                android:insetLeft="0dp"
+                android:insetTop="0dp"
+                android:insetRight="0dp"
+                android:insetBottom="0dp"
+                android:minWidth="0dp"
+                android:padding="0dp"
+                app:cornerRadius="24dp"
+                app:icon="@drawable/round_arrow_back_24"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconSize="22dp"
+                app:iconTint="?attr/colorOnSurfaceVariant" />
+        </FrameLayout>
 
         <FrameLayout
             android:layout_width="match_parent"

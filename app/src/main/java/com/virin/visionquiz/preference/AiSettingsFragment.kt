@@ -2,26 +2,31 @@ package com.virin.visionquiz.preference
 
 import android.content.Context
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.ArrayAdapter
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import android.widget.Button
-import android.widget.EditText
 import androidx.fragment.app.Fragment
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.textfield.MaterialAutoCompleteTextView
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.virin.visionquiz.R
@@ -130,25 +135,44 @@ class AiSettingsFragment : Fragment() {
     private fun buildProfileCard(profile: AiProfile, isDefault: Boolean): View {
         val context = requireContext()
         return settingsCard(context).apply {
+            isClickable = true
+            isFocusable = true
+            foreground = selectableItemBackground(context)
+            setOnClickListener { showProfileEditor(profile) }
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(14.dp, 12.dp, 14.dp, 10.dp)
-                addView(TextView(context).apply {
-                    text = if (isDefault) {
-                        "${profile.name} · ${getString(R.string.ai_profile_default)}"
-                    } else {
-                        profile.name
+                setPadding(16.dp, 14.dp, 12.dp, 10.dp)
+                addView(LinearLayout(context).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(TextView(context).apply {
+                        text = profile.name
+                        setTextAppearance(
+                            com.google.android.material.R.style.TextAppearance_Material3_TitleMedium
+                        )
+                        setTypeface(typeface, Typeface.BOLD)
+                    }, LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        1f
+                    ))
+                    if (isDefault) {
+                        addView(profileBadge(context, getString(R.string.ai_profile_default)))
                     }
-                    setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_TitleMedium)
                 })
                 addView(TextView(context).apply {
-                    text = "${profile.model} · ${profile.baseUrl}"
+                    text = profile.model.ifBlank { getString(R.string.ai_settings_model) }
                     setTextColor(resolveColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
-                    textSize = 13f
-                    maxLines = 2
-                }, matchWrap(top = 4))
+                    setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium)
+                    maxLines = 1
+                }, matchWrap(top = 6))
                 addView(TextView(context).apply {
-                    text = formatTestResult(profile)
+                    text = profile.baseUrl
+                    setTextColor(resolveColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+                    setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
+                    maxLines = 1
+                }, matchWrap(top = 2))
+                addView(TextView(context).apply {
+                    text = "● ${formatTestResult(profile)}"
                     setTextColor(
                         resolveColor(
                             when {
@@ -163,163 +187,223 @@ class AiSettingsFragment : Fragment() {
                         )
                     )
                     textSize = 13f
-                }, matchWrap(top = 8))
+                    maxLines = 3
+                }, matchWrap(top = 10))
                 addView(LinearLayout(context).apply {
-                    gravity = Gravity.END
+                    gravity = Gravity.CENTER_VERTICAL or Gravity.END
+                    addView(TextView(context).apply {
+                        setText(R.string.ai_profile_edit_hint)
+                        setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
+                        setTextColor(resolveColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+                    }, LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        1f
+                    ))
                     if (!isDefault) {
-                        addActionButton(this, R.string.ai_profile_set_default) {
+                        addActionButton(this, R.string.ai_profile_set_default) { _ ->
                             configStore.setDefaultProfile(profile.id)
                             renderProfiles()
                         }
                     }
-                    addActionButton(this, R.string.ai_profile_copy) {
-                        runCatching { configStore.duplicateProfile(profile.id) }
-                            .onSuccess { renderProfiles() }
-                            .onFailure(::showError)
+                    addActionButton(this, R.string.ai_profile_more) { anchor ->
+                        showProfileMenu(anchor, profile, isDefault)
                     }
-                    addActionButton(this, R.string.edit) { showProfileEditor(profile) }
-                    if (!isDefault) {
-                        addActionButton(this, R.string.delete) { confirmDelete(profile) }
-                    }
-                }, matchWrap(top = 4))
+                }, matchWrap(top = 6))
             })
         }
     }
 
-    private fun addActionButton(parent: LinearLayout, textRes: Int, action: () -> Unit) {
+    private fun profileBadge(context: Context, textValue: String) = TextView(context).apply {
+        text = textValue
+        setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelMedium)
+        setTextColor(resolveColor(com.google.android.material.R.attr.colorOnPrimaryContainer))
+        setPadding(10.dp, 5.dp, 10.dp, 5.dp)
+        background = GradientDrawable().apply {
+            cornerRadius = 24.dp.toFloat()
+            setColor(resolveColor(com.google.android.material.R.attr.colorPrimaryContainer))
+        }
+    }
+
+    private fun addActionButton(
+        parent: LinearLayout,
+        textRes: Int,
+        action: (View) -> Unit
+    ) {
         parent.addView(MaterialButton(
             requireContext(),
             null,
             com.google.android.material.R.attr.borderlessButtonStyle
         ).apply {
             setText(textRes)
-            setOnClickListener { action() }
+            setOnClickListener(action)
         })
+    }
+
+    private fun showProfileMenu(anchor: View, profile: AiProfile, isDefault: Boolean) {
+        PopupMenu(requireContext(), anchor).apply {
+            menu.add(0, PROFILE_ACTION_COPY, 0, R.string.ai_profile_copy)
+            if (!isDefault) {
+                menu.add(0, PROFILE_ACTION_DELETE, 1, R.string.delete)
+            }
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    PROFILE_ACTION_COPY -> {
+                        runCatching { configStore.duplicateProfile(profile.id) }
+                            .onSuccess { renderProfiles() }
+                            .onFailure(::showError)
+                        true
+                    }
+                    PROFILE_ACTION_DELETE -> {
+                        confirmDelete(profile)
+                        true
+                    }
+                    else -> false
+                }
+            }
+            show()
+        }
     }
 
     private fun showProfileEditor(existing: AiProfile?) {
         val context = requireContext()
         val draft = existing ?: AiProfile(
-            name = getString(R.string.ai_profile_new_name),
-            baseUrl = "",
+            name = suggestedProfileName(),
+            baseUrl = AiConfigStore.DEFAULT_BASE_URL,
             apiKey = "",
-            model = ""
+            model = AiConfigStore.DEFAULT_MODEL
         )
-        val column = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24.dp, 8.dp, 24.dp, 0)
+        val sheet = layoutInflater.inflate(R.layout.bottom_sheet_ai_profile_editor, null)
+        val title: TextView = sheet.findViewById(R.id.ai_profile_editor_title)
+        val nameLayout: TextInputLayout = sheet.findViewById(R.id.ai_profile_name_layout)
+        val nameInput: TextInputEditText = sheet.findViewById(R.id.ai_profile_name_input)
+        val urlLayout: TextInputLayout = sheet.findViewById(R.id.ai_profile_url_layout)
+        val urlInput: TextInputEditText = sheet.findViewById(R.id.ai_profile_url_input)
+        val keyLayout: TextInputLayout = sheet.findViewById(R.id.ai_profile_key_layout)
+        val keyInput: TextInputEditText = sheet.findViewById(R.id.ai_profile_key_input)
+        val modelLayout: TextInputLayout = sheet.findViewById(R.id.ai_profile_model_layout)
+        val modelInput: MaterialAutoCompleteTextView =
+            sheet.findViewById(R.id.ai_profile_model_input)
+        val fetchModelsButton: MaterialButton =
+            sheet.findViewById(R.id.ai_profile_fetch_models_button)
+        val testStatusCard: MaterialCardView =
+            sheet.findViewById(R.id.ai_profile_test_status_card)
+        val testStatusText: TextView = sheet.findViewById(R.id.ai_profile_test_status_text)
+        val cancelButton: MaterialButton = sheet.findViewById(R.id.ai_profile_cancel_button)
+        val testButton: MaterialButton = sheet.findViewById(R.id.ai_profile_test_button)
+        val saveButton: MaterialButton = sheet.findViewById(R.id.ai_profile_save_button)
+        val actions: LinearLayout = sheet.findViewById(R.id.ai_profile_editor_actions)
+
+        title.setText(if (existing == null) R.string.ai_profile_add else R.string.ai_profile_edit)
+        nameInput.setText(draft.name)
+        urlInput.setText(draft.baseUrl)
+        keyInput.setText(draft.apiKey)
+        modelInput.threshold = 0
+        modelInput.setText(draft.model, false)
+        var latestTestResult = draft.testResult
+        if (latestTestResult.status != AiTestStatus.NOT_TESTED) {
+            showEditorTestResult(draft, testStatusCard, testStatusText)
         }
-        val nameLayout = inputLayout(context, R.string.ai_profile_name)
-        val nameInput = singleLineInput(context).apply { setText(draft.name) }
-        nameLayout.addView(nameInput)
-        column.addView(nameLayout, matchWrap(bottom = 12))
-        val urlLayout = inputLayout(context, R.string.ai_settings_base_url).apply {
-            placeholderText = AiConfigStore.DEFAULT_BASE_URL
+
+        val dialog = BottomSheetDialog(context)
+        dialog.setContentView(sheet)
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        dialog.window?.navigationBarColor =
+            resolveColor(com.google.android.material.R.attr.colorSurface)
+        val actionsBaseBottomPadding = actions.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(actions) { view, insets ->
+            val navigationBarBottom = insets.getInsets(
+                WindowInsetsCompat.Type.navigationBars()
+            ).bottom
+            view.setPadding(
+                view.paddingLeft,
+                view.paddingTop,
+                view.paddingRight,
+                actionsBaseBottomPadding + navigationBarBottom
+            )
+            insets
         }
-        val urlInput = singleLineInput(context).apply { setText(draft.baseUrl) }
-        urlLayout.addView(urlInput)
-        column.addView(urlLayout, matchWrap(bottom = 12))
-        val keyLayout = inputLayout(context, R.string.ai_settings_api_key)
-        val keyInput = singleLineInput(context).apply {
-            setText(draft.apiKey)
-        }
-        keyLayout.addView(keyInput)
-        column.addView(keyLayout, matchWrap(bottom = 12))
-        val modelRow = LinearLayout(context).apply {
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val modelLayout = inputLayout(context, R.string.ai_settings_model).apply {
-            endIconMode = TextInputLayout.END_ICON_DROPDOWN_MENU
-            placeholderText = AiConfigStore.DEFAULT_MODEL
-        }
-        val modelInput = MaterialAutoCompleteTextView(context).apply {
-            setSingleLine(true)
-            inputType = InputType.TYPE_CLASS_TEXT
-            threshold = 0
-            setText(draft.model)
-        }
-        modelLayout.addView(modelInput)
-        modelRow.addView(modelLayout, LinearLayout.LayoutParams(
-            0,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            1f
-        ))
-        val fetchModelsButton = MaterialButton(
-            context,
-            null,
-            com.google.android.material.R.attr.materialButtonOutlinedStyle
-        ).apply {
-            setText(R.string.ai_models_fetch)
-        }
-        modelRow.addView(fetchModelsButton, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            marginStart = 8.dp
-        })
-        column.addView(modelRow, matchWrap())
-        val dialog = MaterialAlertDialogBuilder(context)
-            .setTitle(if (existing == null) R.string.ai_profile_add else R.string.ai_profile_edit)
-            .setView(column)
-            .setNegativeButton(R.string.cancel, null)
-            .setNeutralButton(R.string.ai_settings_test, null)
-            .setPositiveButton(R.string.save, null)
-            .create()
         dialog.setOnShowListener {
-            fetchModelsButton.setOnClickListener {
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-                imm.hideSoftInputFromWindow(urlInput.windowToken, 0)
-                fetchModels(
-                    urlLayout,
-                    urlInput,
-                    keyLayout,
-                    keyInput,
-                    modelLayout,
-                    modelInput,
-                    fetchModelsButton
-                )
+            val bottomSheet = dialog.findViewById<View>(
+                com.google.android.material.R.id.design_bottom_sheet
+            ) ?: return@setOnShowListener
+            bottomSheet.post {
+                val parent = bottomSheet.parent as? View ?: return@post
+                val statusBarTop = ViewCompat.getRootWindowInsets(bottomSheet)
+                    ?.getInsets(WindowInsetsCompat.Type.statusBars())
+                    ?.top
+                    ?: 0
+                val topGap = maxOf(statusBarTop + 12.dp, 32.dp)
+                bottomSheet.layoutParams = bottomSheet.layoutParams.apply {
+                    height = (parent.height - topGap).coerceAtLeast(1)
+                }
+                BottomSheetBehavior.from(bottomSheet).apply {
+                    skipCollapsed = true
+                    state = BottomSheetBehavior.STATE_EXPANDED
+                }
             }
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                val profile = validateAndSaveProfile(
-                    draft,
-                    nameLayout,
-                    nameInput,
-                    urlLayout,
-                    urlInput,
-                    keyLayout,
-                    keyInput,
-                    modelLayout,
-                    modelInput
-                ) ?: return@setOnClickListener
+        }
+        cancelButton.setOnClickListener { dialog.dismiss() }
+        fetchModelsButton.setOnClickListener {
+            hideKeyboard(urlInput)
+            fetchModels(
+                urlLayout,
+                urlInput,
+                keyLayout,
+                keyInput,
+                modelLayout,
+                modelInput,
+                fetchModelsButton
+            )
+        }
+        testButton.setOnClickListener {
+            val profile = validateProfileDraft(
+                draft,
+                nameLayout,
+                nameInput,
+                urlLayout,
+                urlInput,
+                keyLayout,
+                keyInput,
+                modelLayout,
+                modelInput
+            ) ?: return@setOnClickListener
+            hideKeyboard(modelInput)
+            testProfileDraft(
+                profile = profile,
+                testButton = testButton,
+                saveButton = saveButton,
+                fetchModelsButton = fetchModelsButton,
+                statusCard = testStatusCard,
+                statusText = testStatusText,
+                onResult = { latestTestResult = it }
+            )
+        }
+        saveButton.setOnClickListener {
+            val profile = validateProfileDraft(
+                draft,
+                nameLayout,
+                nameInput,
+                urlLayout,
+                urlInput,
+                keyLayout,
+                keyInput,
+                modelLayout,
+                modelInput
+            ) ?: return@setOnClickListener
+            runCatching {
+                configStore.saveProfile(profile.copy(testResult = latestTestResult))
+            }.onSuccess {
                 renderProfiles()
                 dialog.dismiss()
-                if (existing == null && configStore.listProfiles().size == 1) {
-                    configStore.setDefaultProfile(profile.id)
-                }
-            }
-            dialog.getButton(android.content.DialogInterface.BUTTON_NEUTRAL).setOnClickListener {
-                val profile = validateAndSaveProfile(
-                    draft,
-                    nameLayout,
-                    nameInput,
-                    urlLayout,
-                    urlInput,
-                    keyLayout,
-                    keyInput,
-                    modelLayout,
-                    modelInput
-                ) ?: return@setOnClickListener
-                val button = dialog.getButton(android.content.DialogInterface.BUTTON_NEUTRAL)
-                testProfile(profile, button) {
-                    renderProfiles()
-                    dialog.dismiss()
-                }
+            }.onFailure {
+                nameLayout.error = it.message
             }
         }
         dialog.show()
     }
 
-    private fun validateAndSaveProfile(
+    private fun validateProfileDraft(
         draft: AiProfile,
         nameLayout: TextInputLayout,
         nameInput: TextInputEditText,
@@ -328,7 +412,7 @@ class AiSettingsFragment : Fragment() {
         keyLayout: TextInputLayout,
         keyInput: TextInputEditText,
         modelLayout: TextInputLayout,
-        modelInput: EditText
+        modelInput: MaterialAutoCompleteTextView
     ): AiProfile? {
         listOf(nameLayout, urlLayout, keyLayout, modelLayout).forEach { it.error = null }
         val name = nameInput.text?.toString().orEmpty().trim()
@@ -358,13 +442,23 @@ class AiSettingsFragment : Fragment() {
             valid = false
         }
         if (!valid) return null
-        return runCatching {
-            configStore.saveProfile(
-                draft.copy(name = name, baseUrl = url, apiKey = key, model = model)
-            )
-        }.onFailure {
-            nameLayout.error = it.message
-        }.getOrNull()
+        return draft.copy(name = name, baseUrl = url, apiKey = key, model = model)
+    }
+
+    private fun suggestedProfileName(): String {
+        val baseName = getString(R.string.ai_profile_new_name)
+        val existingNames = configStore.listProfiles().map { it.name.lowercase() }.toSet()
+        if (baseName.lowercase() !in existingNames) return baseName
+        var suffix = 2
+        while ("$baseName $suffix".lowercase() in existingNames) suffix++
+        return "$baseName $suffix"
+    }
+
+    private fun hideKeyboard(view: View) {
+        val inputMethodManager = requireContext().getSystemService(
+            Context.INPUT_METHOD_SERVICE
+        ) as android.view.inputmethod.InputMethodManager
+        inputMethodManager.hideSoftInputFromWindow(view.windowToken, 0)
     }
 
     private fun fetchModels(
@@ -422,6 +516,7 @@ class AiSettingsFragment : Fragment() {
                         models
                     )
                 )
+                modelLayout.helperText = getString(R.string.ai_models_found, models.size)
                 modelInput.showDropDown()
             }.onFailure { error ->
                 modelLayout.error = getString(
@@ -432,13 +527,26 @@ class AiSettingsFragment : Fragment() {
         }
     }
 
-    private fun testProfile(
+    private fun testProfileDraft(
         profile: AiProfile,
-        button: Button,
-        onComplete: () -> Unit
+        testButton: MaterialButton,
+        saveButton: MaterialButton,
+        fetchModelsButton: MaterialButton,
+        statusCard: MaterialCardView,
+        statusText: TextView,
+        onResult: (AiTestResult) -> Unit
     ) {
-        button.isEnabled = false
-        button.setText(R.string.ai_loading)
+        testButton.isEnabled = false
+        saveButton.isEnabled = false
+        fetchModelsButton.isEnabled = false
+        testButton.setText(R.string.ai_loading)
+        statusCard.visibility = View.VISIBLE
+        statusCard.strokeColor = resolveColor(com.google.android.material.R.attr.colorOutlineVariant)
+        statusCard.setCardBackgroundColor(
+            resolveColor(com.google.android.material.R.attr.colorSurfaceContainer)
+        )
+        statusText.setTextColor(resolveColor(com.google.android.material.R.attr.colorOnSurfaceVariant))
+        statusText.setText(R.string.ai_profile_testing)
         val config = buildConfig(profile)
         val started = System.currentTimeMillis()
         viewLifecycleOwner.lifecycleScope.launch {
@@ -474,19 +582,51 @@ class AiSettingsFragment : Fragment() {
                     )
                 }
             )
-            configStore.saveTestResult(profile.id, testResult)
-            button.isEnabled = true
-            button.setText(R.string.ai_settings_test)
-            Toast.makeText(
-                requireContext(),
-                if (testResult.status == AiTestStatus.SUCCESS) {
-                    R.string.ai_settings_test_success
+            if (!testButton.isAttachedToWindow) return@launch
+            testButton.isEnabled = true
+            saveButton.isEnabled = true
+            fetchModelsButton.isEnabled = true
+            testButton.setText(R.string.ai_settings_test)
+            onResult(testResult)
+            showEditorTestResult(
+                profile.copy(testResult = testResult),
+                statusCard,
+                statusText
+            )
+        }
+    }
+
+    private fun showEditorTestResult(
+        profile: AiProfile,
+        statusCard: MaterialCardView,
+        statusText: TextView
+    ) {
+        val result = profile.testResult
+        if (result.status == AiTestStatus.NOT_TESTED) {
+            statusCard.visibility = View.GONE
+            return
+        }
+        statusCard.visibility = View.VISIBLE
+        val stale = profile.isTestResultStale()
+        val colorAttr = when {
+            stale -> com.google.android.material.R.attr.colorTertiary
+            result.status == AiTestStatus.SUCCESS -> com.google.android.material.R.attr.colorPrimary
+            else -> com.google.android.material.R.attr.colorError
+        }
+        statusCard.strokeColor = resolveColor(colorAttr)
+        statusText.setTextColor(resolveColor(colorAttr))
+        statusText.text = if (stale) {
+            formatTestResult(profile)
+        } else {
+            getString(
+                if (result.status == AiTestStatus.SUCCESS) {
+                    R.string.ai_profile_test_success_inline
                 } else {
-                    R.string.ai_settings_test_failed
+                    R.string.ai_profile_test_failure_inline
                 },
-                Toast.LENGTH_SHORT
-            ).show()
-            onComplete()
+                result.durationMillis,
+                result.message
+            )
         }
     }
 
@@ -708,5 +848,19 @@ class AiSettingsFragment : Fragment() {
         val typed = android.util.TypedValue()
         requireContext().theme.resolveAttribute(attr, typed, true)
         return typed.data
+    }
+
+    private fun selectableItemBackground(context: Context) =
+        context.obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).let {
+            try {
+                it.getDrawable(0)
+            } finally {
+                it.recycle()
+            }
+        }
+
+    private companion object {
+        const val PROFILE_ACTION_COPY = 1
+        const val PROFILE_ACTION_DELETE = 2
     }
 }
