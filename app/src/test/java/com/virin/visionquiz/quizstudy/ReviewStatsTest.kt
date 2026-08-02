@@ -23,6 +23,7 @@ class ReviewStatsTest {
 
         assertEquals(2, stats.dueToday)
         assertEquals(1, stats.reviewedToday)
+        assertEquals(0, stats.introducedToday)
         assertEquals(3, stats.totalCards)
         assertEquals(6, stats.totalLapses)
     }
@@ -41,6 +42,21 @@ class ReviewStatsTest {
         assertEquals(1, stats.reviewedToday)
         assertEquals(1, stats.totalCards)
         assertEquals(0, stats.totalLapses)
+    }
+
+    @Test
+    fun buildReviewStatsCountsCardsIntroducedToday() {
+        val stats = buildReviewStats(
+            cards = listOf(
+                card(1, NOW + 1, null, createdAt = TODAY_START),
+                card(2, NOW + 1, null, createdAt = TODAY_START - 1),
+                card(3, NOW + 1, null, createdAt = NOW)
+            ),
+            now = NOW,
+            todayStart = TODAY_START
+        )
+
+        assertEquals(2, stats.introducedToday)
     }
 
     @Test
@@ -79,18 +95,32 @@ class ReviewStatsTest {
         assertFalse(state.hasPendingWork)
     }
 
+    @Test
+    fun buildReviewEntryStateSubtractsCardsAlreadyIntroducedToday() {
+        val state = buildReviewEntryState(
+            quizzes = (1..10).map { quiz(id = it, type = QuizUiType.SINGLE_CHOICE) },
+            reviewQuizIds = listOf(1, 2, 3),
+            reviewStats = ReviewStats(introducedToday = 3),
+            newCardLimit = 5
+        )
+
+        assertEquals(2, state.newLearningCount)
+    }
+
     private fun card(
         quizId: Int,
         dueAt: Long,
         lastReviewedAt: Long?,
-        lapseCount: Int = 0
+        lapseCount: Int = 0,
+        createdAt: Long = TODAY_START - 1
     ): ReviewCard {
         return ReviewCard(
             quizId = quizId,
             libraryId = 7,
             dueAt = dueAt,
             lapseCount = lapseCount,
-            lastReviewedAt = lastReviewedAt
+            lastReviewedAt = lastReviewedAt,
+            createdAt = createdAt
         )
     }
 

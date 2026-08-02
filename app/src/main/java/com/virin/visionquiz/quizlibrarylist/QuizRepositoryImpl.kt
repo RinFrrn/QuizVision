@@ -10,6 +10,7 @@ import com.virin.visionquiz.dao.*
 import com.virin.visionquiz.quizstudy.ReviewStats
 import com.virin.visionquiz.quizstudy.SpacedRepetitionScheduler
 import com.virin.visionquiz.quizstudy.buildReviewStats
+import com.virin.visionquiz.quizstudy.startOfDayMillis
 import com.virin.visionquiz.util.SimilarQuizStore
 import kotlinx.coroutines.delay
 
@@ -70,6 +71,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
             practiceSessionDao.deletePracticeSessionsByLibraryId(quizLibrary.id)
             aiExplanationCacheDao.deleteByLibraryId(quizLibrary.id)
             libraryInsightCacheDao.deleteByLibraryId(quizLibrary.id)
+            reviewCardDao.deleteLogsByLibraryId(quizLibrary.id)
             reviewCardDao.deleteCardsByLibraryId(quizLibrary.id)
             quizDao.deleteQuizzesByCategoryId(quizLibrary.id)
             quizLibDao.deleteCategoryById(quizLibrary.id)
@@ -120,6 +122,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
         database.withTransaction {
             favoriteDao.deleteFavoriteByQuizId(quiz.id)
             aiExplanationCacheDao.deleteByQuizId(quiz.id)
+            reviewCardDao.deleteLogsByQuizId(quiz.id)
             reviewCardDao.deleteCardByQuizId(quiz.id)
             quizDao.deleteQuiz(quiz)
         }
@@ -196,6 +199,7 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
         database.withTransaction {
             answerRecordDao.deleteAnswerRecordsByAnsweredRange(libraryId, startTime, endTime)
             examSessionDao.deleteExamSessionsByEndedRange(libraryId, startTime, endTime)
+            reviewCardDao.deleteLogsByReviewedRange(libraryId, startTime, endTime)
         }
     }
 
@@ -242,13 +246,15 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
     override suspend fun scheduleReview(
         quizId: Int,
         libraryId: Int,
-        rating: ReviewRating
+        rating: ReviewRating,
+        sourceMode: String
     ): ReviewCard {
         return scheduleReviewFromBaseline(
             quizId = quizId,
             libraryId = libraryId,
             rating = rating,
-            baseline = null
+            baseline = null,
+            sourceMode = sourceMode
         ).scheduled
     }
 
@@ -256,12 +262,14 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
         quizId: Int,
         libraryId: Int,
         rating: ReviewRating,
-        baseline: ReviewCard?
+        baseline: ReviewCard?,
+        sourceMode: String
     ): ReviewScheduleResult {
         return database.withTransaction {
             val now = System.currentTimeMillis()
+            val storedCard = reviewCardDao.getCardByQuizId(quizId)
             val card = baseline?.copy(quizId = quizId, libraryId = libraryId)
-                ?: reviewCardDao.getCardByQuizId(quizId)
+                ?: storedCard
                 ?: ReviewCard(
                     quizId = quizId,
                     libraryId = libraryId,
@@ -270,6 +278,29 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
                 )
             val scheduled = SpacedRepetitionScheduler.schedule(card, rating, now)
             reviewCardDao.upsertCard(scheduled)
+            val isCorrection = baseline != null && storedCard != null && storedCard != card
+            reviewCardDao.insertLog(
+                ReviewLog(
+                    quizId = quizId,
+                    libraryId = libraryId,
+                    rating = rating.value,
+                    reviewedAt = now,
+                    previousDueAt = card.dueAt,
+                    nextDueAt = scheduled.dueAt,
+                    previousIntervalDays = card.intervalDays,
+                    nextIntervalDays = scheduled.intervalDays,
+                    previousState = card.state,
+                    nextState = scheduled.state,
+                    previousStability = card.stability,
+                    nextStability = scheduled.stability,
+                    previousDifficulty = card.difficulty,
+                    nextDifficulty = scheduled.difficulty,
+                    elapsedDays = SpacedRepetitionScheduler.elapsedDays(card, now),
+                    sourceMode = sourceMode,
+                    schedulerVersion = scheduled.schedulerVersion,
+                    isCorrection = isCorrection
+                )
+            )
             ReviewScheduleResult(
                 baseline = card,
                 scheduled = scheduled
@@ -296,11 +327,16 @@ class QuizRepositoryImpl(context: Context) : QuizRepository {
 
     override suspend fun buildReviewQuizList(libraryId: Int, newCardLimit: Int): List<Int> {
         val dueCards = getDueReviewCards(libraryId)
-        val newQuizIds = getNewReviewQuizIds(libraryId, newCardLimit)
+        val introducedToday = reviewCardDao.countCardsCreatedSince(
+            libraryId = libraryId,
+            since = startOfDayMillis()
+        )
+        val remainingDailyLimit = (newCardLimit - introducedToday).coerceAtLeast(0)
+        val newQuizIds = getNewReviewQuizIds(libraryId, remainingDailyLimit)
         return SpacedRepetitionScheduler.buildReviewSession(
             dueCards = dueCards,
             newQuizIds = newQuizIds,
-            newCardLimit = newCardLimit
+            newCardLimit = remainingDailyLimit
         )
     }
 

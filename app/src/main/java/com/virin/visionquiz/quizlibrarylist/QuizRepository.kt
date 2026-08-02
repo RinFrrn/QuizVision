@@ -92,13 +92,19 @@ interface QuizRepository {
 
     suspend fun upsertReviewCard(card: ReviewCard)
 
-    suspend fun scheduleReview(quizId: Int, libraryId: Int, rating: ReviewRating): ReviewCard
+    suspend fun scheduleReview(
+        quizId: Int,
+        libraryId: Int,
+        rating: ReviewRating,
+        sourceMode: String = "unknown"
+    ): ReviewCard
 
     suspend fun scheduleReviewFromBaseline(
         quizId: Int,
         libraryId: Int,
         rating: ReviewRating,
-        baseline: ReviewCard?
+        baseline: ReviewCard?,
+        sourceMode: String = "unknown"
     ): ReviewScheduleResult
 
     suspend fun getNewReviewQuizIds(libraryId: Int, limit: Int): List<Int>

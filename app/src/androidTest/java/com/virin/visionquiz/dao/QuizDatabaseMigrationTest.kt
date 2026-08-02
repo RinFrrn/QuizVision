@@ -132,6 +132,66 @@ class QuizDatabaseMigrationTest {
         migrated.close()
     }
 
+    @Test
+    fun migrate8To9PreservesCardsAndCreatesFsrsStateAndReviewLog() {
+        val oldDatabase = openDatabase(version = 8)
+        oldDatabase.writableDatabase.execSQL(
+            """
+            CREATE TABLE ReviewCard (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                quiz_id INTEGER NOT NULL,
+                library_id INTEGER NOT NULL,
+                due_at INTEGER NOT NULL,
+                interval_days REAL NOT NULL,
+                ease_factor REAL NOT NULL,
+                review_count INTEGER NOT NULL,
+                lapse_count INTEGER NOT NULL,
+                last_reviewed_at INTEGER,
+                created_at INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        oldDatabase.writableDatabase.execSQL(
+            """
+            INSERT INTO ReviewCard (
+                id, quiz_id, library_id, due_at, interval_days, ease_factor,
+                review_count, lapse_count, last_reviewed_at, created_at
+            ) VALUES (1, 9, 3, 1000, 5.0, 2.5, 4, 1, 500, 100)
+            """.trimIndent()
+        )
+        oldDatabase.close()
+
+        val migrated = openDatabase(version = 9)
+        migrated.writableDatabase.query(
+            """
+            SELECT quiz_id, state, stability, difficulty, scheduler_version
+            FROM ReviewCard WHERE id = 1
+            """.trimIndent()
+        ).use { cursor ->
+            cursor.moveToFirst()
+            assertEquals(9, cursor.getInt(0))
+            assertEquals("review", cursor.getString(1))
+            assertEquals(5.0, cursor.getDouble(2), 0.0001)
+            assertEquals(5.0, cursor.getDouble(3), 0.0001)
+            assertEquals(0, cursor.getInt(4))
+        }
+        migrated.writableDatabase.query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'ReviewLog'"
+        ).use { cursor ->
+            cursor.moveToFirst()
+            assertEquals(1, cursor.getInt(0))
+        }
+        migrated.writableDatabase.query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN (" +
+                "'index_ReviewLog_quiz_id','index_ReviewLog_library_id'," +
+                "'index_ReviewLog_reviewed_at')"
+        ).use { cursor ->
+            cursor.moveToFirst()
+            assertEquals(3, cursor.getInt(0))
+        }
+        migrated.close()
+    }
+
     private fun openDatabase(version: Int): SupportSQLiteOpenHelper {
         val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -151,6 +211,9 @@ class QuizDatabaseMigrationTest {
                 }
                 if (oldVersion == 7 && newVersion == 8) {
                     QuizDatabase.MIGRATION_7_8.migrate(db)
+                }
+                if (oldVersion == 8 && newVersion == 9) {
+                    QuizDatabase.MIGRATION_8_9.migrate(db)
                 }
             }
         }

@@ -18,9 +18,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PracticeSession::class,
         AiExplanationCache::class,
         LibraryInsightCache::class,
-        ReviewCard::class
+        ReviewCard::class,
+        ReviewLog::class
     ],
-    version = 8
+    version = 9
 )
 @TypeConverters(Converters::class)
 abstract class QuizDatabase : RoomDatabase() {
@@ -193,6 +194,55 @@ abstract class QuizDatabase : RoomDatabase() {
                 )
             }
         }
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE ReviewCard ADD COLUMN state TEXT NOT NULL DEFAULT 'new'")
+                db.execSQL("ALTER TABLE ReviewCard ADD COLUMN stability REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE ReviewCard ADD COLUMN difficulty REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE ReviewCard ADD COLUMN scheduler_version INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    """
+                    UPDATE ReviewCard
+                    SET state = CASE
+                        WHEN interval_days >= 1.0 THEN 'review'
+                        WHEN lapse_count > 0 THEN 'relearning'
+                        WHEN review_count > 0 THEN 'learning'
+                        ELSE 'new'
+                    END,
+                    stability = CASE WHEN interval_days > 0.0 THEN interval_days ELSE 0.0 END,
+                    difficulty = 5.0
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS ReviewLog (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        quiz_id INTEGER NOT NULL,
+                        library_id INTEGER NOT NULL,
+                        rating INTEGER NOT NULL,
+                        reviewed_at INTEGER NOT NULL,
+                        previous_due_at INTEGER NOT NULL,
+                        next_due_at INTEGER NOT NULL,
+                        previous_interval_days REAL NOT NULL,
+                        next_interval_days REAL NOT NULL,
+                        previous_state TEXT NOT NULL,
+                        next_state TEXT NOT NULL,
+                        previous_stability REAL NOT NULL,
+                        next_stability REAL NOT NULL,
+                        previous_difficulty REAL NOT NULL,
+                        next_difficulty REAL NOT NULL,
+                        elapsed_days REAL NOT NULL,
+                        source_mode TEXT NOT NULL,
+                        scheduler_version INTEGER NOT NULL,
+                        is_correction INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ReviewLog_quiz_id ON ReviewLog(quiz_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ReviewLog_library_id ON ReviewLog(library_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ReviewLog_reviewed_at ON ReviewLog(reviewed_at)")
+            }
+        }
 
         @Volatile
         private var instance: QuizDatabase? = null
@@ -212,7 +262,8 @@ abstract class QuizDatabase : RoomDatabase() {
                     MIGRATION_4_5,
                     MIGRATION_5_6,
                     MIGRATION_6_7,
-                    MIGRATION_7_8
+                    MIGRATION_7_8,
+                    MIGRATION_8_9
                 )
                 .build()
         }

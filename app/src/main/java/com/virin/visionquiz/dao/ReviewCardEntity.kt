@@ -22,8 +22,26 @@ data class ReviewCard(
     @ColumnInfo(name = "review_count") val reviewCount: Int = 0,
     @ColumnInfo(name = "lapse_count") val lapseCount: Int = 0,
     @ColumnInfo(name = "last_reviewed_at") val lastReviewedAt: Long? = null,
-    @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis()
+    @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "state", defaultValue = "'new'")
+    val state: String = ReviewCardState.NEW.value,
+    @ColumnInfo(name = "stability", defaultValue = "0.0") val stability: Double = 0.0,
+    @ColumnInfo(name = "difficulty", defaultValue = "0.0") val difficulty: Double = 0.0,
+    @ColumnInfo(name = "scheduler_version", defaultValue = "0") val schedulerVersion: Int = 0
 )
+
+enum class ReviewCardState(val value: String) {
+    NEW("new"),
+    LEARNING("learning"),
+    REVIEW("review"),
+    RELEARNING("relearning");
+
+    companion object {
+        fun fromValue(value: String?): ReviewCardState {
+            return values().firstOrNull { it.value == value } ?: NEW
+        }
+    }
+}
 
 enum class ReviewRating(val value: Int, val emoji: String, val label: String) {
     FORGOT(1, "😰", "忘了"),

@@ -1,6 +1,7 @@
 package com.virin.visionquiz.quizstudy
 
 import com.virin.visionquiz.dao.ReviewCard
+import com.virin.visionquiz.dao.ReviewCardState
 import com.virin.visionquiz.dao.ReviewRating
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -8,60 +9,56 @@ import org.junit.Test
 
 class SpacedRepetitionSchedulerTest {
     @Test
-    fun newGoodCardSchedulesForOneDay() {
-        val scheduled = SpacedRepetitionScheduler.schedule(
-            card = newCard(),
-            rating = ReviewRating.GOOD,
-            now = NOW
-        )
+    fun newGoodCardUsesFsrs6InitialMemoryState() {
+        val scheduled = SpacedRepetitionScheduler.schedule(newCard(), ReviewRating.GOOD, NOW)
 
-        assertEquals(1.0, scheduled.intervalDays, 0.0001)
-        assertEquals(NOW + DAY_MS, scheduled.dueAt)
-        assertEquals(2.5, scheduled.easeFactor, 0.0001)
+        assertEquals(2.0, scheduled.intervalDays, 0.0001)
+        assertEquals(NOW + 2 * DAY_MS, scheduled.dueAt)
+        assertEquals(2.3065, scheduled.stability, 0.0000001)
+        assertEquals(2.118103970459016, scheduled.difficulty, 0.0000001)
+        assertEquals(ReviewCardState.REVIEW.value, scheduled.state)
+        assertEquals(SpacedRepetitionScheduler.CURRENT_SCHEDULER_VERSION, scheduled.schedulerVersion)
         assertEquals(1, scheduled.reviewCount)
     }
 
     @Test
-    fun consecutiveGoodCardsGrowByEaseFactor() {
+    fun reviewAtDueDateMatchesOfficialFsrs6ReferenceVector() {
         val first = SpacedRepetitionScheduler.schedule(newCard(), ReviewRating.GOOD, NOW)
-        val second = SpacedRepetitionScheduler.schedule(first, ReviewRating.GOOD, NOW)
-        val third = SpacedRepetitionScheduler.schedule(second, ReviewRating.GOOD, NOW)
 
-        assertEquals(1.0, first.intervalDays, 0.0001)
-        assertEquals(2.5, second.intervalDays, 0.0001)
-        assertEquals(6.25, third.intervalDays, 0.0001)
+        val again = SpacedRepetitionScheduler.schedule(first, ReviewRating.FORGOT, first.dueAt)
+        val hard = SpacedRepetitionScheduler.schedule(first, ReviewRating.HARD, first.dueAt)
+        val good = SpacedRepetitionScheduler.schedule(first, ReviewRating.GOOD, first.dueAt)
+        val easy = SpacedRepetitionScheduler.schedule(first, ReviewRating.EASY, first.dueAt)
+
+        assertEquals(0.6075801062519337, again.stability, 0.0000001)
+        assertEquals(10.0 / 1_440.0, again.intervalDays, 0.0000001)
+        assertEquals(ReviewCardState.RELEARNING.value, again.state)
+        assertEquals(7.513320366762569, hard.stability, 0.0000001)
+        assertEquals(8.0, hard.intervalDays, 0.0001)
+        assertEquals(10.964332335820698, good.stability, 0.0000001)
+        assertEquals(11.0, good.intervalDays, 0.0001)
+        assertEquals(18.52175418175859, easy.stability, 0.0000001)
+        assertEquals(19.0, easy.intervalDays, 0.0001)
     }
 
     @Test
-    fun forgotResetsToLearningIntervalAndLowersEase() {
+    fun forgotReviewCardEntersRelearningAndCountsLapse() {
         val scheduled = SpacedRepetitionScheduler.schedule(
-            card = newCard(intervalDays = 5.0, easeFactor = 1.35, lapseCount = 2),
+            card = reviewCard(intervalDays = 5.0, stability = 5.0, lapseCount = 2),
             rating = ReviewRating.FORGOT,
             now = NOW
         )
 
-        assertEquals(1.0 / 1440.0, scheduled.intervalDays, 0.0001)
-        assertEquals(NOW + 60_000L, scheduled.dueAt)
-        assertEquals(1.3, scheduled.easeFactor, 0.0001)
+        assertEquals(10.0 / 1_440.0, scheduled.intervalDays, 0.0001)
+        assertEquals(NOW + 600_000L, scheduled.dueAt)
+        assertEquals(ReviewCardState.RELEARNING.value, scheduled.state)
         assertEquals(3, scheduled.lapseCount)
     }
 
     @Test
-    fun easyIncreasesIntervalAndEaseFactor() {
-        val scheduled = SpacedRepetitionScheduler.schedule(
-            card = newCard(intervalDays = 2.0, easeFactor = 2.5),
-            rating = ReviewRating.EASY,
-            now = NOW
-        )
-
-        assertEquals(6.5, scheduled.intervalDays, 0.0001)
-        assertEquals(2.65, scheduled.easeFactor, 0.0001)
-    }
-
-    @Test
-    fun easyGraduatesMinuteLearningCardToFourDays() {
+    fun learningEasyGraduatesToAtLeastFourDays() {
         val learningCard = SpacedRepetitionScheduler.schedule(
-            card = newCard(intervalDays = 5.0),
+            card = newCard(),
             rating = ReviewRating.FORGOT,
             now = NOW
         )
@@ -69,63 +66,69 @@ class SpacedRepetitionSchedulerTest {
         val scheduled = SpacedRepetitionScheduler.schedule(
             card = learningCard,
             rating = ReviewRating.EASY,
-            now = NOW
+            now = NOW + 60_000L
         )
 
         assertEquals(4.0, scheduled.intervalDays, 0.0001)
-        assertEquals(NOW + 4 * DAY_MS, scheduled.dueAt)
+        assertEquals(ReviewCardState.REVIEW.value, scheduled.state)
     }
 
     @Test
-    fun learningCardPreviewMatchesScheduleAndRemainsMonotonic() {
-        val learningCard = newCard(intervalDays = 1.0 / 1_440.0)
-        val ratings = ReviewRating.values().toList()
-        val preview = SpacedRepetitionScheduler.previewNextIntervals(learningCard)
-        val intervals = ratings.map { rating ->
-            val previewInterval = requireNotNull(preview[rating])
-            val scheduledInterval = SpacedRepetitionScheduler.schedule(
-                card = learningCard,
-                rating = rating,
-                now = NOW
-            ).intervalDays
-            assertEquals(scheduledInterval, previewInterval, 0.0001)
-            previewInterval
+    fun learningPreviewMatchesScheduleAndIsMonotonic() {
+        val learningCard = ReviewCard(
+            quizId = 1,
+            libraryId = 7,
+            dueAt = NOW,
+            intervalDays = 1.0 / 1_440.0,
+            reviewCount = 1,
+            lastReviewedAt = NOW - 60_000L,
+            state = ReviewCardState.LEARNING.value,
+            stability = 0.212,
+            difficulty = 6.4133,
+            schedulerVersion = SpacedRepetitionScheduler.CURRENT_SCHEDULER_VERSION
+        )
+        val preview = SpacedRepetitionScheduler.previewNextIntervals(learningCard, NOW)
+        val intervals = ReviewRating.values().map { rating ->
+            val scheduled = SpacedRepetitionScheduler.schedule(learningCard, rating, NOW)
+            assertEquals(scheduled.intervalDays, preview.getValue(rating), 0.0000001)
+            scheduled.intervalDays
         }
 
         assertEquals(1.0 / 1_440.0, intervals[0], 0.0001)
-        assertEquals(1.0, intervals[1], 0.0001)
-        assertEquals(1.0, intervals[2], 0.0001)
-        assertEquals(4.0, intervals[3], 0.0001)
-        intervals.zipWithNext().forEach { (shorter, longer) ->
-            assertTrue(shorter <= longer)
-        }
+        assertEquals(6.0 / 1_440.0, intervals[1], 0.0001)
+        assertTrue(intervals[2] >= 1.0)
+        assertTrue(intervals[3] >= 4.0)
+        intervals.zipWithNext().forEach { (shorter, longer) -> assertTrue(shorter <= longer) }
     }
 
     @Test
     fun hardUsesShortLearningIntervalForNewCards() {
-        val scheduled = SpacedRepetitionScheduler.schedule(
-            card = newCard(),
-            rating = ReviewRating.HARD,
-            now = NOW
-        )
+        val scheduled = SpacedRepetitionScheduler.schedule(newCard(), ReviewRating.HARD, NOW)
 
-        assertEquals(6.0 / 1440.0, scheduled.intervalDays, 0.0001)
+        assertEquals(6.0 / 1_440.0, scheduled.intervalDays, 0.0001)
         assertEquals(NOW + 360_000L, scheduled.dueAt)
-        assertEquals(2.5, scheduled.easeFactor, 0.0001)
+        assertEquals(ReviewCardState.LEARNING.value, scheduled.state)
+        assertEquals(1.2931, scheduled.stability, 0.0000001)
         assertEquals(0, scheduled.lapseCount)
     }
 
     @Test
     fun forgotDuringInitialLearningDoesNotCountAsMatureLapse() {
-        val scheduled = SpacedRepetitionScheduler.schedule(
-            card = newCard(),
-            rating = ReviewRating.FORGOT,
-            now = NOW
-        )
+        val scheduled = SpacedRepetitionScheduler.schedule(newCard(), ReviewRating.FORGOT, NOW)
 
-        assertEquals(2.5, scheduled.easeFactor, 0.0001)
         assertEquals(0, scheduled.lapseCount)
         assertEquals(NOW + 60_000L, scheduled.dueAt)
+        assertEquals(ReviewCardState.LEARNING.value, scheduled.state)
+    }
+
+    @Test
+    fun overdueRecallProducesLongerIntervalThanOnTimeRecall() {
+        val card = reviewCard(intervalDays = 5.0, stability = 5.0, lastReviewedAt = NOW)
+        val onTime = SpacedRepetitionScheduler.schedule(card, ReviewRating.GOOD, NOW + 5 * DAY_MS)
+        val overdue = SpacedRepetitionScheduler.schedule(card, ReviewRating.GOOD, NOW + 15 * DAY_MS)
+
+        assertTrue(overdue.intervalDays > onTime.intervalDays)
+        assertTrue(overdue.stability > onTime.stability)
     }
 
     @Test
@@ -136,12 +139,12 @@ class SpacedRepetitionSchedulerTest {
             now = NOW
         )
         val huge = SpacedRepetitionScheduler.schedule(
-            card = newCard(intervalDays = Double.MAX_VALUE, easeFactor = 3.0),
+            card = newCard(intervalDays = Double.MAX_VALUE, easeFactor = 3.0, reviewCount = 3),
             rating = ReviewRating.EASY,
             now = Long.MAX_VALUE - 1_000L
         )
 
-        assertEquals(1.0, invalid.intervalDays, 0.0001)
+        assertEquals(2.0, invalid.intervalDays, 0.0001)
         assertEquals(2.5, invalid.easeFactor, 0.0001)
         assertEquals(36_500.0, huge.intervalDays, 0.0001)
         assertEquals(Long.MAX_VALUE, huge.dueAt)
@@ -164,18 +167,10 @@ class SpacedRepetitionSchedulerTest {
 
     @Test
     fun reschedulingFromSameBaselineDoesNotDoubleCountReview() {
-        val baseline = newCard(intervalDays = 1.0, easeFactor = 2.5, reviewCount = 4)
+        val baseline = reviewCard(intervalDays = 1.0, stability = 1.0, reviewCount = 4)
 
-        val defaultScheduled = SpacedRepetitionScheduler.schedule(
-            card = baseline,
-            rating = ReviewRating.GOOD,
-            now = NOW
-        )
-        val correctedScheduled = SpacedRepetitionScheduler.schedule(
-            card = baseline,
-            rating = ReviewRating.EASY,
-            now = NOW
-        )
+        val defaultScheduled = SpacedRepetitionScheduler.schedule(baseline, ReviewRating.GOOD, NOW)
+        val correctedScheduled = SpacedRepetitionScheduler.schedule(baseline, ReviewRating.EASY, NOW)
 
         assertEquals(5, defaultScheduled.reviewCount)
         assertEquals(5, correctedScheduled.reviewCount)
@@ -197,6 +192,28 @@ class SpacedRepetitionSchedulerTest {
             easeFactor = easeFactor,
             lapseCount = lapseCount,
             reviewCount = reviewCount
+        )
+    }
+
+    private fun reviewCard(
+        intervalDays: Double,
+        stability: Double,
+        lapseCount: Int = 0,
+        reviewCount: Int = 1,
+        lastReviewedAt: Long? = NOW - (intervalDays * DAY_MS).toLong()
+    ): ReviewCard {
+        return ReviewCard(
+            quizId = 1,
+            libraryId = 7,
+            dueAt = NOW,
+            intervalDays = intervalDays,
+            lapseCount = lapseCount,
+            reviewCount = reviewCount,
+            lastReviewedAt = lastReviewedAt,
+            state = ReviewCardState.REVIEW.value,
+            stability = stability,
+            difficulty = 2.118103970459016,
+            schedulerVersion = SpacedRepetitionScheduler.CURRENT_SCHEDULER_VERSION
         )
     }
 

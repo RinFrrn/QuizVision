@@ -124,7 +124,7 @@ object QuizStudySettings {
             .apply()
     }
 
-    fun readNewReviewCardsPerSession(context: Context): Int {
+    fun readNewReviewCardsPerDay(context: Context): Int {
         return context.getSharedPreferences(PREFS_NAME, 0)
             .getInt(
                 KEY_NEW_REVIEW_CARDS_PER_SESSION,
@@ -133,11 +133,18 @@ object QuizStudySettings {
             .coerceAtLeast(0)
     }
 
-    fun saveNewReviewCardsPerSession(context: Context, count: Int) {
+    fun saveNewReviewCardsPerDay(context: Context, count: Int) {
         context.getSharedPreferences(PREFS_NAME, 0)
             .edit()
             .putInt(KEY_NEW_REVIEW_CARDS_PER_SESSION, count.coerceAtLeast(0))
             .apply()
+    }
+
+    /** Kept for preferences/source compatibility; the value is now enforced as a daily quota. */
+    fun readNewReviewCardsPerSession(context: Context): Int = readNewReviewCardsPerDay(context)
+
+    fun saveNewReviewCardsPerSession(context: Context, count: Int) {
+        saveNewReviewCardsPerDay(context, count)
     }
 
     private fun optionShuffleKey(libraryId: Int, mode: QuizStudyMode): String {

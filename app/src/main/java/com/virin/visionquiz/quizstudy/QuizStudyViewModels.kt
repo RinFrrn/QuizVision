@@ -55,6 +55,7 @@ data class LibraryAnswerStats(
 data class ReviewStats(
     val dueToday: Int = 0,
     val reviewedToday: Int = 0,
+    val introducedToday: Int = 0,
     val totalCards: Int = 0,
     val totalLapses: Int = 0
 )
@@ -136,6 +137,7 @@ internal fun buildReviewStats(
     return ReviewStats(
         dueToday = cards.count { it.dueAt <= now },
         reviewedToday = cards.count { card -> card.lastReviewedAt?.let { it >= todayStart } == true },
+        introducedToday = cards.count { it.createdAt >= todayStart },
         totalCards = cards.size,
         totalLapses = cards.sumOf { it.lapseCount }
     )
@@ -148,12 +150,13 @@ internal fun buildReviewEntryState(
     newCardLimit: Int
 ): ReviewEntryState {
     val existingReviewQuizIds = reviewQuizIds.toSet()
-    val availableNewLearningCount = if (newCardLimit <= 0) {
+    val remainingDailyLimit = (newCardLimit - reviewStats.introducedToday).coerceAtLeast(0)
+    val availableNewLearningCount = if (remainingDailyLimit <= 0) {
         0
     } else {
         quizzes.count { quiz ->
             quiz.isSupportedStudyType() && quiz.id !in existingReviewQuizIds
-        }.coerceAtMost(newCardLimit)
+        }.coerceAtMost(remainingDailyLimit)
     }
     return ReviewEntryState(
         dueReviewCount = reviewStats.dueToday,
@@ -722,15 +725,25 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
     fun scheduleReview(
         quizId: Int,
         rating: ReviewRating,
-        onScheduled: () -> Unit = {}
+        onScheduled: (ReviewCard) -> Unit = {}
     ) {
         viewModelScope.launch {
-            repository.scheduleReview(quizId, libraryId, rating)
-            onScheduled()
+            val scheduled = repository.scheduleReview(
+                quizId = quizId,
+                libraryId = libraryId,
+                rating = rating,
+                sourceMode = QuizStudyMode.REVIEW.value
+            )
+            reviewCardCache[quizId] = scheduled
+            onScheduled(scheduled)
         }
     }
 
-    fun schedulePracticeReviewRating(quizId: Int, rating: ReviewRating) {
+    fun schedulePracticeReviewRating(
+        quizId: Int,
+        rating: ReviewRating,
+        sourceMode: String
+    ) {
         updatePracticeReviewRating(quizId, rating)
         val baseline = practiceReviewBaselines[quizId]
         if (baseline == null && quizId in practiceReviewSchedulingQuizIds) {
@@ -743,13 +756,15 @@ class QuizRunnerViewModel(application: Application, private val libraryId: Int) 
                 quizId = quizId,
                 libraryId = libraryId,
                 rating = rating,
-                baseline = baseline
+                baseline = baseline,
+                sourceMode = sourceMode
             )
             practiceReviewBaselines.putIfAbsent(quizId, result.baseline)
+            reviewCardCache[quizId] = result.scheduled
             practiceReviewSchedulingQuizIds.remove(quizId)
             val pending = pendingPracticeReviewRatings.remove(quizId)
             if (pending != null && pending != rating) {
-                schedulePracticeReviewRating(quizId, pending)
+                schedulePracticeReviewRating(quizId, pending, sourceMode)
             } else {
                 updatePracticeReviewRating(quizId, rating)
             }

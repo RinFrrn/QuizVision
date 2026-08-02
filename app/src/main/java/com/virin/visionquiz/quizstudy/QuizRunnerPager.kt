@@ -307,6 +307,7 @@ private fun QuizRunnerPage(
                     ReviewRatingBar(
                         page = page,
                         onReviewRating = callbacks.onReviewRating,
+                        reviewCard = state.currentReviewCard,
                         selectedRating = rating
                     )
                 }

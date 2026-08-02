@@ -45,6 +45,7 @@ import com.virin.visionquiz.dao.Quiz
 import com.virin.visionquiz.dao.QuizAnswerRecord
 import com.virin.visionquiz.dao.QuizStudyMode
 import com.virin.visionquiz.dao.QuizUiType
+import com.virin.visionquiz.dao.ReviewCardState
 import com.virin.visionquiz.dao.ReviewRating
 import com.virin.visionquiz.dao.inferredUiType
 import com.virin.visionquiz.databinding.FragmentQuizRunnerBinding
@@ -477,6 +478,11 @@ class QuizRunnerFragment : BaseQuizFragment() {
                     existingTimerStartedAt = existingTimerStartedAt
                 )
             }
+            if (isPracticeSessionMode()) {
+                withContext(Dispatchers.IO) {
+                    viewModel.loadReviewCardsForQuizIds(prepared.quizzes.map { it.id })
+                }
+            }
             if (_binding == null) return@launch
             applyPreparedQuizSession(prepared)
         }
@@ -504,6 +510,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
             }
         }
         renderPreparedQuizList()
+        recoverPendingReviewAdvance()
     }
 
     private fun buildFreshPracticeOrder(source: List<Quiz>): List<Quiz> {
@@ -824,7 +831,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         val isPracticeSubmitted = isPracticeSessionMode() && quiz.id in recordedPracticeQuizIds
         val showReviewRating =
             mode == QuizStudyMode.REVIEW && isSubmitted && quiz.id !in reviewRatedQuizIds
-        val currentReviewCard = if (mode == QuizStudyMode.REVIEW) {
+        val currentReviewCard = if (mode == QuizStudyMode.REVIEW || isPracticeSessionMode()) {
             viewModel.getReviewCardForQuiz(quiz.id)
         } else null
         val practiceReviewRating = viewModel.practiceReviewRatings.value.orEmpty()[quiz.id]
@@ -992,7 +999,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
         if (isPracticeSessionMode()) {
             val quiz = quizzes.getOrNull(currentIndex) ?: return
             if (quiz.id in recordedPracticeQuizIds) {
-                viewModel.schedulePracticeReviewRating(quiz.id, rating)
+                viewModel.schedulePracticeReviewRating(quiz.id, rating, mode.value)
             }
             return
         }
@@ -1000,19 +1007,56 @@ class QuizRunnerFragment : BaseQuizFragment() {
         val quiz = quizzes.getOrNull(currentIndex) ?: return
         if (quiz.id !in recordedPracticeQuizIds || !reviewRatedQuizIds.add(quiz.id)) return
         render()
-        viewModel.scheduleReview(quiz.id, rating) {
-            timerHandler.postDelayed(
-                {
-                    if (_binding == null || mode != QuizStudyMode.REVIEW) return@postDelayed
-                    if (currentIndex < quizzes.lastIndex) {
-                        goToQuestion(currentIndex + 1)
-                    } else {
-                        Toast.makeText(requireContext(), "本次复习完成", Toast.LENGTH_SHORT).show()
-                        findNavController().popBackStack()
-                    }
-                },
-                REVIEW_ADVANCE_DELAY_MS
-            )
+        viewModel.scheduleReview(quiz.id, rating) { scheduled ->
+            prepareRelearningAttempt(quiz, scheduled.state)
+            if (_binding != null && mode == QuizStudyMode.REVIEW) {
+                advanceAfterReviewRating()
+            }
+        }
+    }
+
+    private fun recoverPendingReviewAdvance() {
+        if (mode != QuizStudyMode.REVIEW || _binding == null) return
+        val quiz = quizzes.getOrNull(currentIndex) ?: return
+        if (quiz.id !in reviewRatedQuizIds) return
+        val scheduled = viewModel.getReviewCardForQuiz(quiz.id) ?: return
+        if (scheduled.lastReviewedAt == null) return
+        prepareRelearningAttempt(quiz, scheduled.state)
+        binding.root.post {
+            if (_binding != null && mode == QuizStudyMode.REVIEW) {
+                advanceAfterReviewRating()
+            }
+        }
+    }
+
+    private fun prepareRelearningAttempt(quiz: Quiz, stateValue: String) {
+        val state = ReviewCardState.fromValue(stateValue)
+        val needsRelearning = state == ReviewCardState.LEARNING ||
+            state == ReviewCardState.RELEARNING
+        if (!needsRelearning) return
+        if (quizzes.drop(currentIndex + 1).none { it.id == quiz.id }) {
+            quizzes = quizzes + quiz
+        }
+        resetReviewAttemptForRelearning(quiz.id)
+    }
+
+    private fun advanceAfterReviewRating() {
+        if (currentIndex < quizzes.lastIndex) {
+            goToQuestion(currentIndex + 1)
+        } else {
+            Toast.makeText(requireContext(), "本次复习完成", Toast.LENGTH_SHORT).show()
+            findNavController().popBackStack()
+        }
+    }
+
+    private fun resetReviewAttemptForRelearning(quizId: Int) {
+        recordedPracticeQuizIds.remove(quizId)
+        reviewRatedQuizIds.remove(quizId)
+        practiceAnswers.remove(quizId)
+        practiceAnswerResults.remove(quizId)
+        if (quizzes.getOrNull(currentIndex)?.id == quizId) {
+            currentSelection = emptySet()
+            answerVisible = false
         }
     }
 
@@ -1417,7 +1461,8 @@ class QuizRunnerFragment : BaseQuizFragment() {
         if (!isPracticeSessionMode()) return
         viewModel.schedulePracticeReviewRating(
             quizId = quizId,
-            rating = PracticeReviewRatingPolicy.defaultRatingForPracticeAnswer(isCorrect)
+            rating = PracticeReviewRatingPolicy.defaultRatingForPracticeAnswer(isCorrect),
+            sourceMode = mode.value
         )
     }
 
@@ -1937,7 +1982,6 @@ class QuizRunnerFragment : BaseQuizFragment() {
         private const val PRACTICE_CORRECT_SOUND_DURATION_MS = 150
         private const val PRACTICE_WRONG_SOUND_DURATION_MS = 220
         private const val TIMER_TICK_INTERVAL_MS = 1_000L
-        private const val REVIEW_ADVANCE_DELAY_MS = 500L
         private const val ANSWER_CARD_DEFAULT_SPAN_COUNT = 5
         private const val PRACTICE_PERSIST_DEBOUNCE_MS = 250L
         private const val ANSWER_CARD_MIN_CELL_WIDTH_DP = 48f

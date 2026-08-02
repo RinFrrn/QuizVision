@@ -241,6 +241,9 @@ interface ReviewCardDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCard(card: ReviewCard)
 
+    @Insert
+    suspend fun insertLog(log: ReviewLog): Long
+
     @Query("SELECT COUNT(*) FROM ReviewCard WHERE library_id = :libraryId AND due_at <= :now")
     fun getDueCardCount(libraryId: Int, now: Long): LiveData<Int>
 
@@ -266,9 +269,27 @@ interface ReviewCardDao {
     @Query("SELECT quiz_id FROM ReviewCard WHERE library_id = :libraryId")
     fun getReviewQuizIdsLiveData(libraryId: Int): LiveData<List<Int>>
 
+    @Query("SELECT * FROM ReviewLog WHERE quiz_id = :quizId ORDER BY reviewed_at DESC, id DESC")
+    suspend fun getLogsByQuizId(quizId: Int): List<ReviewLog>
+
+    @Query("SELECT COUNT(*) FROM ReviewCard WHERE library_id = :libraryId AND created_at >= :since")
+    suspend fun countCardsCreatedSince(libraryId: Int, since: Long): Int
+
     @Query("DELETE FROM ReviewCard WHERE quiz_id = :quizId")
     suspend fun deleteCardByQuizId(quizId: Int)
 
+    @Query("DELETE FROM ReviewLog WHERE quiz_id = :quizId")
+    suspend fun deleteLogsByQuizId(quizId: Int)
+
     @Query("DELETE FROM ReviewCard WHERE library_id = :libraryId")
     suspend fun deleteCardsByLibraryId(libraryId: Int)
+
+    @Query("DELETE FROM ReviewLog WHERE library_id = :libraryId")
+    suspend fun deleteLogsByLibraryId(libraryId: Int)
+
+    @Query(
+        "DELETE FROM ReviewLog WHERE library_id = :libraryId " +
+            "AND reviewed_at >= :startTime AND reviewed_at <= :endTime"
+    )
+    suspend fun deleteLogsByReviewedRange(libraryId: Int, startTime: Long, endTime: Long)
 }
