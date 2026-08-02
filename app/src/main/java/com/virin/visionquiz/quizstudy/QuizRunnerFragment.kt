@@ -160,6 +160,7 @@ class QuizRunnerFragment : BaseQuizFragment() {
             binding.toolbar,
             mode.label,
             navigationIconRes = if (mode == QuizStudyMode.EXAM) R.drawable.round_close_24 else R.drawable.round_arrow_back_24,
+            applyStatusBarInset = false,
             onNavigationClick = { requestExitConfirmation(fromNavigationButton = true) }
         )
 
@@ -227,23 +228,31 @@ class QuizRunnerFragment : BaseQuizFragment() {
     }
 
     private fun applyBottomInsets() {
-        val basePaddingLeft = binding.contentGroup.paddingLeft
-        val basePaddingTop = binding.contentGroup.paddingTop
-        val basePaddingRight = binding.contentGroup.paddingRight
-        val basePaddingBottom = binding.contentGroup.paddingBottom
+        val target = binding.bottomControlsContainer
+        val basePaddingLeft = target.paddingLeft
+        val basePaddingTop = target.paddingTop
+        val basePaddingRight = target.paddingRight
+        val basePaddingBottom = target.paddingBottom
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
             val navigationBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
             val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             val bottomInset = when {
                 imeBottom > 0 -> imeBottom
                 else -> navigationBottom
             }
-            binding.contentGroup.setPadding(
+            target.setPadding(
                 basePaddingLeft,
                 basePaddingTop,
                 basePaddingRight,
                 basePaddingBottom + bottomInset
             )
+            binding.systemStatusBarInset.layoutParams?.let { layoutParams ->
+                if (layoutParams.height != statusBarTop) {
+                    layoutParams.height = statusBarTop
+                    binding.systemStatusBarInset.layoutParams = layoutParams
+                }
+            }
             insets
         }
         ViewCompat.requestApplyInsets(binding.root)

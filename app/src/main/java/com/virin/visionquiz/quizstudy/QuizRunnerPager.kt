@@ -50,6 +50,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -223,6 +225,7 @@ private fun QuizRunnerPage(
     textSize: QuizRunnerComposeTextSize,
     callbacks: QuizRunnerPagerCallbacks
 ) {
+    val nestedScrollInterop = rememberNestedScrollInteropConnection()
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -230,6 +233,7 @@ private fun QuizRunnerPage(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .nestedScroll(nestedScrollInterop)
                 .verticalScroll(rememberScrollState())
                 .padding(
                     start = 16.dp,
