@@ -59,6 +59,49 @@ class SpacedRepetitionSchedulerTest {
     }
 
     @Test
+    fun easyGraduatesMinuteLearningCardToFourDays() {
+        val learningCard = SpacedRepetitionScheduler.schedule(
+            card = newCard(intervalDays = 5.0),
+            rating = ReviewRating.FORGOT,
+            now = NOW
+        )
+
+        val scheduled = SpacedRepetitionScheduler.schedule(
+            card = learningCard,
+            rating = ReviewRating.EASY,
+            now = NOW
+        )
+
+        assertEquals(4.0, scheduled.intervalDays, 0.0001)
+        assertEquals(NOW + 4 * DAY_MS, scheduled.dueAt)
+    }
+
+    @Test
+    fun learningCardPreviewMatchesScheduleAndRemainsMonotonic() {
+        val learningCard = newCard(intervalDays = 1.0 / 1_440.0)
+        val ratings = ReviewRating.values().toList()
+        val preview = SpacedRepetitionScheduler.previewNextIntervals(learningCard)
+        val intervals = ratings.map { rating ->
+            val previewInterval = requireNotNull(preview[rating])
+            val scheduledInterval = SpacedRepetitionScheduler.schedule(
+                card = learningCard,
+                rating = rating,
+                now = NOW
+            ).intervalDays
+            assertEquals(scheduledInterval, previewInterval, 0.0001)
+            previewInterval
+        }
+
+        assertEquals(1.0 / 1_440.0, intervals[0], 0.0001)
+        assertEquals(1.0, intervals[1], 0.0001)
+        assertEquals(1.0, intervals[2], 0.0001)
+        assertEquals(4.0, intervals[3], 0.0001)
+        intervals.zipWithNext().forEach { (shorter, longer) ->
+            assertTrue(shorter <= longer)
+        }
+    }
+
+    @Test
     fun hardUsesShortLearningIntervalForNewCards() {
         val scheduled = SpacedRepetitionScheduler.schedule(
             card = newCard(),
