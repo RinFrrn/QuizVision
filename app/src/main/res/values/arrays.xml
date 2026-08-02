@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+  <string-array name="pref_entries_ocr_engine">
+    <item>ML Kit (default)</item>
+    <item>PP-OCRv6 Small (experimental)</item>
+  </string-array>
+
+  <string-array name="pref_entry_values_ocr_engine">
+    <item>ml_kit</item>
+    <item>pp_ocr_v6_small</item>
+  </string-array>
+
   <string-array name="pref_entries_quiz_overlay_text_size">
     <item>小</item>
     <item>正常</item>

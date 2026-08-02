@@ -12,5 +12,12 @@ This product also includes Android Open Source Project resource material derived
 from Material/Android framework resources, licensed under the Apache License,
 Version 2.0.
 
-Third-party library dependencies are declared in app/build.gradle and remain
-under their respective licenses.
+This product includes PaddleOCR Android SDK source code and PP-OCRv6 Small model
+files developed by the PaddlePaddle Authors, licensed under the Apache License,
+Version 2.0. The integrated source is based on PaddleOCR commit
+2661c7c0ef5c613e8f93c6e93b2e052399f0f854.
+
+Third-party library dependencies are declared in app/build.gradle and
+ppocr-sdk/build.gradle.kts and remain under their respective licenses. License
+and attribution text for the bundled OCR runtime is also shipped in the app's
+THIRD_PARTY_NOTICES.txt asset.

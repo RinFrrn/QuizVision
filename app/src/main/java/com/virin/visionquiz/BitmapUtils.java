@@ -48,6 +48,17 @@ public class BitmapUtils {
   /** Converts NV21 format byte buffer to bitmap. */
   @Nullable
   public static Bitmap getBitmap(ByteBuffer data, FrameMetadata metadata) {
+    return getBitmap(data, metadata, 80);
+  }
+
+  /** Converts NV21 to a high-quality bitmap suitable for OCR input. */
+  @Nullable
+  public static Bitmap getBitmapForOcr(ByteBuffer data, FrameMetadata metadata) {
+    return getBitmap(data, metadata, 100);
+  }
+
+  @Nullable
+  private static Bitmap getBitmap(ByteBuffer data, FrameMetadata metadata, int jpegQuality) {
     data.rewind();
     byte[] imageInBuffer = new byte[data.limit()];
     data.get(imageInBuffer, 0, imageInBuffer.length);
@@ -56,7 +67,8 @@ public class BitmapUtils {
           new YuvImage(
               imageInBuffer, ImageFormat.NV21, metadata.getWidth(), metadata.getHeight(), null);
       ByteArrayOutputStream stream = new ByteArrayOutputStream();
-      image.compressToJpeg(new Rect(0, 0, metadata.getWidth(), metadata.getHeight()), 80, stream);
+      image.compressToJpeg(
+          new Rect(0, 0, metadata.getWidth(), metadata.getHeight()), jpegQuality, stream);
 
       Bitmap bmp = BitmapFactory.decodeByteArray(stream.toByteArray(), 0, stream.size());
 
@@ -73,6 +85,20 @@ public class BitmapUtils {
   @Nullable
   @ExperimentalGetImage
   public static Bitmap getBitmap(ImageProxy image) {
+    return getBitmap(image, false);
+  }
+
+  /** Converts a CameraX image to a high-quality bitmap suitable for OCR input. */
+  @RequiresApi(VERSION_CODES.LOLLIPOP)
+  @Nullable
+  @ExperimentalGetImage
+  public static Bitmap getBitmapForOcr(ImageProxy image) {
+    return getBitmap(image, true);
+  }
+
+  @Nullable
+  @ExperimentalGetImage
+  private static Bitmap getBitmap(ImageProxy image, boolean forOcr) {
     FrameMetadata frameMetadata =
         new FrameMetadata.Builder()
             .setWidth(image.getWidth())
@@ -82,7 +108,9 @@ public class BitmapUtils {
 
     ByteBuffer nv21Buffer =
         yuv420ThreePlanesToNV21(image.getImage().getPlanes(), image.getWidth(), image.getHeight());
-    return getBitmap(nv21Buffer, frameMetadata);
+    return forOcr
+        ? getBitmapForOcr(nv21Buffer, frameMetadata)
+        : getBitmap(nv21Buffer, frameMetadata);
   }
 
   /** Rotates a bitmap if it is converted from a bytebuffer. */

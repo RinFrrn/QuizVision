@@ -21,6 +21,7 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Build.VERSION_CODES;
 import android.preference.PreferenceManager;
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.StringRes;
@@ -43,6 +44,9 @@ import java.util.Arrays;
 
 /** Utility class to retrieve shared preferences. */
 public class PreferenceUtils {
+
+  public static final String OCR_ENGINE_ML_KIT = "ml_kit";
+  public static final String OCR_ENGINE_PP_OCR_V6_SMALL = "pp_ocr_v6_small";
 
   private static final int POSE_DETECTOR_PERFORMANCE_MODE_FAST = 1;
   private static final int DEFAULT_SCREEN_SEARCH_INTERVAL_MS = 750;
@@ -307,6 +311,22 @@ public class PreferenceUtils {
 //      return builder.build();
 //    }
 //  }
+
+  @NonNull
+  public static String getOcrEngine(Context context) {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+    String prefKey = context.getString(R.string.pref_key_ocr_engine);
+    return normalizeOcrEngineValue(
+        sharedPreferences.getString(prefKey, OCR_ENGINE_ML_KIT));
+  }
+
+  @NonNull
+  static String normalizeOcrEngineValue(@Nullable String value) {
+    if (OCR_ENGINE_PP_OCR_V6_SMALL.equals(value)) {
+      return OCR_ENGINE_PP_OCR_V6_SMALL;
+    }
+    return OCR_ENGINE_ML_KIT;
+  }
 
   public static boolean shouldGroupRecognizedTextInBlocks(Context context) {
     SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);

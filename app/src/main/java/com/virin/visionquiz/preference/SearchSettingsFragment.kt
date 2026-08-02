@@ -147,6 +147,15 @@ class SearchSettingsFragment : Fragment() {
 
     private fun LinearLayout.addOcrRecognitionSection(context: Context) {
         val rows = listOf(
+            createArrayListRow(
+                context = context,
+                keyResId = R.string.pref_key_ocr_engine,
+                titleResId = R.string.pref_title_ocr_engine,
+                summary = getString(R.string.pref_summary_ocr_engine),
+                defaultValue = PreferenceUtils.OCR_ENGINE_ML_KIT,
+                entriesResId = R.array.pref_entries_ocr_engine,
+                valuesResId = R.array.pref_entry_values_ocr_engine
+            ),
             createSwitchRow(
                 context = context,
                 keyResId = R.string.pref_key_group_recognized_text_in_blocks,

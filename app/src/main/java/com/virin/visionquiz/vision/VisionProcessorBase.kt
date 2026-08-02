@@ -130,9 +130,26 @@ abstract class VisionProcessorBase<T>(context: Context) : VisionImageProcessor {
     onComplete: Runnable?
   ) {
     val frameStartMs = SystemClock.elapsedRealtime()
+    val sourceBitmap = bitmap ?: run {
+      onComplete?.run()
+      return
+    }
+
+    if (requiresBitmapInput()) {
+      requestDetectInBitmap(
+        sourceBitmap,
+        graphicOverlay,
+        /* originalCameraImage= */ null,
+        /* shouldShowFps= */ false,
+        frameStartMs
+      ).addOnCompleteListener {
+        onComplete?.run()
+      }
+      return
+    }
 
     if (isMlImageEnabled(graphicOverlay.context)) {
-      val mlImage = BitmapMlImageBuilder(bitmap!!).build()
+      val mlImage = BitmapMlImageBuilder(sourceBitmap).build()
       requestDetectInImage(
         mlImage,
         graphicOverlay,
@@ -148,7 +165,7 @@ abstract class VisionProcessorBase<T>(context: Context) : VisionImageProcessor {
     }
 
     requestDetectInImage(
-      InputImage.fromBitmap(bitmap!!, 0),
+      InputImage.fromBitmap(sourceBitmap, 0),
       graphicOverlay,
       /* originalCameraImage= */ null,
       /* shouldShowFps= */ false,
@@ -190,11 +207,42 @@ abstract class VisionProcessorBase<T>(context: Context) : VisionImageProcessor {
     graphicOverlay: GraphicOverlay
   ) {
     val frameStartMs = SystemClock.elapsedRealtime()
+    val bitmapRequired = requiresBitmapInput()
+    val liveViewportEnabled = PreferenceUtils.isCameraLiveViewportEnabled(graphicOverlay.context)
     // If live viewport is on (that is the underneath surface view takes care of the camera preview
     // drawing), skip the unnecessary bitmap creation that used for the manual preview drawing.
     val bitmap =
-      if (PreferenceUtils.isCameraLiveViewportEnabled(graphicOverlay.context)) null
+      if (liveViewportEnabled && !bitmapRequired) null
+      else if (bitmapRequired) BitmapUtils.getBitmapForOcr(data, frameMetadata)
       else BitmapUtils.getBitmap(data, frameMetadata)
+
+    if (bitmapRequired) {
+      val originalCameraImage = if (liveViewportEnabled) null else bitmap
+      val task = if (bitmap != null) {
+        requestDetectInBitmap(
+          bitmap,
+          graphicOverlay,
+          originalCameraImage,
+          /* shouldShowFps= */ true,
+          frameStartMs
+        )
+      } else {
+        setUpListener(
+          Tasks.forException(IllegalStateException("Unable to convert camera frame to bitmap")),
+          graphicOverlay,
+          originalCameraImage,
+          /* shouldShowFps= */ true,
+          frameStartMs
+        )
+      }
+      task.addOnCompleteListener(executor) {
+        if (liveViewportEnabled) {
+          bitmap?.recycle()
+        }
+        processLatestImage(graphicOverlay)
+      }
+      return
+    }
 
     if (isMlImageEnabled(graphicOverlay.context)) {
       val mlImage =
@@ -239,9 +287,54 @@ abstract class VisionProcessorBase<T>(context: Context) : VisionImageProcessor {
       image.close()
       return
     }
+    val bitmapRequired = requiresBitmapInput()
+    val liveViewportEnabled = PreferenceUtils.isCameraLiveViewportEnabled(graphicOverlay.context)
     var bitmap: Bitmap? = null
-    if (!PreferenceUtils.isCameraLiveViewportEnabled(graphicOverlay.context)) {
-      bitmap = BitmapUtils.getBitmap(image)
+    var bitmapConversionFailure: Exception? = null
+    if (!liveViewportEnabled || bitmapRequired) {
+      try {
+        bitmap = if (bitmapRequired) {
+          BitmapUtils.getBitmapForOcr(image)
+        } else {
+          BitmapUtils.getBitmap(image)
+        }
+      } catch (exception: Exception) {
+        bitmapConversionFailure = exception
+        Log.w(TAG, "Unable to convert CameraX frame to bitmap", exception)
+      }
+    }
+
+    if (bitmapRequired) {
+      val originalCameraImage = if (liveViewportEnabled) null else bitmap
+      val task = if (bitmap != null) {
+        requestDetectInBitmap(
+          bitmap,
+          graphicOverlay,
+          originalCameraImage,
+          /* shouldShowFps= */ true,
+          frameStartMs
+        )
+      } else {
+        setUpListener(
+          Tasks.forException(
+            IllegalStateException(
+              "Unable to convert CameraX frame to bitmap",
+              bitmapConversionFailure
+            )
+          ),
+          graphicOverlay,
+          originalCameraImage,
+          /* shouldShowFps= */ true,
+          frameStartMs
+        )
+      }
+      task.addOnCompleteListener {
+        if (liveViewportEnabled) {
+          bitmap?.recycle()
+        }
+        image.close()
+      }
+      return
     }
 
     if (isMlImageEnabled(graphicOverlay.context)) {
@@ -278,6 +371,22 @@ abstract class VisionProcessorBase<T>(context: Context) : VisionImageProcessor {
   }
 
   // -----------------Common processing logic-------------------------------------------------------
+  private fun requestDetectInBitmap(
+    bitmap: Bitmap,
+    graphicOverlay: GraphicOverlay,
+    originalCameraImage: Bitmap?,
+    shouldShowFps: Boolean,
+    frameStartMs: Long
+  ): Task<T> {
+    return setUpListener(
+      detectInBitmap(bitmap),
+      graphicOverlay,
+      originalCameraImage,
+      shouldShowFps,
+      frameStartMs
+    )
+  }
+
   private fun requestDetectInImage(
     image: InputImage,
     graphicOverlay: GraphicOverlay,
@@ -430,6 +539,14 @@ abstract class VisionProcessorBase<T>(context: Context) : VisionImageProcessor {
   }
 
   protected abstract fun detectInImage(image: InputImage): Task<T>
+
+  protected open fun detectInBitmap(bitmap: Bitmap): Task<T> {
+    return detectInImage(InputImage.fromBitmap(bitmap, 0))
+  }
+
+  protected open fun requiresBitmapInput(): Boolean {
+    return false
+  }
 
   protected open fun detectInImage(image: MlImage): Task<T> {
     return Tasks.forException(

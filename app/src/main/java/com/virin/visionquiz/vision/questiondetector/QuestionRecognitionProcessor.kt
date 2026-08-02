@@ -1,6 +1,7 @@
 package com.virin.visionquiz.vision.questiondetector
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Rect
 import android.util.Log
 import androidx.lifecycle.LiveData
@@ -13,10 +14,6 @@ import com.virin.visionquiz.vision.VisionProcessorBase
 import com.virin.visionquiz.preference.PreferenceUtils
 import com.virin.visionquiz.util.AnswerOptionTextMatcher
 import com.virin.visionquiz.util.QuizGraphicItem
-import com.google.mlkit.vision.text.Text
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.TextRecognizer
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,6 +27,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.collections.ArrayList
 import kotlin.coroutines.coroutineContext
 import kotlin.math.abs
+import com.virin.visionquiz.vision.ocr.OcrDocument
+import com.virin.visionquiz.vision.ocr.OcrEngine
+import com.virin.visionquiz.vision.ocr.OcrEngineFactory
+import com.virin.visionquiz.vision.ocr.OcrEngineType
 
 class QuizRecognitionProcessor(
     private val context: Context,
@@ -38,10 +39,11 @@ class QuizRecognitionProcessor(
     private val minMatchScore: Double = QuizManager.DEFAULT_MIN_MATCH_SCORE,
     private val locateScreenAnswerRects: Boolean = false,
     private val confirmEmptyResults: Boolean = true
-) : VisionProcessorBase<Text>(context) {
+) : VisionProcessorBase<OcrDocument>(context) {
 
-    private val textRecognizer: TextRecognizer = TextRecognition.getClient(
-        ChineseTextRecognizerOptions.Builder().build()
+    private val ocrEngine: OcrEngine = OcrEngineFactory.create(
+        context,
+        OcrEngineType.fromStableValue(PreferenceUtils.getOcrEngine(context))
     )
     private val shouldGroupRecognizedTextInBlocks: Boolean =
         PreferenceUtils.shouldGroupRecognizedTextInBlocks(context)
@@ -562,7 +564,7 @@ class QuizRecognitionProcessor(
     }
 
     private fun buildRecognizedTextItems(
-        results: Text,
+        results: OcrDocument,
         lineCandidates: MutableList<OcrOptionLocator.TextCandidate>
     ): List<RecognizedTextItem> {
         val recognizedTextItems = mutableListOf<RecognizedTextItem>()
@@ -652,7 +654,7 @@ class QuizRecognitionProcessor(
         return recognizedTextItems
     }
 
-    private fun buildLineReadingOrders(results: Text): Map<OcrReadingOrder.Key, Int> {
+    private fun buildLineReadingOrders(results: OcrDocument): Map<OcrReadingOrder.Key, Int> {
         var sourceOrder = 0
         val items = buildList {
             results.textBlocks.forEachIndexed { blockIndex, textBlock ->
@@ -730,16 +732,23 @@ class QuizRecognitionProcessor(
         matchingJob.cancel()
         matchScope.cancel()
         super.stop()
-        textRecognizer.close()
+        ocrEngine.close()
     }
 
-    override fun detectInImage(image: InputImage): Task<Text> {
-        return textRecognizer.process(image)
+    override fun detectInImage(image: InputImage): Task<OcrDocument> {
+        return ocrEngine.recognize(image)
     }
 
+    override fun detectInBitmap(bitmap: Bitmap): Task<OcrDocument> {
+        return ocrEngine.recognize(bitmap)
+    }
 
-    override fun onSuccess(results: Text, graphicOverlay: GraphicOverlay) {
-        Log.d(TAG, "On-device Text detection successful")
+    override fun requiresBitmapInput(): Boolean {
+        return ocrEngine.requiresBitmapInput
+    }
+
+    override fun onSuccess(results: OcrDocument, graphicOverlay: GraphicOverlay) {
+        Log.d(TAG, "On-device text detection successful with ${ocrEngine.type.stableValue}")
 
         val quizSnapshot = quizzes.value ?: emptyList()
         val lineCandidates = mutableListOf<OcrOptionLocator.TextCandidate>()
@@ -858,7 +867,7 @@ class QuizRecognitionProcessor(
         private const val ORDER_SCALE = 1_000
         private const val LINE_CANDIDATE_ORDER_OFFSET = 900
 
-        private fun logExtrasForTesting(text: Text?) {
+        private fun logExtrasForTesting(text: OcrDocument?) {
             if (text != null) {
                 Log.v(MANUAL_TESTING_LOG, "Detected text has : " + text.textBlocks.size + " blocks")
                 for (i in text.textBlocks.indices) {
@@ -883,25 +892,9 @@ class QuizRecognitionProcessor(
                                 MANUAL_TESTING_LOG, String.format(
                                     "Detected text element %d has a bounding box: %s",
                                     k,
-                                    element.boundingBox!!.flattenToString()
+                                    element.boundingBox?.flattenToString()
                                 )
                             )
-                            Log.v(
-                                MANUAL_TESTING_LOG, String.format(
-                                    "Expected corner point size is 4, get %d",
-                                    element.cornerPoints!!.size
-                                )
-                            )
-                            for (point in element.cornerPoints!!) {
-                                Log.v(
-                                    MANUAL_TESTING_LOG, String.format(
-                                        "Corner point for element %d is located at: x - %d, y = %d",
-                                        k,
-                                        point.x,
-                                        point.y
-                                    )
-                                )
-                            }
                         }
                     }
                 }
